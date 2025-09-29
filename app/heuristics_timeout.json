@@ -1,0 +1,7 @@
+[
+  {
+    "pattern": "mahasiswa\\.unair\\.ac\\.id$",
+    "min_timeout": 70,
+    "note": "Site kadang lambat, butuh timeout lebih tinggi."
+  }
+]

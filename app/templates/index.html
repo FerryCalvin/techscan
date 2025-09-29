@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TechScan Lookup</title>
+  <style>
+    :root {
+      --bg:#0f1115;--panel:#1b1f27;--panel-alt:#222834;--border:#2e3644;--accent:#3b82f6;--accent-hover:#2563eb;--text:#f1f5f9;--text-dim:#94a3b8;--danger:#ef4444;--warn:#f59e0b;--ok:#10b981;--radius:10px;--focus-ring:0 0 0 3px rgba(59,130,246,.35)
+    }
+    * {box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif;}
+    body {margin:0;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;}
+    h1 {font-size:2.2rem;margin:0 0 1rem;font-weight:600;}
+    a {color:var(--accent);text-decoration:none}
+    a:hover{color:var(--accent-hover)}
+    header {padding:2.5rem 2rem 1.2rem;max-width:1040px;margin:0 auto;}
+    .subtitle {color:var(--text-dim);font-size:.95rem;max-width:760px;line-height:1.4}
+    main {max-width:1040px;margin:0 auto;padding:0 2rem 4rem;}
+    .panel {background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem 1.25rem 1.4rem;margin-bottom:1.4rem;box-shadow:0 4px 12px -4px rgba(0,0,0,.4)}
+    .panel h2 {font-size:1.05rem;margin:0 0 .9rem;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)}
+    form.inline {display:flex;gap:.75rem;flex-wrap:wrap}
+    input[type=text]{flex:1 1 360px;background:var(--panel-alt);border:1px solid var(--border);color:var(--text);padding:.85rem 1rem;border-radius:8px;font-size:.95rem;outline:none;}
+    input[type=text]:focus{border-color:var(--accent);box-shadow:var(--focus-ring);}
+    button{cursor:pointer;background:var(--accent);color:var(--text);border:none;padding:.85rem 1.2rem;font-size:.95rem;border-radius:8px;font-weight:600;display:inline-flex;align-items:center;gap:.5rem;letter-spacing:.3px;}
+    button:hover{background:var(--accent-hover)}
+    button.secondary{background:var(--panel-alt);border:1px solid var(--border);color:var(--text-dim);}
+    button.secondary:hover{border-color:var(--accent);color:var(--text)}
+    .results-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.9rem;margin-top:1.25rem}
+    .tech{background:var(--panel-alt);border:1px solid var(--border);padding:.75rem .85rem;border-radius:8px;display:flex;flex-direction:column;gap:.4rem;position:relative;}
+    .tech h3{margin:0;font-size:.9rem;font-weight:600;line-height:1.2}
+    .tech .version{font-size:.75rem;color:var(--accent);font-weight:500}
+    .badge-row{display:flex;flex-wrap:wrap;gap:.35rem}
+    .badge{background:#2f3a4a;color:var(--text-dim);padding:.25rem .55rem;border-radius:999px;font-size:.65rem;letter-spacing:.5px;text-transform:uppercase}
+    .status-bar{font-size:.7rem;position:absolute;top:6px;right:8px;color:var(--text-dim)}
+    pre{background:#0d0f12;border:1px solid var(--border);padding:1rem;border-radius:8px;overflow:auto;font-size:.75rem;line-height:1.3;max-height:340px}
+    .flex-row{display:flex;gap:1rem;flex-wrap:wrap}
+    .col{flex:1 1 380px;min-width:320px}
+    .hidden{display:none}
+    .error{color:var(--danger);margin-top:.5rem;font-size:.8rem}
+    .table-wrap{overflow:auto;max-height:420px}
+    table{border-collapse:collapse;width:100%;font-size:.8rem}
+    th,td{padding:.45rem .55rem;text-align:left;border-bottom:1px solid var(--border)}
+    th{background:var(--panel-alt);position:sticky;top:0}
+    .categories-list{display:flex;flex-direction:column;gap:.65rem;margin-top:.9rem}
+    .cat-block{background:var(--panel-alt);border:1px solid var(--border);padding:.7rem .85rem;border-radius:8px}
+    .cat-block h4{margin:0 0 .5rem;font-size:.75rem;letter-spacing:.5px;color:var(--text-dim);text-transform:uppercase}
+    footer{max-width:1040px;margin:2rem auto 4rem;padding:0 2rem;font-size:.65rem;color:var(--text-dim);text-align:center}
+    input[type=file]{display:none}
+    .file-label{background:var(--panel-alt);border:1px dashed var(--border);padding:1rem;border-radius:8px;cursor:pointer;text-align:center;font-size:.8rem;color:var(--text-dim)}
+    .spinner{width:18px;height:18px;border:3px solid #1f2933;border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @media (max-width:680px){header{padding:2rem 1.2rem 1rem}main{padding:0 1.2rem 3rem}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Technology lookup</h1>
+    <p class="subtitle">Find out what websites are built with. Masukkan satu domain atau unggah daftar untuk scan bulk. Hasil menampilkan teknologi dan versi (jika terdeteksi).</p>
+  </header>
+  <main>
+    <section class="panel" id="single-panel">
+      <h2>Look up a website</h2>
+      <form class="inline" id="single-form">
+        <input type="text" id="domain" placeholder="Enter a website address" required />
+        <button type="submit" id="scanBtn"><span id="scanBtnText">Scan</span><span class="spinner hidden" id="scanSpinner"></span></button>
+      </form>
+      <div id="single-error" class="error hidden"></div>
+      <div id="single-result" class="hidden">
+        <div class="flex-row">
+          <div class="col">
+            <h3 style="margin:1.2rem 0 .6rem;font-size:.95rem" id="res-domain"></h3>
+            <div class="results-grid" id="tech-grid"></div>
+          </div>
+          <div class="col">
+            <h3 style="margin:1.2rem 0 .6rem;font-size:.95rem">Categories</h3>
+            <div id="categories" class="categories-list"></div>
+          </div>
+        </div>
+        <details style="margin-top:1.4rem">
+          <summary style="cursor:pointer;color:var(--text-dim);font-size:.8rem">Raw JSON</summary>
+          <pre id="raw-json"></pre>
+        </details>
+      </div>
+    </section>
+    <section class="panel" id="bulk-panel">
+      <h2>Upload a list of websites</h2>
+      <label class="file-label" for="fileInput">Upload a .txt file (satu domain per baris)</label>
+      <input id="fileInput" type="file" accept="text/plain" />
+      <div id="bulk-status" class="error hidden"></div>
+      <div id="bulk-table-wrapper" class="table-wrap hidden">
+        <table id="bulk-table">
+          <thead><tr><th>Domain</th><th>Status</th><th>Tech Count</th><th>Top Tech</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <footer>
+    Built with Flask + Wappalyzer (local). Detection accuracy depends on exposed artefacts. Cache TTL 5m.
+  </footer>
+  <script>
+    async function postJSON(url, data){
+      const r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+      const txt = await r.text();
+      let j; try { j = JSON.parse(txt); } catch { throw new Error('Invalid JSON'); }
+      if(!r.ok) throw new Error(j.error || 'Request failed');
+      return j;
+    }
+
+    const form = document.getElementById('single-form');
+    const domainInput = document.getElementById('domain');
+    const resDiv = document.getElementById('single-result');
+    const techGrid = document.getElementById('tech-grid');
+    const rawPre = document.getElementById('raw-json');
+    const catDiv = document.getElementById('categories');
+    const resDomain = document.getElementById('res-domain');
+    const errorBox = document.getElementById('single-error');
+    const scanBtnText = document.getElementById('scanBtnText');
+    const scanSpinner = document.getElementById('scanSpinner');
+
+    function setLoading(state){
+      if(state){
+        scanBtnText.textContent='Scanning';
+        scanSpinner.classList.remove('hidden');
+      } else {
+        scanBtnText.textContent='Scan';
+        scanSpinner.classList.add('hidden');
+      }
+    }
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const domain = domainInput.value.trim().toLowerCase();
+      if(!domain) return;
+      errorBox.classList.add('hidden');
+      setLoading(true);
+      try {
+        const data = await postJSON('/scan', {domain});
+        renderSingle(domain, data);
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.classList.remove('hidden');
+      } finally { setLoading(false); }
+    });
+
+    function renderSingle(domain, data){
+      resDiv.classList.remove('hidden');
+      resDomain.textContent = domain + (data.cached ? ' (cached)' : '');
+      techGrid.innerHTML='';
+      (data.technologies||[]).forEach(t=>{
+        const el = document.createElement('div');
+        el.className='tech';
+        el.innerHTML = `<h3>${t.name||''}</h3>` +
+          (t.version?`<div class='version'>${t.version}</div>`:'') +
+          `<div class='badge-row'>${(t.categories||[]).map(c=>`<span class='badge'>${c}</span>`).join('')}</div>`;
+        techGrid.appendChild(el);
+      });
+      catDiv.innerHTML='';
+      const cats = data.categories || {};
+      Object.keys(cats).sort().forEach(c=>{
+        const block = document.createElement('div');
+        block.className='cat-block';
+        block.innerHTML = `<h4>${c}</h4><div class='badge-row'>` +
+          cats[c].map(x=>`<span class='badge'>${x.name}${x.version?' '+x.version:''}</span>`).join('') + '</div>';
+        catDiv.appendChild(block);
+      });
+      rawPre.textContent = JSON.stringify(data.raw || {}, null, 2);
+    }
+
+    // Bulk upload
+    const fileInput = document.getElementById('fileInput');
+    const bulkStatus = document.getElementById('bulk-status');
+    const bulkWrapper = document.getElementById('bulk-table-wrapper');
+    const bulkTableBody = document.querySelector('#bulk-table tbody');
+
+    fileInput.addEventListener('change', async e => {
+      const file = e.target.files[0];
+      if(!file) return;
+      const text = await file.text();
+      const domains = Array.from(new Set(text.split(/\r?\n/).map(l=>l.trim().toLowerCase()).filter(Boolean)));
+      if(!domains.length){
+        bulkStatus.textContent='No valid domains found';
+        bulkStatus.classList.remove('hidden');
+        return;
+      }
+      bulkStatus.classList.add('hidden');
+      bulkWrapper.classList.remove('hidden');
+      bulkTableBody.innerHTML = '';
+      domains.forEach(d=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${d}</td><td>queued</td><td>-</td><td>-</td>`;
+        bulkTableBody.appendChild(tr);
+      });
+      try {
+        const resp = await postJSON('/bulk', {domains});
+        resp.results.forEach((r,i)=>{
+          const row = bulkTableBody.rows[i];
+          if(!row) return;
+          if(r.status==='ok'){
+            const top = (r.technologies||[])[0];
+            row.cells[1].textContent='ok';
+            row.cells[2].textContent=r.technologies.length;
+            row.cells[3].textContent=top? top.name + (top.version? ' '+top.version:'') : '-';
+          } else {
+            row.cells[1].textContent='error';
+            row.cells[2].textContent='0';
+            row.cells[3].textContent=r.error||'-';
+          }
+        });
+      } catch(err){
+        bulkStatus.textContent=err.message;
+        bulkStatus.classList.remove('hidden');
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "name": "techscan-node-scanner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Wappalyzer-based scanning helper for Flask wrapper",
+  "main": "scanner.js",
+  "scripts": {
+    "scan": "node scanner.js"
+  },
+  "dependencies": {
+    "wappalyzer": "^6.10.0",
+    "puppeteer": "^22.10.0"
+  },
+  "overrides": {
+    "tar-fs": "^3.0.4",
+    "ws": "^8.18.0"
+  }
+}
