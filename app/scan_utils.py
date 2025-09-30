@@ -128,6 +128,10 @@ def normalize_result(domain: str, raw: Dict[str, Any], categories_map: Dict[int,
 _heuristics_lock = threading.Lock()
 _heuristics_patterns: list[tuple[re.Pattern, int]] = []
 
+# Track domains that currently have a deferred background scan in progress
+_deferred_lock = threading.Lock()
+_deferred_inflight: set[str] = set()
+
 def load_heuristic_patterns(config_path: str | None = None) -> None:
     """Load heuristic timeout patterns from JSON file.
     File format: list of objects: {"pattern": "regex", "min_timeout": int}
@@ -193,24 +197,36 @@ load_heuristic_patterns()
 def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: int = 0, full: bool = False) -> Dict[str, Any]:
     original_input = domain
     domain = validate_domain(extract_host(domain))
-    # Prefer local node_scanner if present
-    local_scanner = pathlib.Path(__file__).resolve().parent.parent / 'node_scanner' / 'scanner.js'
-    if local_scanner.exists():
-        cli = local_scanner
-        mode = 'local'
-        cmd = ['node', str(cli), domain]
+    persist = os.environ.get('TECHSCAN_PERSIST_BROWSER','0') == '1'
+    local_scanner = pathlib.Path(__file__).resolve().parent.parent / 'node_scanner' / ('scanner.js' if not persist else 'server.js')
+    if persist:
+        # We'll route via persistent_client, but keep mode label
+        mode = 'persist'
+        cmd = ['node', str(local_scanner), domain]
     else:
-        cli = pathlib.Path(wappalyzer_path) / 'src' / 'drivers' / 'npm' / 'cli.js'
-        if not cli.exists():
-            raise FileNotFoundError('wappalyzer cli not found at expected path')
-        mode = 'external'
-        url = f'https://{domain}'
-        cmd = ['node', str(cli), url]
+        if local_scanner.exists():
+            cli = local_scanner
+            mode = 'local'
+            cmd = ['node', str(cli), domain]
+        else:
+            cli = pathlib.Path(wappalyzer_path) / 'src' / 'drivers' / 'npm' / 'cli.js'
+            if not cli.exists():
+                raise FileNotFoundError('wappalyzer cli not found at expected path')
+            mode = 'external'
+            url = f'https://{domain}'
+            cmd = ['node', str(cli), url]
     last_err: Exception | None = None
     # attempts include first try + retries
     # Add one implicit timeout retry if user did not specify retries (best-effort)
     implicit_timeout_retry = (retries == 0)
     attempts = retries + 1
+    # Max attempts override via env
+    try:
+        max_attempts_env = int(os.environ.get('TECHSCAN_MAX_ATTEMPTS','0'))
+        if max_attempts_env > 0 and attempts > max_attempts_env:
+            attempts = max_attempts_env
+    except ValueError:
+        pass
     logger = logging.getLogger('techscan.scan_domain')
     # Heuristic raise timeout for certain domains (effective timeout)
     eff_timeout = apply_min_timeout(domain, timeout)
@@ -220,7 +236,21 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
     base_timeout = eff_timeout
     adaptive_used = False
     t0 = time.time()
-    for attempt in range(1, attempts + 1):
+    started_at = t0
+    hard_cap_env = os.environ.get('TECHSCAN_HARD_TIMEOUT_S')
+    hard_cap: float | None = None
+    try:
+        if hard_cap_env:
+            hard_cap = float(hard_cap_env)
+    except ValueError:
+        hard_cap = None
+    attempt = 1
+    # Use while so we can extend 'attempts' dynamically (adaptive implicit retry)
+    while attempt <= attempts:
+        # Hard cap enforcement: jika sudah melewati batas global, hentikan
+        if hard_cap and (time.time() - t0) > hard_cap:
+            logger.warning('hard cap reached domain=%s cap=%ss attempts=%d', domain, hard_cap, attempt)
+            raise RuntimeError(f'hard cap {hard_cap}s reached before completion')
         logger.debug('scan start domain=%s attempt=%d/%d timeout=%s cmd=%s', domain, attempt, attempts, eff_timeout, ' '.join(cmd))
         try:
             # Prepare env for subprocess (do not mutate global os.environ directly)
@@ -232,27 +262,30 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
             # Explicit toggle for resource blocking default (fast mode blocks). Full mode unsets blocking unless user forces.
             if full:
                 env.setdefault('TECHSCAN_BLOCK_RESOURCES', '0')
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=eff_timeout, env=env)
-            if proc.returncode != 0:
-                stderr = proc.stderr.strip()
-                if 'Cannot find module' in stderr and 'puppeteer' in stderr:
-                    raise RuntimeError(
-                        'puppeteer module missing for Wappalyzer CLI. Perbaiki dengan: '\
-                        '1) cd ke repo wappalyzer lalu jalankan "yarn install" kemudian "yarn run link". '\
-                        'Atau 2) Install paket npm wappalyzer lokal: "npm init -y && npm install wappalyzer" lalu set WAPPALYZER_PATH ke folder paket.'
-                    )
-                # HTTP fallback if first attempt failed and we used https with external cli
-                if mode == 'external' and attempt == 1 and 'https://' in cmd[-1]:
-                    # switch to http and retry within same loop (do not count as separate attempt besides next iteration)
-                    url_http = cmd[-1].replace('https://', 'http://', 1)
-                    cmd[-1] = url_http
-                    last_err = RuntimeError(stderr or 'scan failed')
-                    continue
-                raise RuntimeError(stderr or 'scan failed')
-            try:
-                data = json.loads(proc.stdout)
-            except json.JSONDecodeError:
-                raise RuntimeError('invalid json output')
+            if persist:
+                # Use persistent client
+                from . import persistent_client as pc
+                data = pc.scan(domain, full=full)
+            else:
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=eff_timeout, env=env)
+                if proc.returncode != 0:
+                    stderr = proc.stderr.strip()
+                    if 'Cannot find module' in stderr and 'puppeteer' in stderr:
+                        raise RuntimeError(
+                            'puppeteer module missing for Wappalyzer CLI. Perbaiki dengan: '
+                            '1) cd ke repo wappalyzer lalu jalankan "yarn install" kemudian "yarn run link". '
+                            'Atau 2) Install paket npm wappalyzer lokal: "npm init -y && npm install wappalyzer" lalu set WAPPALYZER_PATH ke folder paket.'
+                        )
+                    if mode == 'external' and attempt == 1 and 'https://' in cmd[-1]:
+                        url_http = cmd[-1].replace('https://', 'http://', 1)
+                        cmd[-1] = url_http
+                        last_err = RuntimeError(stderr or 'scan failed')
+                        continue
+                    raise RuntimeError(stderr or 'scan failed')
+                try:
+                    data = json.loads(proc.stdout)
+                except json.JSONDecodeError:
+                    raise RuntimeError('invalid json output')
             categories_map = load_categories(wappalyzer_path)
             result = normalize_result(domain, data, categories_map)
             # Synthetic header-based detection (optional)
@@ -281,8 +314,11 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
                 result['retries'] = attempt - 1
             if adaptive_used:
                 result['adaptive_timeout'] = True
-            elapsed = time.time() - t0
+            finished_at = time.time()
+            elapsed = finished_at - t0
             result['duration'] = round(elapsed, 2)
+            result['started_at'] = started_at
+            result['finished_at'] = finished_at
             logger.info('scan success domain=%s engine=%s duration=%.2fs attempts=%d', domain, result['engine'], elapsed, attempt)
             # stats: record duration
             with _stats_lock:
@@ -306,26 +342,51 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
             # If implicit retry allowed and we have not used it yet, extend attempts by one.
             if implicit_timeout_retry:
                 implicit_timeout_retry = False
-                attempts += 1
-                # Adaptive bump: increase timeout (cap 120s) and relax blocking in fast mode
-                new_timeout = min(int(base_timeout * 1.6), base_timeout + 60, 120)
-                if new_timeout > eff_timeout:
-                    logger.warning('adaptive timeout bump domain=%s old=%ss new=%ss', domain, eff_timeout, new_timeout)
-                    eff_timeout = new_timeout
-                    adaptive_used = True
+                attempts += 1  # extend total allowed attempts (unless disabled)
+                disable_adaptive = os.environ.get('TECHSCAN_DISABLE_ADAPTIVE','0') == '1'
+                if not disable_adaptive:
+                    # Adaptive bump: increase timeout (cap 120s) and relax blocking in fast mode
+                    new_timeout = min(int(base_timeout * 1.6), base_timeout + 60, 120)
+                    if new_timeout > eff_timeout:
+                        logger.warning('adaptive timeout bump domain=%s old=%ss new=%ss', domain, eff_timeout, new_timeout)
+                        eff_timeout = new_timeout
+                        adaptive_used = True
+                else:
+                    logger.debug('adaptive bump disabled domain=%s', domain)
                 if not full and os.environ.get('TECHSCAN_BLOCK_RESOURCES', '1') != '0':
                     os.environ['TECHSCAN_BLOCK_RESOURCES'] = '0'
                     logger.info('disabled resource blocking for retry domain=%s', domain)
                 logger.info('implicit timeout retry scheduled domain=%s new_attempts=%d', domain, attempts)
+                attempt += 1
                 continue
             if attempt == attempts:
-                logger.warning('scan timeout domain=%s after %.2fs attempts=%d', domain, time.time()-t0, attempt)
+                elapsed_all = time.time()-t0
+                logger.warning('scan timeout domain=%s after %.2fs attempts=%d', domain, elapsed_all, attempt)
+                # Timeout fallback: jika diaktifkan, kembalikan hasil heuristic cepat (fresh) agar tidak error total
+                if os.environ.get('TECHSCAN_TIMEOUT_FALLBACK','0') == '1' and not full:
+                    try:
+                        from . import heuristic_fast
+                        hres = heuristic_fast.run_heuristic(domain, budget_ms= int(os.environ.get('TECHSCAN_TIERED_BUDGET_MS','1800')), allow_empty_early=True)
+                        hres.setdefault('tiered', {})['timeout_fallback'] = True
+                        hres['engine'] = 'heuristic-tier0-timeout'
+                        hres['scan_mode'] = 'fast'
+                        hres['timeout_error'] = f'timeout after {eff_timeout}s (attempt {attempt}/{attempts})'
+                        hres['duration'] = round(elapsed_all,2)
+                        return hres
+                    except Exception:
+                        pass
                 raise RuntimeError(f'timeout after {eff_timeout}s (attempt {attempt}/{attempts})')
+            attempt += 1
+            continue
         except Exception as e:  # other errors
             last_err = e
             if attempt == attempts:
                 logger.error('scan error domain=%s err=%s', domain, e)
                 raise
+            attempt += 1
+            continue
+        # success path - break loop (return already executed)
+        break
     # Should not reach here
     raise last_err or RuntimeError('unknown scan failure')
     
@@ -341,11 +402,232 @@ def get_cached_or_scan(domain: str, wappalyzer_path: str, timeout: int = 45, fre
                 with _stats_lock:
                     STATS['hits'] += 1
                     STATS['mode_hits']['full' if full else 'fast'] += 1
-                return {**item['data'], 'cached': True}
+                cached_result = {**item['data'], 'cached': True}
+                # Persist cache hit to DB for history
+                try:
+                    from . import db as _db
+                    # Derive timeout used (not stored previously) best effort
+                    _db.save_scan(cached_result, from_cache=True, timeout_used=timeout)
+                except Exception as db_ex:
+                    logging.getLogger('techscan.db').debug('save_scan cache hit failed domain=%s err=%s', domain, db_ex)
+                return cached_result
     with _stats_lock:
         STATS['misses'] += 1
         STATS['mode_misses']['full' if full else 'fast'] += 1
-    result = scan_domain(domain, wappalyzer_path, timeout=timeout, retries=retries, full=full)
+    # Tiered heuristic pre-scan (only for fast mode, not full) if enabled
+    tiered_enabled = (not full) and (os.environ.get('TECHSCAN_TIERED','0') == '1')
+    heuristic_result: Dict[str, Any] | None = None
+    if tiered_enabled:
+        try:
+            from . import heuristic_fast
+            budget_ms = int(os.environ.get('TECHSCAN_TIERED_BUDGET_MS','1800'))
+            allow_empty = os.environ.get('TECHSCAN_TIERED_ALLOW_EMPTY','0') == '1'
+            hstart = time.time()
+            heuristic_result = heuristic_fast.run_heuristic(domain, budget_ms=budget_ms, allow_empty_early=allow_empty)
+            # Early return decision
+            if heuristic_result.get('tiered', {}).get('early_return'):
+                heuristic_result['tiered']['final'] = True  # type: ignore
+                heuristic_result['engine'] = 'heuristic-tier0'
+                # Persist heuristic-only result (mark special engine)
+                try:
+                    from . import db as _db
+                    _db.save_scan(heuristic_result, from_cache=False, timeout_used=timeout)
+                except Exception as db_ex:
+                    logging.getLogger('techscan.db').debug('save_scan heuristic early return failed domain=%s err=%s', domain, db_ex)
+                with _lock:
+                    _cache[cache_key] = {'ts': now, 'data': heuristic_result, 'ttl': eff_ttl}
+                    with _stats_lock:
+                        STATS['cache_entries'] = len(_cache)
+                return heuristic_result
+            else:
+                heuristic_result['tiered']['final'] = False  # type: ignore
+                heuristic_result['engine'] = 'heuristic-tier0+pending'
+                # Deferred full scan mode: immediately return heuristic and schedule background Wappalyzer
+                if os.environ.get('TECHSCAN_DEFER_FULL','0') == '1' and not full:
+                    quick = heuristic_result
+                    quick.setdefault('tiered', {})['deferred_full'] = True
+                    quick['engine'] = 'heuristic-tier0+deferred'
+                    quick['scan_mode'] = 'fast'
+                    # Cache quick response
+                    with _lock:
+                        _cache[cache_key] = {'ts': now, 'data': quick, 'ttl': eff_ttl}
+                        with _stats_lock:
+                            STATS['cache_entries'] = len(_cache)
+                    # Persist quick response
+                    try:
+                        from . import db as _db
+                        _db.save_scan(quick, from_cache=False, timeout_used=timeout)
+                    except Exception:
+                        pass
+                    # Schedule background scan if not already inflight
+                    def _bg_full():
+                        # We reuse the same timeout for initial attempt; adaptive logic inside scan_domain may extend
+                        try:
+                            result_full = scan_domain(domain, wappalyzer_path, timeout=timeout, retries=retries, full=full)
+                            # Merge heuristic content similar to later merge logic
+                            if heuristic_result:
+                                try:
+                                    existing = {t['name'] for t in result_full.get('technologies', [])}
+                                    for t in heuristic_result.get('technologies', []):
+                                        if t['name'] not in existing:
+                                            result_full['technologies'].append(t)
+                                    rcats = result_full.setdefault('categories', {})
+                                    for cat, arr in (heuristic_result.get('categories') or {}).items():
+                                        bucket = rcats.setdefault(cat, [])
+                                        existing_pairs = {(b['name'], b.get('version')) for b in bucket}
+                                        for item in arr:
+                                            key = (item['name'], item.get('version'))
+                                            if key not in existing_pairs:
+                                                bucket.append(item)
+                                    result_full.setdefault('tiered', {})['heuristic_duration'] = heuristic_result.get('duration')
+                                    result_full['tiered']['heuristic_reason'] = heuristic_result.get('tiered',{}).get('reason')
+                                    result_full['tiered']['used'] = True
+                                    result_full['tiered']['deferred_full'] = False
+                                    result_full['tiered']['final'] = True
+                                    result_full['tiered']['from_deferred'] = True
+                                except Exception as me:
+                                    logging.getLogger('techscan.tiered').debug('deferred merge heuristic failed domain=%s err=%s', domain, me)
+                            # Persist & update cache
+                            try:
+                                from . import db as _db
+                                _db.save_scan(result_full, from_cache=False, timeout_used=timeout)
+                            except Exception:
+                                pass
+                            with _lock:
+                                _cache[cache_key] = {'ts': time.time(), 'data': result_full, 'ttl': eff_ttl}
+                                with _stats_lock:
+                                    STATS['cache_entries'] = len(_cache)
+                            logging.getLogger('techscan.defer').info('deferred full scan complete domain=%s duration=%.2fs', domain, result_full.get('duration'))
+                        except Exception as e:
+                            logging.getLogger('techscan.defer').warning('deferred full scan failed domain=%s err=%s', domain, e)
+                        finally:
+                            with _deferred_lock:
+                                _deferred_inflight.discard(domain)
+                    with _deferred_lock:
+                        already = domain in _deferred_inflight
+                        if not already:
+                            _deferred_inflight.add(domain)
+                            threading.Thread(target=_bg_full, name=f'defer-full-{domain}', daemon=True).start()
+                        else:
+                            logging.getLogger('techscan.defer').debug('deferred scan already inflight domain=%s', domain)
+                    return quick
+                # Auto trigger full scan (background) if heuristic tech count terlalu sedikit (< threshold)
+                try:
+                    min_trigger = int(os.environ.get('TECHSCAN_AUTO_FULL_MIN_TECH','0'))
+                except ValueError:
+                    min_trigger = 0
+                if not full and min_trigger > 0 and os.environ.get('TECHSCAN_DEFER_FULL','0') != '1':
+                    tech_count = len(heuristic_result.get('technologies') or [])
+                    if tech_count < min_trigger:
+                        # Fast return + schedule full like deferred logic (without marking deferred_full so user tahu ini auto-trigger)
+                        auto_quick = heuristic_result
+                        auto_quick.setdefault('tiered', {})['auto_trigger_full'] = True
+                        auto_quick['engine'] = 'heuristic-tier0+auto'
+                        with _lock:
+                            _cache[cache_key] = {'ts': now, 'data': auto_quick, 'ttl': eff_ttl}
+                            with _stats_lock:
+                                STATS['cache_entries'] = len(_cache)
+                        try:
+                            from . import db as _db
+                            _db.save_scan(auto_quick, from_cache=False, timeout_used=timeout)
+                        except Exception:
+                            pass
+                        def _bg_full_auto():
+                            try:
+                                result_full = scan_domain(domain, wappalyzer_path, timeout=timeout, retries=retries, full=full)
+                                if heuristic_result:
+                                    try:
+                                        existing = {t['name'] for t in result_full.get('technologies', [])}
+                                        for t in heuristic_result.get('technologies', []):
+                                            if t['name'] not in existing:
+                                                result_full['technologies'].append(t)
+                                        rcats = result_full.setdefault('categories', {})
+                                        for cat, arr in (heuristic_result.get('categories') or {}).items():
+                                            bucket = rcats.setdefault(cat, [])
+                                            existing_pairs = {(b['name'], b.get('version')) for b in bucket}
+                                            for item in arr:
+                                                key = (item['name'], item.get('version'))
+                                                if key not in existing_pairs:
+                                                    bucket.append(item)
+                                        result_full.setdefault('tiered', {})['heuristic_duration'] = heuristic_result.get('duration')
+                                        result_full['tiered']['heuristic_reason'] = heuristic_result.get('tiered',{}).get('reason')
+                                        result_full['tiered']['used'] = True
+                                        result_full['tiered']['auto_trigger_full'] = True
+                                        result_full['tiered']['final'] = True
+                                        result_full['tiered']['from_auto_trigger'] = True
+                                    except Exception as me:
+                                        logging.getLogger('techscan.tiered').debug('auto-trigger merge heuristic failed domain=%s err=%s', domain, me)
+                                try:
+                                    from . import db as _db
+                                    _db.save_scan(result_full, from_cache=False, timeout_used=timeout)
+                                except Exception:
+                                    pass
+                                with _lock:
+                                    _cache[cache_key] = {'ts': time.time(), 'data': result_full, 'ttl': eff_ttl}
+                                    with _stats_lock:
+                                        STATS['cache_entries'] = len(_cache)
+                                logging.getLogger('techscan.auto').info('auto-trigger full scan complete domain=%s duration=%.2fs (initial tech_count=%d)', domain, result_full.get('duration'), tech_count)
+                            except Exception as e:
+                                logging.getLogger('techscan.auto').warning('auto-trigger full scan failed domain=%s err=%s', domain, e)
+                            finally:
+                                with _deferred_lock:
+                                    _deferred_inflight.discard(domain)
+                        with _deferred_lock:
+                            if domain not in _deferred_inflight:
+                                _deferred_inflight.add(domain)
+                                threading.Thread(target=_bg_full_auto, name=f'auto-full-{domain}', daemon=True).start()
+                        return auto_quick
+        except Exception as he:
+            logging.getLogger('techscan.tiered').warning('heuristic pre-scan failed domain=%s err=%s', domain, he)
+            heuristic_result = None
+
+    try:
+        result = scan_domain(domain, wappalyzer_path, timeout=timeout, retries=retries, full=full)
+    except Exception as e:
+        # If timeout or scan error and we have heuristic partial, return heuristic instead of total failure
+        if tiered_enabled and heuristic_result:
+            heuristic_result.setdefault('tiered', {})['fallback'] = True
+            heuristic_result.setdefault('error', str(e))
+            logging.getLogger('techscan.tiered').warning('scan failed using heuristic fallback domain=%s err=%s', domain, e)
+            with _lock:
+                _cache[cache_key] = {'ts': now, 'data': heuristic_result, 'ttl': eff_ttl}
+                with _stats_lock:
+                    STATS['cache_entries'] = len(_cache)
+            try:
+                from . import db as _db
+                _db.save_scan(heuristic_result, from_cache=False, timeout_used=timeout)
+            except Exception:
+                pass
+            return heuristic_result
+        raise
+    # Merge heuristic partial if exists and not early-return
+    if heuristic_result and not heuristic_result.get('tiered',{}).get('early_return'):
+        try:
+            # Avoid duplicating technologies by name
+            existing = {t['name'] for t in result.get('technologies', [])}
+            for t in heuristic_result.get('technologies', []):
+                if t['name'] not in existing:
+                    result['technologies'].append(t)
+            # categories merge
+            rcats = result.setdefault('categories', {})
+            for cat, arr in (heuristic_result.get('categories') or {}).items():
+                bucket = rcats.setdefault(cat, [])
+                existing_pairs = {(b['name'], b.get('version')) for b in bucket}
+                for item in arr:
+                    key = (item['name'], item.get('version'))
+                    if key not in existing_pairs:
+                        bucket.append(item)
+            result.setdefault('tiered', {})['heuristic_duration'] = heuristic_result.get('duration')
+            result['tiered']['heuristic_reason'] = heuristic_result.get('tiered',{}).get('reason')
+            result['tiered']['used'] = True
+        except Exception as me:
+            logging.getLogger('techscan.tiered').debug('merge heuristic failed domain=%s err=%s', domain, me)
+    # Persist fresh scan
+    try:
+        from . import db as _db
+        _db.save_scan(result, from_cache=False, timeout_used=timeout)
+    except Exception as db_ex:
+        logging.getLogger('techscan.db').debug('save_scan fresh failed domain=%s err=%s', domain, db_ex)
     with _lock:
         _cache[cache_key] = {'ts': now, 'data': result, 'ttl': eff_ttl}
         with _stats_lock:
@@ -361,6 +643,8 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
     results: List[Dict[str, Any]] = [None] * len(filtered)  # type: ignore
     idx = 0
     lock_i = threading.Lock()
+    fast_first = (os.environ.get('TECHSCAN_BULK_FAST_FIRST','0') == '1') and not full
+
     def worker():
         nonlocal idx
         while True:
@@ -370,7 +654,13 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
                 i = idx; idx += 1
             dom = filtered[i]
             try:
-                res = get_cached_or_scan(dom, wappalyzer_path, timeout=timeout, fresh=fresh, retries=retries, ttl=ttl, full=full)
+                if fast_first:
+                    # Force heuristic path: enable tiered + defer if not already
+                    # Temporarily set env flags inside thread (local copy)
+                    # We call get_cached_or_scan with fast mode; relying on existing deferred / auto-trigger
+                    res = get_cached_or_scan(dom, wappalyzer_path, timeout=timeout, fresh=fresh, retries=0, ttl=ttl, full=False)
+                else:
+                    res = get_cached_or_scan(dom, wappalyzer_path, timeout=timeout, fresh=fresh, retries=retries, ttl=ttl, full=full)
                 results[i] = {'status': 'ok', **res}
             except Exception as e:
                 results[i] = {'status': 'error', 'domain': dom, 'error': str(e)}

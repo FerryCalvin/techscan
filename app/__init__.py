@@ -29,16 +29,21 @@ def create_app():
     from .routes.ui import ui_bp
     from .routes.admin import admin_bp
     from .routes.system import system_bp
-    # Ensure DB schema (Postgres) if configured
-    try:
-        from . import db as _db
-        _db.ensure_schema()
-    except Exception as db_ex:
-        logging.getLogger(__name__).error('Failed ensuring DB schema: %s', db_ex)
+    from .routes.search import search_bp
+    # Ensure DB schema unless disabled
+    if os.environ.get('TECHSCAN_DISABLE_DB','0') != '1':
+        try:
+            from . import db as _db
+            _db.ensure_schema()
+        except Exception as db_ex:
+            logging.getLogger(__name__).error('Failed ensuring DB schema: %s', db_ex)
+    else:
+        logging.getLogger(__name__).info('DB schema initialization skipped (TECHSCAN_DISABLE_DB=1)')
     app.register_blueprint(scan_bp)
     app.register_blueprint(ui_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(system_bp)
+    app.register_blueprint(search_bp)
 
     # Version / commit (surface in config for other components if needed)
     app.config['TECHSCAN_VERSION'] = os.environ.get('TECHSCAN_VERSION', '0.3.0')

@@ -55,6 +55,11 @@ def scan_single_impl():
     wpath = current_app.config['WAPPALYZER_PATH']
     try:
         result = get_cached_or_scan(domain, wpath, timeout=timeout, retries=retries, fresh=fresh, ttl=ttl_int, full=full)
+        # Backward compat: ensure started_at/finished_at appear (cache hit may lack them)
+        if 'started_at' not in result:
+            result['started_at'] = result.get('timestamp')
+        if 'finished_at' not in result:
+            result['finished_at'] = int(time.time())
         logging.getLogger('techscan.scan').info('/scan success domain=%s duration=%.2fs retries_used=%s', domain, time.time()-start, result.get('retries',0))
         return jsonify(result)
     except Exception as e:
@@ -84,6 +89,7 @@ def scan_bulk_route_impl():
     except ValueError:
         ttl_int = None
     out_format = (data.get('format') or request.args.get('format') or 'json').lower()
+    include_raw = bool(data.get('include_raw')) or (request.args.get('include_raw') == '1')
     fresh = bool(data.get('fresh') or False)
     concurrency = int(data.get('concurrency') or 4)
     logging.getLogger('techscan.bulk').info('/bulk request count=%s timeout=%s retries=%s fresh=%s concurrency=%s ttl=%s format=%s full=%s', len(domains), timeout, retries, fresh, concurrency, ttl_int, out_format, full)
@@ -108,18 +114,28 @@ def scan_bulk_route_impl():
         import csv, io
         output = io.StringIO()
         fieldnames = ['status','domain','timestamp','tech_count','technologies','categories','cached','duration','retries','engine','error']
+        if include_raw:
+            fieldnames.append('raw')
         writer = csv.DictWriter(output, fieldnames=fieldnames)
         writer.writeheader()
         for r in results:
             if not r:
                 continue
             if r.get('status') != 'ok':
-                writer.writerow({k: r.get(k) for k in fieldnames if k in ['status','domain','error']})
+                row_err = {k: r.get(k) for k in fieldnames if k in ['status','domain','error']}
+                if include_raw:
+                    row_err.setdefault('raw', '')
+                writer.writerow(row_err)
                 continue
             techs = r.get('technologies') or []
             tech_list = [f"{t.get('name')}" + (f" ({t.get('version')})" if t.get('version') else '') for t in techs]
             categories = sorted((r.get('categories') or {}).keys())
-            writer.writerow({
+            # Backward compat: ensure started_at/finished_at appear (cache hit may lack them)
+            if 'started_at' not in r:
+                r['started_at'] = r.get('timestamp')
+            if 'finished_at' not in r:
+                r['finished_at'] = int(time.time())
+            row = {
                 'status': r.get('status'),
                 'domain': r.get('domain'),
                 'timestamp': r.get('timestamp'),
@@ -131,7 +147,11 @@ def scan_bulk_route_impl():
                 'retries': r.get('retries', 0),
                 'engine': r.get('engine'),
                 'error': r.get('error')
-            })
+            }
+            if include_raw:
+                import json as _json
+                row['raw'] = _json.dumps(r.get('raw'), ensure_ascii=False)
+            writer.writerow(row)
         csv_data = output.getvalue()
         return Response(csv_data, mimetype='text/csv', headers={'Content-Disposition': 'attachment; filename=bulk_scan.csv'})
     return jsonify({'count': len(results), 'results': results})

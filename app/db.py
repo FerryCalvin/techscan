@@ -4,6 +4,22 @@ import psycopg
 
 DB_URL = os.environ.get('TECHSCAN_DB_URL', 'postgresql://postgres:postgres@localhost:5432/techscan')
 
+# Allow disabling DB usage completely for test/perf runs without a live Postgres
+if os.environ.get('TECHSCAN_DISABLE_DB','0') == '1':
+    logging.getLogger('techscan.db').warning('TECHSCAN_DISABLE_DB=1 -> database persistence DISABLED (using stubs)')
+    def ensure_schema():  # type: ignore
+        return
+    def save_scan(result: dict, from_cache: bool, timeout_used: int):  # type: ignore
+        return
+    def search_tech(tech: str | None = None, category: str | None = None, version: str | None = None, limit: int = 200):  # type: ignore
+        return []
+    def history(domain: str, limit: int = 20):  # type: ignore
+        return []
+    # Short-circuit further real definitions
+    _DB_DISABLED = True
+else:
+    _DB_DISABLED = False
+
 SCHEMA_STATEMENTS = [
     # scans table stores each scan invocation (cache hits recorded too for history visibility)
     '''CREATE TABLE IF NOT EXISTS scans (
@@ -56,6 +72,8 @@ def get_conn():
         pass
 
 def ensure_schema():
+    if _DB_DISABLED:
+        return
     with get_conn() as conn:
         with conn.cursor() as cur:
             for stmt in SCHEMA_STATEMENTS:
@@ -67,6 +85,8 @@ def save_scan(result: dict, from_cache: bool, timeout_used: int):
     """Persist single scan result.
     result expects keys: domain, scan_mode, duration, technologies, categories, timestamp, (optional) adaptive_timeout, retries, raw
     """
+    if _DB_DISABLED:
+        return
     started_at = result.get('started_at') or result.get('_started_at') or result.get('timestamp')
     finished_at = result.get('finished_at') or result.get('timestamp') or time.time()
     # epoch -> timestamptz via to_timestamp in parameterization OR convert in python via psycopg adaptation
@@ -115,6 +135,8 @@ def save_scan(result: dict, from_cache: bool, timeout_used: int):
         conn.commit()
 
 def search_tech(tech: str | None = None, category: str | None = None, version: str | None = None, limit: int = 200):
+    if _DB_DISABLED:
+        return []
     clauses = []
     params = []
     base = 'SELECT domain, tech_name, version, categories, first_seen, last_seen FROM domain_techs'
@@ -148,6 +170,8 @@ def search_tech(tech: str | None = None, category: str | None = None, version: s
             return out
 
 def history(domain: str, limit: int = 20):
+    if _DB_DISABLED:
+        return []
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute('''SELECT mode, started_at, finished_at, duration_ms, from_cache, adaptive_timeout, retries, timeout_used

@@ -205,6 +205,57 @@ async function run() {
               if (process.env.TECHSCAN_DEBUG) console.error('[techscan] Floodlight DOM detection failed:', fe.message || String(fe))
             }
           }
+
+          // --- Version enrichment heuristics ---
+          try {
+            const versionHints = await page.evaluate(() => {
+              const out = { metaGenerator: null, wpVer: null, assetVersions: [] }
+              try {
+                const mg = document.querySelector('meta[name="generator"]')
+                if (mg) out.metaGenerator = (mg.getAttribute('content') || '').trim()
+              } catch {}
+              // Capture ?ver= or v= query params in common script/link assets
+              try {
+                const assets = []
+                document.querySelectorAll('link[href],script[src]').forEach(n => {
+                  const href = n.getAttribute('href') || n.getAttribute('src') || ''
+                  if (!href) return
+                  const m = href.match(/[?&](?:ver|v)=([0-9]{1,3}(?:\.[0-9]{1,3}){0,3})/i)
+                  if (m) assets.push(m[1])
+                })
+                out.assetVersions = assets.slice(0, 20)
+              } catch {}
+              return out
+            })
+            if (versionHints) {
+              // WordPress from meta generator e.g. "WordPress 6.4.2"
+              if (versionHints.metaGenerator && /wordpress\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?)/i.test(versionHints.metaGenerator)) {
+                const m = versionHints.metaGenerator.match(/wordpress\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?)/i)
+                if (m) {
+                  const wpVersion = m[1]
+                  const existing = techs.find(t => t.name === 'WordPress')
+                  if (existing && !existing.version) existing.version = wpVersion
+                }
+              }
+              // If many asset ?ver= share same version and a tech lacks version, attempt weak fill (skip if already have version)
+              if (versionHints.assetVersions && versionHints.assetVersions.length) {
+                const freq = {}
+                versionHints.assetVersions.forEach(v => { freq[v] = (freq[v]||0)+1 })
+                const sorted = Object.entries(freq).sort((a,b)=>b[1]-a[1])
+                if (sorted.length && sorted[0][1] >= 2) {
+                  const common = sorted[0][0]
+                  // Fill popular CMS or library placeholders without versions
+                  const candidateNames = ['WordPress','WooCommerce','Elementor','jQuery']
+                  candidateNames.forEach(name => {
+                    const t = techs.find(tt => tt.name === name)
+                    if (t && !t.version) t.version = common
+                  })
+                }
+              }
+            }
+          } catch (ve) {
+            if (process.env.TECHSCAN_DEBUG) console.error('[techscan] version enrichment failed:', ve.message || String(ve))
+          }
         }
       }
     } catch (e) {
