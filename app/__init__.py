@@ -5,6 +5,9 @@ from flask_limiter.util import get_remote_address
 
 def create_app():
     app = Flask(__name__)
+    # Optional template auto-reload for development (to pick up index.html JS edits without restart)
+    if os.environ.get('TECHSCAN_TEMPLATE_AUTO_RELOAD','0') == '1':
+        app.config['TEMPLATES_AUTO_RELOAD'] = True
     app.config['WAPPALYZER_PATH'] = os.environ.get('WAPPALYZER_PATH', r'd:\wappalyzer\wappalyzer3\wappalyzer-master')
 
     # Logging configuration
@@ -16,6 +19,8 @@ def create_app():
     )
     logging.getLogger('werkzeug').setLevel(logging.WARNING)
     logging.getLogger(__name__).info('Logging initialized at level %s', level_name)
+    if app.config.get('TEMPLATES_AUTO_RELOAD'):
+        logging.getLogger(__name__).info('Template auto reload ENABLED')
 
     # Rate limiting configuration
     default_rate = os.environ.get('TECHSCAN_RATE_LIMIT', '60 per minute')

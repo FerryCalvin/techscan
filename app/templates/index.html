@@ -62,8 +62,20 @@
       <h2>Look up a website</h2>
       <form class="inline" id="single-form">
         <input type="text" id="domain" placeholder="Enter a website address" required />
+        <select id="mode" style="background:var(--panel-alt);border:1px solid var(--border);color:var(--text);padding:.85rem .8rem;border-radius:8px;font-size:.8rem;min-width:140px">
+          <option value="quick" selected>Quick</option>
+          <option value="deep">Deep</option>
+          <option value="full">Full</option>
+        </select>
+        <label style="display:flex;align-items:center;gap:.3rem;font-size:.7rem;color:var(--text-dim);padding:0 .4rem">
+          <input type="checkbox" id="fresh" style="accent-color:var(--accent)" /> Fresh
+        </label>
         <button type="submit" id="scanBtn"><span id="scanBtnText">Scan</span><span class="spinner hidden" id="scanSpinner"></span></button>
       </form>
+      <div style="margin-top:.6rem;display:flex;gap:.6rem;flex-wrap:wrap" id="diag-buttons">
+        <button type="button" class="secondary" id="btnMicroDiag" style="font-size:.7rem;padding:.55rem .8rem">Micro Diag</button>
+        <button type="button" class="secondary" id="btnQuickDiag" style="font-size:.7rem;padding:.55rem .8rem">Quick Heuristic Only</button>
+      </div>
       <div id="single-error" class="error hidden"></div>
       <div id="single-result" class="hidden">
         <div class="flex-row">
@@ -79,6 +91,10 @@
         <details style="margin-top:1.4rem">
           <summary style="cursor:pointer;color:var(--text-dim);font-size:.8rem">Raw JSON</summary>
           <pre id="raw-json"></pre>
+        </details>
+        <details style="margin-top:1rem">
+          <summary style="cursor:pointer;color:var(--text-dim);font-size:.8rem">Diagnostics</summary>
+          <pre id="diag-json" style="max-height:260px"></pre>
         </details>
       </div>
     </section>
@@ -109,6 +125,8 @@
 
     const form = document.getElementById('single-form');
     const domainInput = document.getElementById('domain');
+  const modeSelect = document.getElementById('mode');
+  const freshChk = document.getElementById('fresh');
     const resDiv = document.getElementById('single-result');
     const techGrid = document.getElementById('tech-grid');
     const rawPre = document.getElementById('raw-json');
@@ -117,6 +135,9 @@
     const errorBox = document.getElementById('single-error');
     const scanBtnText = document.getElementById('scanBtnText');
     const scanSpinner = document.getElementById('scanSpinner');
+    const btnMicroDiag = document.getElementById('btnMicroDiag');
+    const btnQuickDiag = document.getElementById('btnQuickDiag');
+    const diagPre = document.getElementById('diag-json');
 
     function setLoading(state){
       if(state){
@@ -135,7 +156,16 @@
       errorBox.classList.add('hidden');
       setLoading(true);
       try {
-        const data = await postJSON('/scan', {domain});
+  const mode = modeSelect.value;
+  const freshFlag = freshChk.checked ? 1 : 0;
+  const body = {domain};
+  if(mode==='quick') body.quick = 1;
+  else if(mode==='deep') body.deep = 1;
+  else if(mode==='full') body.full = 1;
+  if(freshFlag) body.fresh = 1;
+  // Quick still defaults to forcing fresh for enrichment if user didn't ask
+  if(mode==='quick' && !freshFlag) body.fresh = 1;
+  const data = await postJSON('/scan', body);
         renderSingle(domain, data);
       } catch (err) {
         errorBox.textContent = err.message;
@@ -143,7 +173,25 @@
       } finally { setLoading(false); }
     });
 
+    function synthesizeCategories(data){
+      if(!data) return;
+      if(data.categories && Object.keys(data.categories).length) return; // already present
+      const cats = {};
+      (data.technologies||[]).forEach(t=>{
+        (t.categories||[]).forEach(c=>{
+          cats[c] = cats[c] || [];
+          if(!cats[c].some(x=>x.name===t.name && x.version===t.version)){
+            cats[c].push({name:t.name, version:t.version});
+          }
+        });
+      });
+      if(Object.keys(cats).length){
+        data.categories = cats;
+      }
+    }
+
     function renderSingle(domain, data){
+      synthesizeCategories(data); // ensure categories fallback if backend still empty
       resDiv.classList.remove('hidden');
       resDomain.textContent = domain + (data.cached ? ' (cached)' : '');
       techGrid.innerHTML='';
@@ -166,6 +214,43 @@
       });
       rawPre.textContent = JSON.stringify(data.raw || {}, null, 2);
     }
+
+      async function fetchDiag(params){
+        const qs = Object.entries(params).map(([k,v])=>`${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+        const r = await fetch(`/admin/quick_diag?${qs}`);
+        const t = await r.text();
+        let j; try { j = JSON.parse(t); } catch { throw new Error('Invalid JSON diag'); }
+        if(!r.ok){ throw new Error(j.error || 'Diag failed'); }
+        return j;
+      }
+
+      btnMicroDiag.addEventListener('click', async () => {
+        const domain = domainInput.value.trim().toLowerCase();
+        if(!domain) return;
+        btnMicroDiag.disabled = true; btnMicroDiag.textContent='Micro...';
+        try {
+          const res = await fetchDiag({domain, micro:1});
+          diagPre.textContent = JSON.stringify(res, null, 2);
+        } catch(e){
+          diagPre.textContent = 'Error: '+ e.message;
+        } finally {
+          btnMicroDiag.disabled = false; btnMicroDiag.textContent='Micro Diag';
+        }
+      });
+
+      btnQuickDiag.addEventListener('click', async () => {
+        const domain = domainInput.value.trim().toLowerCase();
+        if(!domain) return;
+        btnQuickDiag.disabled = true; btnQuickDiag.textContent='Heuristic...';
+        try {
+          const res = await fetchDiag({domain});
+          diagPre.textContent = JSON.stringify(res, null, 2);
+        } catch(e){
+          diagPre.textContent = 'Error: '+ e.message;
+        } finally {
+          btnQuickDiag.disabled = false; btnQuickDiag.textContent='Quick Heuristic Only';
+        }
+      });
 
     // Bulk upload
     const fileInput = document.getElementById('fileInput');

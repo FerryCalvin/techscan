@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 import logging, time
-from ..scan_utils import get_cached_or_scan, scan_bulk, DOMAIN_RE, extract_host, snapshot_cache, validate_domain
+from ..scan_utils import get_cached_or_scan, scan_bulk, DOMAIN_RE, extract_host, snapshot_cache, validate_domain, quick_single_scan, deep_scan, bulk_quick_then_deep
 from flask import Response
 from flask_limiter.util import get_remote_address
 from flask_limiter import Limiter
@@ -39,12 +39,13 @@ def scan_single_impl():
     retries = int(data.get('retries') or 0)
     ttl = data.get('ttl')
     full = bool(data.get('full') or False)
+    deep = bool(data.get('deep') or False)
     try:
         ttl_int = int(ttl) if ttl is not None else None
     except ValueError:
         ttl_int = None
     fresh = bool(data.get('fresh') or False)
-    logging.getLogger('techscan.scan').info('/scan request input=%s domain=%s timeout=%s retries=%s fresh=%s ttl=%s full=%s', raw_input, domain, timeout, retries, fresh, ttl_int, full)
+    logging.getLogger('techscan.scan').info('/scan request input=%s domain=%s timeout=%s retries=%s fresh=%s ttl=%s full=%s deep=%s', raw_input, domain, timeout, retries, fresh, ttl_int, full, deep)
     if not raw_input:
         return jsonify({'error': 'missing domain field'}), 400
     try:
@@ -53,14 +54,27 @@ def scan_single_impl():
         logging.getLogger('techscan.scan').warning('/scan invalid domain input=%r parsed=%r bytes=%s', raw_input, domain, '-'.join(str(ord(c)) for c in domain))
         return jsonify({'error': 'invalid domain format'}), 400
     wpath = current_app.config['WAPPALYZER_PATH']
+    quick_flag = False
+    # quick mode precedence: body.quick, query quick=1, or env TECHSCAN_QUICK_SINGLE=1
+    if str(data.get('quick')).lower() in ('1','true','yes') or request.args.get('quick') == '1' or os.environ.get('TECHSCAN_QUICK_SINGLE','0') == '1':
+        quick_flag = True
+    defer_quick = os.environ.get('TECHSCAN_QUICK_DEFER_FULL','0') == '1'
     try:
-        result = get_cached_or_scan(domain, wpath, timeout=timeout, retries=retries, fresh=fresh, ttl=ttl_int, full=full)
+        if deep:
+            result = deep_scan(domain, wpath)
+        elif quick_flag:
+            result = quick_single_scan(domain, wpath, defer_full=defer_quick, timeout_full=timeout, retries_full=retries)
+        else:
+            # Debug instrumentation: log why quick not triggered
+            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                logging.getLogger('techscan.scan').debug('quick_flag_evaluation quick_flag=%s body.quick=%r env.TECHSCAN_QUICK_SINGLE=%s args.quick=%s', quick_flag, data.get('quick'), os.environ.get('TECHSCAN_QUICK_SINGLE','0'), request.args.get('quick'))
+            result = get_cached_or_scan(domain, wpath, timeout=timeout, retries=retries, fresh=fresh, ttl=ttl_int, full=full)
         # Backward compat: ensure started_at/finished_at appear (cache hit may lack them)
         if 'started_at' not in result:
             result['started_at'] = result.get('timestamp')
         if 'finished_at' not in result:
             result['finished_at'] = int(time.time())
-        logging.getLogger('techscan.scan').info('/scan success domain=%s duration=%.2fs retries_used=%s', domain, time.time()-start, result.get('retries',0))
+        logging.getLogger('techscan.scan').info('/scan success domain=%s quick=%s deep=%s duration=%.2fs retries_used=%s', domain, quick_flag, deep, time.time()-start, result.get('retries',0))
         return jsonify(result)
     except Exception as e:
         logging.getLogger('techscan.scan').error('/scan error domain=%s err=%s', domain, e)
@@ -84,6 +98,7 @@ def scan_bulk_route_impl():
     retries = int(data.get('retries') or 2)
     ttl = data.get('ttl')
     full = bool(data.get('full') or False)
+    two_phase = bool(data.get('two_phase') or (request.args.get('two_phase')=='1'))
     try:
         ttl_int = int(ttl) if ttl is not None else None
     except ValueError:
@@ -92,13 +107,16 @@ def scan_bulk_route_impl():
     include_raw = bool(data.get('include_raw')) or (request.args.get('include_raw') == '1')
     fresh = bool(data.get('fresh') or False)
     concurrency = int(data.get('concurrency') or 4)
-    logging.getLogger('techscan.bulk').info('/bulk request count=%s timeout=%s retries=%s fresh=%s concurrency=%s ttl=%s format=%s full=%s', len(domains), timeout, retries, fresh, concurrency, ttl_int, out_format, full)
+    logging.getLogger('techscan.bulk').info('/bulk request count=%s timeout=%s retries=%s fresh=%s concurrency=%s ttl=%s format=%s full=%s two_phase=%s', len(domains), timeout, retries, fresh, concurrency, ttl_int, out_format, full, two_phase)
     if not isinstance(domains, list):
         return jsonify({'error': 'domains field must be a list'}), 400
     if not domains:
         return jsonify({'error': 'domains list empty'}), 400
     wpath = current_app.config['WAPPALYZER_PATH']
-    results = scan_bulk(domains, wpath, concurrency=concurrency, timeout=timeout, retries=retries, fresh=fresh, ttl=ttl_int, full=full)
+    if two_phase:
+        results = bulk_quick_then_deep(domains, wpath, concurrency=concurrency)
+    else:
+        results = scan_bulk(domains, wpath, concurrency=concurrency, timeout=timeout, retries=retries, fresh=fresh, ttl=ttl_int, full=full)
     invalid_count = 0
     for d in domains:
         try:
@@ -113,7 +131,7 @@ def scan_bulk_route_impl():
         # Build CSV from just scanned results (ignores cache snapshot; use export for cached only)
         import csv, io
         output = io.StringIO()
-        fieldnames = ['status','domain','timestamp','tech_count','technologies','categories','cached','duration','retries','engine','error']
+        fieldnames = ['status','domain','timestamp','tech_count','technologies','categories','cached','duration','retries','engine','error','outdated_count','outdated_list']
         if include_raw:
             fieldnames.append('raw')
         writer = csv.DictWriter(output, fieldnames=fieldnames)
@@ -135,6 +153,9 @@ def scan_bulk_route_impl():
                 r['started_at'] = r.get('timestamp')
             if 'finished_at' not in r:
                 r['finished_at'] = int(time.time())
+            audit_meta = r.get('audit') or {}
+            outdated_items = audit_meta.get('outdated') or []
+            outdated_list_str = ' | '.join(f"{o.get('name')} ({o.get('version')} -> {o.get('latest')})" for o in outdated_items)
             row = {
                 'status': r.get('status'),
                 'domain': r.get('domain'),
@@ -146,7 +167,9 @@ def scan_bulk_route_impl():
                 'duration': r.get('duration'),
                 'retries': r.get('retries', 0),
                 'engine': r.get('engine'),
-                'error': r.get('error')
+                'error': r.get('error'),
+                'outdated_count': audit_meta.get('outdated_count'),
+                'outdated_list': outdated_list_str
             }
             if include_raw:
                 import json as _json
@@ -169,10 +192,19 @@ def export_csv():
     domains_param = request.args.get('domains')
     doms = [d.strip().lower() for d in domains_param.split(',')] if domains_param else None
     include_raw = request.args.get('include_raw') == '1'
+    outdated_only = request.args.get('outdated_only') == '1'
     rows = snapshot_cache(doms)
+    if outdated_only:
+        # Filter rows having audit.outdated_count > 0
+        filtered = []
+        for r in rows:
+            audit_meta = r.get('audit') or {}
+            if audit_meta.get('outdated_count'):
+                filtered.append(r)
+        rows = filtered
     import csv, io
     output = io.StringIO()
-    fieldnames = ['domain','timestamp','tech_count','technologies','categories','cached','duration','retries','engine']
+    fieldnames = ['domain','timestamp','tech_count','technologies','categories','cached','duration','retries','engine','outdated_count','outdated_list']
     if include_raw:
         fieldnames.append('raw')
     writer = csv.DictWriter(output, fieldnames=fieldnames)
@@ -181,6 +213,9 @@ def export_csv():
         techs = r.get('technologies') or []
         tech_list = [f"{t.get('name')}" + (f" ({t.get('version')})" if t.get('version') else '') for t in techs]
         categories = sorted((r.get('categories') or {}).keys())
+        audit_meta = r.get('audit') or {}
+        outdated_items = audit_meta.get('outdated') or []
+        outdated_list_str = ' | '.join(f"{o.get('name')} ({o.get('version')} -> {o.get('latest')})" for o in outdated_items)
         row = {
             'domain': r.get('domain'),
             'timestamp': r.get('timestamp'),
@@ -190,7 +225,9 @@ def export_csv():
             'cached': r.get('cached', False),
             'duration': r.get('duration'),
             'retries': r.get('retries', 0),
-            'engine': r.get('engine')
+            'engine': r.get('engine'),
+            'outdated_count': audit_meta.get('outdated_count'),
+            'outdated_list': outdated_list_str
         }
         if include_raw:
             import json as _json

@@ -1,10 +1,18 @@
 import json, re, subprocess, threading, time, os, pathlib, logging
-import socket, ssl
+import socket, ssl, random
 from functools import lru_cache
+from collections import deque
 from typing import Dict, Any, List
+from . import version_audit
 
 DOMAIN_RE = re.compile(r'^(?!-)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$')
 CACHE_TTL = 300  # default seconds
+# Default heuristic budget for quick single scan mode (tuned via perf harness)
+QUICK_DEFAULT_BUDGET_MS = 700
+# Fast-path toggle ENV flags:
+#   TECHSCAN_SKIP_VERSION_AUDIT=1  -> skip version audit stages
+#   TECHSCAN_DISABLE_SYNTHETIC=1   -> skip synthetic header detection
+#   TECHSCAN_ULTRA_QUICK=1         -> force heuristic-only path inside scan_domain
 _lock = threading.Lock()
 _cache: Dict[str, Dict[str, Any]] = {}
 _stats_lock = threading.Lock()
@@ -20,8 +28,150 @@ STATS: Dict[str, Any] = {
     'durations': {
         'fast': {'count': 0, 'total': 0.0},
         'full': {'count': 0, 'total': 0.0}
+    },
+    'errors': {'timeout':0,'dns':0,'ssl':0,'conn':0,'quarantine':0,'preflight':0,'other':0},
+    'recent_samples': {
+        'fast': deque(maxlen=200),
+        'full': deque(maxlen=200)
     }
 }
+
+# Failure tracking & quarantine (domain-level)
+_fail_lock = threading.Lock()
+_fail_map: Dict[str, dict] = {}
+
+# DNS negative cache & preflight
+_dns_neg_lock = threading.Lock()
+_dns_neg: Dict[str, float] = {}
+
+def _dns_negative(domain: str) -> bool:
+    # Return True if domain is in negative cache and still valid
+    ttl = 0
+    try:
+        ttl = int(os.environ.get('TECHSCAN_DNS_NEG_CACHE','0'))
+    except ValueError:
+        ttl = 0
+    if ttl <= 0:
+        return False
+    now = time.time()
+    with _dns_neg_lock:
+        exp = _dns_neg.get(domain)
+        if not exp:
+            return False
+        if exp > now:
+            return True
+        _dns_neg.pop(domain, None)
+        return False
+
+def _dns_add_negative(domain: str):
+    try:
+        ttl = int(os.environ.get('TECHSCAN_DNS_NEG_CACHE','0'))
+    except ValueError:
+        ttl = 0
+    if ttl <= 0:
+        return
+    with _dns_neg_lock:
+        _dns_neg[domain] = time.time() + ttl
+
+def _preflight(domain: str) -> bool:
+    """Fast TCP connect preflight to 443 (or 80 fallback) to short-circuit obviously dead domains.
+    Controlled by TECHSCAN_PREFLIGHT=1. Returns True if reachable, False if definitely unreachable.
+    If DNS fails, adds to negative cache.
+    """
+    if os.environ.get('TECHSCAN_PREFLIGHT','0') != '1':
+        return True
+    if _dns_negative(domain):
+        return False
+    # Try resolve
+    try:
+        addrs = socket.getaddrinfo(domain, 443, type=socket.SOCK_STREAM)
+    except Exception:
+        _dns_add_negative(domain)
+        return False
+    targets = []
+    for af, st, proto, cname, sa in addrs:
+        targets.append((sa[0], 443))
+    # Add port 80 as fallback to a subset
+    if not targets:
+        return False
+    ok = False
+    for ip, port in targets[:2]:  # limit attempts
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(2.0)
+            s.connect((ip, port))
+            s.close()
+            ok = True
+            break
+        except Exception:
+            continue
+    if not ok:
+        # Try port 80 quickly
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(1.5)
+            s.connect((targets[0][0], 80))
+            s.close()
+            ok = True
+        except Exception:
+            pass
+    if not ok:
+        # Add to negative if all attempts failed
+        _dns_add_negative(domain)
+    return ok
+
+def _record_failure(domain: str, now: float | None = None):
+    now = now or time.time()
+    with _fail_lock:
+        ent = _fail_map.setdefault(domain, {'fails': 0, 'last': 0.0, 'quarantine_until': 0.0})
+        ent['fails'] += 1
+        ent['last'] = now
+        # If exceeds threshold configure quarantine
+        try:
+            thresh = int(os.environ.get('TECHSCAN_QUARANTINE_FAILS', '0'))
+            minutes = float(os.environ.get('TECHSCAN_QUARANTINE_MINUTES', '0'))
+        except ValueError:
+            thresh, minutes = 0, 0.0
+        if thresh > 0 and minutes > 0 and ent['fails'] >= thresh:
+            ent['quarantine_until'] = max(ent.get('quarantine_until', 0.0), now + minutes * 60)
+            # Reset fails after quarantine set to avoid runaway growth
+            ent['fails'] = 0
+
+def _check_quarantine(domain: str, now: float | None = None) -> bool:
+    now = now or time.time()
+    with _fail_lock:
+        ent = _fail_map.get(domain)
+        if not ent:
+            return False
+        if ent.get('quarantine_until', 0.0) > now:
+            return True
+        # Expired quarantine: allow and clean up if old
+        if ent.get('quarantine_until') and ent['quarantine_until'] <= now:
+            ent['quarantine_until'] = 0.0
+        return False
+
+def _record_success(domain: str):
+    with _fail_lock:
+        if domain in _fail_map:
+            # partial decay: keep last time for forensic but reset fails & quarantine
+            _fail_map[domain]['fails'] = 0
+            _fail_map[domain]['quarantine_until'] = 0.0
+
+def _classify_error(err: Exception) -> str:
+    msg = str(err).lower()
+    if 'timeout' in msg:
+        return 'timeout'
+    if 'preflight unreachable' in msg:
+        return 'preflight'
+    if 'temporary quarantine' in msg:
+        return 'quarantine'
+    if isinstance(err, socket.gaierror) or 'nxdomain' in msg or 'name or service not known' in msg:
+        return 'dns'
+    if 'ssl' in msg or 'certificate' in msg:
+        return 'ssl'
+    if 'connection refused' in msg or 'connect etimedout' in msg or 'network is unreachable' in msg:
+        return 'conn'
+    return 'other'
 
 def extract_host(value: str) -> str:
     """Normalize input that may be a full URL (with scheme/path) into just the hostname.
@@ -128,6 +278,118 @@ def normalize_result(domain: str, raw: Dict[str, Any], categories_map: Dict[int,
 _heuristics_lock = threading.Lock()
 _heuristics_patterns: list[tuple[re.Pattern, int]] = []
 
+# Cache for lightweight HTML sniff results: {domain: {'ts': float, 'techs': [...], 'meta': {...}}}
+_html_sniff_cache: Dict[str, Dict[str, Any]] = {}
+_html_sniff_lock = threading.Lock()
+_html_sniff_hits = 0
+_html_sniff_misses = 0
+
+def _sniff_html(domain: str) -> Dict[str, Any]:
+    """Lightweight single-request HTML sniff for CMS/framework hints.
+    Returns {'techs': [...], 'meta': {...}}. Uses HTTPS first, falls back to HTTP if HTTPS fails early.
+    Caching governed by TECHSCAN_HTML_SNIFF_CACHE_TTL (seconds, default 300). Max bytes & timeout configurable.
+    """
+    global _html_sniff_hits, _html_sniff_misses
+    if os.environ.get('TECHSCAN_HTML_SNIFF','1') != '1':
+        return {'techs': [], 'meta': {'disabled': True}}
+    ttl = 300
+    try:
+        ttl = int(os.environ.get('TECHSCAN_HTML_SNIFF_CACHE_TTL','300'))
+    except ValueError:
+        ttl = 300
+    now = time.time()
+    if ttl > 0:
+        with _html_sniff_lock:
+            ent = _html_sniff_cache.get(domain)
+            if ent and (now - ent['ts'] < ttl):
+                # Return cached copy
+                _html_sniff_hits += 1
+                return {'techs': ent.get('techs',[]), 'meta': {**(ent.get('meta') or {}), 'cache_age': round(now-ent['ts'],2), 'cached': True}}
+    _html_sniff_misses += 1
+    # Perform fresh sniff
+    import http.client
+    sniff_timeout = 1.5
+    try:
+        sniff_timeout = float(os.environ.get('TECHSCAN_HTML_SNIFF_TIMEOUT','1.5'))
+    except ValueError:
+        pass
+    max_bytes = 20000
+    try:
+        max_bytes = int(os.environ.get('TECHSCAN_HTML_SNIFF_BYTES','20000'))
+    except ValueError:
+        pass
+    schemes = ['https','http']
+    raw_html = b''
+    used_scheme = None
+    err: Exception | None = None
+    for scheme in schemes:
+        try:
+            conn_cls = http.client.HTTPSConnection if scheme=='https' else http.client.HTTPConnection
+            conn = conn_cls(domain, timeout=sniff_timeout)
+            conn.request('GET','/', headers={'User-Agent':'TechScan/sniff'})
+            resp = conn.getresponse()
+            if resp.status >= 400:
+                conn.close()
+                continue
+            while len(raw_html) < max_bytes:
+                chunk = resp.read(min(4096, max_bytes-len(raw_html)))
+                if not chunk:
+                    break
+                raw_html += chunk
+            conn.close()
+            used_scheme = scheme
+            break
+        except Exception as e:
+            err = e
+            continue
+    techs: List[Dict[str, Any]] = []
+    meta: Dict[str, Any] = {'bytes': len(raw_html), 'timeout': sniff_timeout, 'scheme': used_scheme, 'truncated': len(raw_html) >= max_bytes}
+    if err and not used_scheme:
+        meta['error'] = str(err)
+    if raw_html:
+        sample = raw_html.decode('utf-8', errors='ignore')
+        low = sample.lower()
+        def add(name, categories, confidence=20):
+            techs.append({'name': name, 'version': None, 'categories': categories, 'confidence': confidence})
+        # WordPress / Joomla / Drupal
+        if ('wp-content/' in low) or ('wp-includes/' in low) or ('content="wordpress' in low):
+            add('WordPress (sniff)', ['CMS','Blogs'], 25)
+        if 'joomla!' in low:
+            add('Joomla (sniff)', ['CMS'], 20)
+        if 'name="generator" content="drupal' in low or 'content="drupal ' in low:
+            add('Drupal (sniff)', ['CMS'], 20)
+        # Laravel detection heuristics
+        if ('laravel' in low and ('csrf-token' in low or 'routes/web.php' in low)) or 'x-powered-by" content="laravel' in low:
+            add('Laravel (sniff)', ['Frameworks'], 18)
+        # CodeIgniter (common strings, not very reliable)
+        if 'codeigniter' in low and ('ci_session' in low or 'system/core/codeigniter.php' in low):
+            add('CodeIgniter (sniff)', ['Frameworks'], 15)
+        # Next.js / Nuxt
+        if 'next-data' in low and '_next' in low:
+            add('Next.js (sniff)', ['JavaScript frameworks'], 15)
+        if 'nuxt=' in low or 'nuxt.config' in low:
+            add('Nuxt.js (sniff)', ['JavaScript frameworks'], 15)
+        meta['detected'] = len(techs)
+    if ttl > 0:
+        with _html_sniff_lock:
+            _html_sniff_cache[domain] = {'ts': now, 'techs': techs, 'meta': meta}
+    return {'techs': techs, 'meta': meta}
+
+def _sniff_cache_snapshot():
+    now = time.time()
+    with _html_sniff_lock:
+        items = []
+        for dom, ent in _html_sniff_cache.items():
+            age = round(now - ent.get('ts', now), 2)
+            items.append({'domain': dom, 'age_s': age, 'detected': len(ent.get('techs') or []), 'bytes': ent.get('meta',{}).get('bytes')})
+        items.sort(key=lambda x: x['age_s'])
+        return {
+            'entries': len(_html_sniff_cache),
+            'items': items[:200],
+            'hits': _html_sniff_hits,
+            'misses': _html_sniff_misses
+        }
+
 # Track domains that currently have a deferred background scan in progress
 _deferred_lock = threading.Lock()
 _deferred_inflight: set[str] = set()
@@ -197,6 +459,52 @@ load_heuristic_patterns()
 def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: int = 0, full: bool = False) -> Dict[str, Any]:
     original_input = domain
     domain = validate_domain(extract_host(domain))
+    # Preflight connectivity check
+    if not _preflight(domain):
+        logging.getLogger('techscan.preflight').warning('preflight unreachable domain=%s', domain)
+        # Optional heuristic fallback if tiered enabled
+        if os.environ.get('TECHSCAN_TIERED','0') == '1':
+            try:
+                from . import heuristic_fast
+                hres = heuristic_fast.run_heuristic(domain, budget_ms=int(os.environ.get('TECHSCAN_TIERED_BUDGET_MS','1200')), allow_empty_early=True)
+                hres.setdefault('tiered', {})['preflight_unreachable'] = True
+                hres['engine'] = 'heuristic-tier0-preflight'
+                hres['scan_mode'] = 'fast'
+                return hres
+            except Exception:
+                pass
+        raise RuntimeError('preflight unreachable')
+    # Quarantine short-circuit (skip expensive scan and optionally return heuristic fallback)
+    if _check_quarantine(domain):
+        logging.getLogger('techscan.quarantine').info('skip scan (quarantined) domain=%s', domain)
+        # Attempt heuristic immediate if tiered enabled or forced
+        if os.environ.get('TECHSCAN_TIERED','0') == '1':
+            try:
+                from . import heuristic_fast
+                hres = heuristic_fast.run_heuristic(domain, budget_ms=int(os.environ.get('TECHSCAN_TIERED_BUDGET_MS','1600')), allow_empty_early=True)
+                hres.setdefault('tiered', {})['quarantined'] = True
+                hres['engine'] = 'heuristic-tier0-quarantine'
+                hres['scan_mode'] = 'fast'
+                return hres
+            except Exception:
+                pass
+        raise RuntimeError('domain in temporary quarantine')
+    # Ultra quick heuristic-only shortcut
+    if os.environ.get('TECHSCAN_ULTRA_QUICK','0') == '1' and not full:
+        try:
+            from . import heuristic_fast
+            uq_budget = int(os.environ.get('TECHSCAN_QUICK_BUDGET_MS', str(QUICK_DEFAULT_BUDGET_MS)))
+            uq = heuristic_fast.run_heuristic(domain, budget_ms=uq_budget, allow_empty_early=True)
+            uq['engine'] = 'heuristic-ultra'
+            uq['scan_mode'] = 'fast'
+            if os.environ.get('TECHSCAN_SKIP_VERSION_AUDIT','0') != '1' and os.environ.get('TECHSCAN_VERSION_AUDIT','1') == '1':
+                try:
+                    version_audit.audit_versions(uq)
+                except Exception as ae:
+                    logging.getLogger('techscan.audit').debug('ultra audit fail domain=%s err=%s', domain, ae)
+            return uq
+        except Exception as ue:
+            logging.getLogger('techscan.ultra').warning('ultra quick path failed domain=%s err=%s (fall back)', domain, ue)
     persist = os.environ.get('TECHSCAN_PERSIST_BROWSER','0') == '1'
     local_scanner = pathlib.Path(__file__).resolve().parent.parent / 'node_scanner' / ('scanner.js' if not persist else 'server.js')
     if persist:
@@ -219,6 +527,9 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
     # attempts include first try + retries
     # Add one implicit timeout retry if user did not specify retries (best-effort)
     implicit_timeout_retry = (retries == 0)
+    # Allow explicit disabling of implicit timeout retry (e.g., micro fallback single-shot)
+    if os.environ.get('TECHSCAN_DISABLE_IMPLICIT_RETRY','0') == '1':
+        implicit_timeout_retry = False
     attempts = retries + 1
     # Max attempts override via env
     try:
@@ -262,6 +573,7 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
             # Explicit toggle for resource blocking default (fast mode blocks). Full mode unsets blocking unless user forces.
             if full:
                 env.setdefault('TECHSCAN_BLOCK_RESOURCES', '0')
+            op_start = time.time()
             if persist:
                 # Use persistent client
                 from . import persistent_client as pc
@@ -286,10 +598,12 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
                     data = json.loads(proc.stdout)
                 except json.JSONDecodeError:
                     raise RuntimeError('invalid json output')
+            op_end = time.time()
             categories_map = load_categories(wappalyzer_path)
             result = normalize_result(domain, data, categories_map)
-            # Synthetic header-based detection (optional)
-            if os.environ.get('TECHSCAN_SYNTHETIC_HEADERS', '1') == '1':
+            # Synthetic header-based detection (optional + allow disable)
+            synthetic_allowed = (os.environ.get('TECHSCAN_SYNTHETIC_HEADERS', '1') == '1' and os.environ.get('TECHSCAN_DISABLE_SYNTHETIC','0') != '1')
+            if synthetic_allowed:
                 try:
                     synth = synthetic_header_detection(domain, timeout=min(5, timeout))
                     if synth:
@@ -316,10 +630,19 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
                 result['adaptive_timeout'] = True
             finished_at = time.time()
             elapsed = finished_at - t0
+            engine_elapsed = op_end - op_start
+            if engine_elapsed < 0:
+                engine_elapsed = 0
+            result['timing'] = {
+                'overall_seconds': round(elapsed, 3),
+                'engine_seconds': round(engine_elapsed, 3),
+                'overhead_seconds': round(elapsed - engine_elapsed, 3)
+            }
             result['duration'] = round(elapsed, 2)
             result['started_at'] = started_at
             result['finished_at'] = finished_at
             logger.info('scan success domain=%s engine=%s duration=%.2fs attempts=%d', domain, result['engine'], elapsed, attempt)
+            _record_success(domain)
             # stats: record duration
             with _stats_lock:
                 mode_key = 'full' if full else 'fast'
@@ -327,6 +650,10 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
                 bucket = STATS['durations'][mode_key]
                 bucket['count'] += 1
                 bucket['total'] += elapsed
+                try:
+                    STATS['recent_samples'][mode_key].append(elapsed)
+                except Exception:
+                    pass
                 # increment synthetic counters if present in technologies
                 try:
                     tech_names = {t.get('name') for t in result.get('technologies', [])}
@@ -339,6 +666,9 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
             return result
         except (subprocess.TimeoutExpired) as te:
             last_err = te
+            _record_failure(domain)
+            with _stats_lock:
+                STATS['errors']['timeout'] += 1
             # If implicit retry allowed and we have not used it yet, extend attempts by one.
             if implicit_timeout_retry:
                 implicit_timeout_retry = False
@@ -380,8 +710,15 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
             continue
         except Exception as e:  # other errors
             last_err = e
+            _record_failure(domain)
             if attempt == attempts:
                 logger.error('scan error domain=%s err=%s', domain, e)
+                cls = _classify_error(e)
+                with _stats_lock:
+                    if cls in STATS['errors']:
+                        STATS['errors'][cls] += 1
+                    else:
+                        STATS['errors']['other'] += 1
                 raise
             attempt += 1
             continue
@@ -428,6 +765,27 @@ def get_cached_or_scan(domain: str, wappalyzer_path: str, timeout: int = 45, fre
             if heuristic_result.get('tiered', {}).get('early_return'):
                 heuristic_result['tiered']['final'] = True  # type: ignore
                 heuristic_result['engine'] = 'heuristic-tier0'
+                # Optional: skip full permanently for strong CMS detection (WordPress + ≥1 plugin or Joomla/Drupal) when flag enabled
+                if os.environ.get('TECHSCAN_SKIP_FULL_STRONG','0') == '1':
+                    try:
+                        technames = {t.get('name') for t in heuristic_result.get('technologies', [])}
+                        strong = False
+                        if 'WordPress' in technames:
+                            # count WP plugins (rough heuristic: technologies containing spaces or plugin names common)
+                            plugins = [n for n in technames if n in ('WooCommerce','Elementor','Yoast SEO','Wordfence','Contact Form 7','WPForms','WP Rocket','Slider Revolution')]
+                            if plugins:
+                                strong = True
+                        if technames & {'Joomla','Drupal'}:
+                            strong = True
+                        if strong:
+                            heuristic_result.setdefault('tiered', {})['strong_cms_skip_full'] = True
+                    except Exception:
+                        pass
+                if os.environ.get('TECHSCAN_VERSION_AUDIT','1') == '1':
+                    try:
+                        version_audit.audit_versions(heuristic_result)
+                    except Exception as ae:
+                        logging.getLogger('techscan.audit').debug('audit fail early heur domain=%s err=%s', domain, ae)
                 # Persist heuristic-only result (mark special engine)
                 try:
                     from . import db as _db
@@ -442,10 +800,48 @@ def get_cached_or_scan(domain: str, wappalyzer_path: str, timeout: int = 45, fre
             else:
                 heuristic_result['tiered']['final'] = False  # type: ignore
                 heuristic_result['engine'] = 'heuristic-tier0+pending'
+                # If strong CMS and skip flag active, convert to early-return final
+                if os.environ.get('TECHSCAN_SKIP_FULL_STRONG','0') == '1':
+                    try:
+                        technames = {t.get('name') for t in heuristic_result.get('technologies', [])}
+                        strong = False
+                        if 'WordPress' in technames:
+                            plugins = [n for n in technames if n in ('WooCommerce','Elementor','Yoast SEO','Wordfence','Contact Form 7','WPForms','WP Rocket','Slider Revolution')]
+                            if plugins:
+                                strong = True
+                        if technames & {'Joomla','Drupal'}:
+                            strong = True
+                        if strong:
+                            heuristic_result['tiered']['early_return'] = True
+                            heuristic_result['tiered']['strong_cms_skip_full'] = True
+                            heuristic_result['engine'] = 'heuristic-tier0'
+                            heuristic_result['tiered']['final'] = True
+                            if os.environ.get('TECHSCAN_VERSION_AUDIT','1') == '1':
+                                try:
+                                    version_audit.audit_versions(heuristic_result)
+                                except Exception:
+                                    pass
+                            try:
+                                from . import db as _db
+                                _db.save_scan(heuristic_result, from_cache=False, timeout_used=timeout)
+                            except Exception:
+                                pass
+                            with _lock:
+                                _cache[cache_key] = {'ts': now, 'data': heuristic_result, 'ttl': eff_ttl}
+                                with _stats_lock:
+                                    STATS['cache_entries'] = len(_cache)
+                            return heuristic_result
+                    except Exception:
+                        pass
                 # Deferred full scan mode: immediately return heuristic and schedule background Wappalyzer
                 if os.environ.get('TECHSCAN_DEFER_FULL','0') == '1' and not full:
                     quick = heuristic_result
                     quick.setdefault('tiered', {})['deferred_full'] = True
+                    if os.environ.get('TECHSCAN_VERSION_AUDIT','1') == '1':
+                        try:
+                            version_audit.audit_versions(quick)
+                        except Exception as ae:
+                            logging.getLogger('techscan.audit').debug('audit fail deferred quick domain=%s err=%s', domain, ae)
                     quick['engine'] = 'heuristic-tier0+deferred'
                     quick['scan_mode'] = 'fast'
                     # Cache quick response
@@ -522,6 +918,11 @@ def get_cached_or_scan(domain: str, wappalyzer_path: str, timeout: int = 45, fre
                         # Fast return + schedule full like deferred logic (without marking deferred_full so user tahu ini auto-trigger)
                         auto_quick = heuristic_result
                         auto_quick.setdefault('tiered', {})['auto_trigger_full'] = True
+                        if os.environ.get('TECHSCAN_VERSION_AUDIT','1') == '1':
+                            try:
+                                version_audit.audit_versions(auto_quick)
+                            except Exception as ae:
+                                logging.getLogger('techscan.audit').debug('audit fail auto quick domain=%s err=%s', domain, ae)
                         auto_quick['engine'] = 'heuristic-tier0+auto'
                         with _lock:
                             _cache[cache_key] = {'ts': now, 'data': auto_quick, 'ttl': eff_ttl}
@@ -587,7 +988,13 @@ def get_cached_or_scan(domain: str, wappalyzer_path: str, timeout: int = 45, fre
         # If timeout or scan error and we have heuristic partial, return heuristic instead of total failure
         if tiered_enabled and heuristic_result:
             heuristic_result.setdefault('tiered', {})['fallback'] = True
+            if os.environ.get('TECHSCAN_SKIP_VERSION_AUDIT','0') != '1' and os.environ.get('TECHSCAN_VERSION_AUDIT','1') == '1':
+                try:
+                    version_audit.audit_versions(heuristic_result)
+                except Exception as ae:
+                    logging.getLogger('techscan.audit').debug('audit fail fallback domain=%s err=%s', domain, ae)
             heuristic_result.setdefault('error', str(e))
+            heuristic_result.setdefault('error_class', _classify_error(e))
             logging.getLogger('techscan.tiered').warning('scan failed using heuristic fallback domain=%s err=%s', domain, e)
             with _lock:
                 _cache[cache_key] = {'ts': now, 'data': heuristic_result, 'ttl': eff_ttl}
@@ -622,6 +1029,12 @@ def get_cached_or_scan(domain: str, wappalyzer_path: str, timeout: int = 45, fre
             result['tiered']['used'] = True
         except Exception as me:
             logging.getLogger('techscan.tiered').debug('merge heuristic failed domain=%s err=%s', domain, me)
+    # Version audit on final full result (merged or pure)
+    if os.environ.get('TECHSCAN_SKIP_VERSION_AUDIT','0') != '1' and os.environ.get('TECHSCAN_VERSION_AUDIT','1') == '1':
+        try:
+            version_audit.audit_versions(result)
+        except Exception as ae:
+            logging.getLogger('techscan.audit').debug('audit fail full domain=%s err=%s', domain, ae)
     # Persist fresh scan
     try:
         from . import db as _db
@@ -644,7 +1057,152 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
     idx = 0
     lock_i = threading.Lock()
     fast_first = (os.environ.get('TECHSCAN_BULK_FAST_FIRST','0') == '1') and not full
+    two_phase = (os.environ.get('TECHSCAN_BULK_TWO_PHASE','0') == '1') and not full and os.environ.get('TECHSCAN_TIERED','0') == '1'
+    adaptive = (os.environ.get('TECHSCAN_BULK_ADAPT','0') == '1') and not full
+    try:
+        jitter_ms = int(os.environ.get('TECHSCAN_SCHEDULE_JITTER_MS','0') or '0')
+    except ValueError:
+        jitter_ms = 0
 
+    if two_phase:
+        # Phase 1: run heuristic for all domains quickly (deferred or skip scheduling full here)
+        phase1: List[Dict[str, Any]] = [None] * len(filtered)  # type: ignore
+        def worker_phase1():
+            nonlocal idx
+            while True:
+                with lock_i:
+                    if idx >= len(filtered):
+                        break
+                    i = idx; idx += 1
+                dom = filtered[i]
+                try:
+                    # Force heuristic only: call get_cached_or_scan with current tiered config but ensure not full and disable defer scheduling by temporary env tweak if needed
+                    # Use existing logic; if deferred enabled it will schedule background full automatically (fine)
+                    res = get_cached_or_scan(dom, wappalyzer_path, timeout=timeout, fresh=fresh, retries=0, ttl=ttl, full=False)
+                    phase1[i] = {'status':'ok', **res}
+                except Exception as e:
+                    phase1[i] = {'status':'error','domain':dom,'error':str(e)}
+        threads = [threading.Thread(target=worker_phase1) for _ in range(min(concurrency, len(filtered)))]
+        for t in threads: t.start()
+        for t in threads: t.join()
+        # Phase 2: schedule full scans for those not strong_cms_skip_full and not deferred background already if DEFER_FULL off
+        phase2_threads = []
+        def phase2_full(i: int, dom: str):
+            # Only run if not already cached full
+            try:
+                full_res = get_cached_or_scan(dom, wappalyzer_path, timeout=timeout, fresh=fresh, retries=retries, ttl=ttl, full=True)
+                results[i] = {'status':'ok', **full_res}
+            except Exception as e:
+                # fallback to phase1 result if exists
+                if phase1[i] and phase1[i].get('status')=='ok':
+                    r = dict(phase1[i])
+                    r.setdefault('tiered',{})['full_error']=str(e)
+                    results[i] = r
+                else:
+                    results[i] = {'status':'error','domain':dom,'error':str(e)}
+        for i, r in enumerate(phase1):
+            if not r or r.get('status')!='ok':
+                results[i] = r
+                continue
+            tiered_meta = r.get('tiered') or {}
+            if tiered_meta.get('strong_cms_skip_full'):
+                results[i] = r  # Accept heuristic as final
+                continue
+            # If deferred already scheduled we accept phase1 result (will fill cache later)
+            if tiered_meta.get('deferred_full') or tiered_meta.get('auto_trigger_full'):
+                results[i] = r
+                continue
+            # Schedule explicit full scan thread
+            th = threading.Thread(target=phase2_full, args=(i, r.get('domain')), daemon=True)
+            phase2_threads.append(th)
+            th.start()
+            # Proportional throttle: avoid launching too many at once
+            time.sleep(0.02)
+        for th in phase2_threads:
+            th.join()
+        # Fill any still None with phase1 result
+        for i, r in enumerate(results):
+            if r is None:
+                results[i] = phase1[i]
+        return results
+
+    # Adaptive path (if enabled and not two_phase) else legacy
+    if not two_phase and adaptive:
+        target = min(concurrency, max(1, len(filtered)))
+        min_c = max(1, int(os.environ.get('TECHSCAN_BULK_MIN_THREADS','2')))
+        max_c = max(target, int(os.environ.get('TECHSCAN_BULK_MAX_THREADS', str(target*2))))
+        durations: list[float] = []
+        errs: list[int] = []
+        adjust_lock = threading.Lock()
+        threads: list[threading.Thread] = []
+
+        def maybe_jitter():
+            if jitter_ms > 0:
+                time.sleep(random.uniform(0, jitter_ms)/1000.0)
+
+        def adjust():
+            nonlocal target
+            if len(durations) < 5:
+                return
+            avg = sum(durations[-20:]) / min(len(durations),20)
+            erate = sum(errs[-20:]) / min(len(errs),20)
+            new_t = target
+            if avg < 1.0 and erate < 0.1:
+                new_t += 1
+            elif avg > 3.0 or erate > 0.3:
+                new_t -= 1
+            new_t = max(min_c, min(max_c, new_t))
+            target = new_t
+
+        def worker_adapt():
+            nonlocal idx
+            while True:
+                with lock_i:
+                    if idx >= len(filtered):
+                        break
+                    i = idx; idx += 1
+                dom = filtered[i]
+                st = time.time()
+                flag_err = 0
+                try:
+                    maybe_jitter()
+                    if fast_first:
+                        res = get_cached_or_scan(dom, wappalyzer_path, timeout=timeout, fresh=fresh, retries=0, ttl=ttl, full=False)
+                    else:
+                        res = get_cached_or_scan(dom, wappalyzer_path, timeout=timeout, fresh=fresh, retries=retries, ttl=ttl, full=full)
+                    results[i] = {'status':'ok', **res}
+                except Exception as e:
+                    results[i] = {'status':'error','domain':dom,'error':str(e)}
+                    flag_err = 1
+                finally:
+                    et = time.time()
+                    with adjust_lock:
+                        durations.append(et-st)
+                        errs.append(flag_err)
+                        adjust()
+
+        def ensure_threads():
+            alive = [t for t in threads if t.is_alive()]
+            threads[:] = alive
+            need = target - len(alive)
+            for _ in range(need):
+                t = threading.Thread(target=worker_adapt, daemon=True)
+                threads.append(t)
+                t.start()
+
+        ensure_threads()
+        while True:
+            with lock_i:
+                done = idx >= len(filtered)
+            if done:
+                for t in threads:
+                    t.join()
+                break
+            ensure_threads()
+            time.sleep(0.05)
+        return results
+
+    # Legacy non-adaptive bulk worker path (fast_first or normal)
     def worker():
         nonlocal idx
         while True:
@@ -655,9 +1213,6 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
             dom = filtered[i]
             try:
                 if fast_first:
-                    # Force heuristic path: enable tiered + defer if not already
-                    # Temporarily set env flags inside thread (local copy)
-                    # We call get_cached_or_scan with fast mode; relying on existing deferred / auto-trigger
                     res = get_cached_or_scan(dom, wappalyzer_path, timeout=timeout, fresh=fresh, retries=0, ttl=ttl, full=False)
                 else:
                     res = get_cached_or_scan(dom, wappalyzer_path, timeout=timeout, fresh=fresh, retries=retries, ttl=ttl, full=full)
@@ -668,6 +1223,237 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
     for t in threads: t.start()
     for t in threads: t.join()
     return results
+
+# --------------------------- BULK QUICK -> DEEP PIPELINE ---------------------------
+def bulk_quick_then_deep(domains: List[str], wappalyzer_path: str, concurrency: int = 6) -> List[Dict[str, Any]]:
+    """Two-phase bulk pipeline:
+        Phase 1: quick_single_scan for all domains (heuristic + sniff + micro fallback)
+        Phase 2: deep_scan only for domains that meet escalation criteria.
+
+        Escalation criteria (OR logic):
+          - tech_count < TECHSCAN_BULK_DEEP_MIN_TECH (default 2)
+          - All detected technologies have no version AND at least one technology exists
+        Limits:
+          - Optional cap: TECHSCAN_BULK_DEEP_MAX (absolute number) OR TECHSCAN_BULK_DEEP_MAX_PCT (percentage 0-100)
+
+        Returns list aligned to input order with merged results. Each item includes 'bulk_phases'.
+    """
+    try:
+        min_tech = int(os.environ.get('TECHSCAN_BULK_DEEP_MIN_TECH','2'))
+    except ValueError:
+        min_tech = 2
+    try:
+        max_abs = int(os.environ.get('TECHSCAN_BULK_DEEP_MAX','0'))
+    except ValueError:
+        max_abs = 0
+    try:
+        max_pct = float(os.environ.get('TECHSCAN_BULK_DEEP_MAX_PCT','0'))
+    except ValueError:
+        max_pct = 0.0
+    filtered: List[str] = []
+    index_map: List[int] = []
+    for i, d in enumerate(domains):
+        d2 = extract_host((d or '').strip())
+        if DOMAIN_RE.match(d2):
+            filtered.append(d2.lower())
+            index_map.append(i)
+    results: List[Dict[str, Any]] = [None] * len(domains)  # type: ignore
+    phase1: List[Dict[str, Any]] = [None] * len(filtered)  # type: ignore
+    # Phase 1 quick scans
+    lock_i = threading.Lock()
+    idx = 0
+    def worker_q():
+        nonlocal idx
+        while True:
+            with lock_i:
+                if idx >= len(filtered):
+                    break
+                i = idx; idx += 1
+            dom = filtered[i]
+            t0 = time.time()
+            try:
+                qres = quick_single_scan(dom, wappalyzer_path, defer_full=False)
+                qres.setdefault('bulk_phases', {})['phase1_ms'] = int((time.time()-t0)*1000)
+                phase1[i] = {'status':'ok', **qres}
+            except Exception as e:
+                phase1[i] = {'status':'error','domain':dom,'error':str(e)}
+    threads = [threading.Thread(target=worker_q, daemon=True) for _ in range(min(concurrency, len(filtered)))]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    # Decide escalation list
+    escalate_indices: List[int] = []
+    for i, r in enumerate(phase1):
+        if not r or r.get('status')!='ok':
+            continue
+        techs = r.get('technologies') or []
+        tech_count = len(techs)
+        if tech_count == 0:
+            # escalate empty always
+            escalate = True
+        else:
+            all_no_version = all(not t.get('version') for t in techs)
+            escalate = (tech_count < min_tech) or all_no_version
+        if escalate:
+            escalate_indices.append(i)
+    # Apply caps
+    if escalate_indices:
+        if max_abs > 0 and len(escalate_indices) > max_abs:
+            escalate_indices = escalate_indices[:max_abs]
+        if max_pct > 0:
+            cap = int(len(filtered) * (max_pct/100.0)) or 1
+            if len(escalate_indices) > cap:
+                escalate_indices = escalate_indices[:cap]
+    escalate_set = set(escalate_indices)
+    # Phase 2 deep scans
+    if escalate_indices:
+        lock_j = threading.Lock()
+        jdx = 0
+        # Map integer position in escalate_indices
+        def worker_d():
+            nonlocal jdx
+            while True:
+                with lock_j:
+                    if jdx >= len(escalate_indices):
+                        break
+                    pos = escalate_indices[jdx]; jdx += 1
+                dom = filtered[pos]
+                t1 = time.time()
+                try:
+                    dres = deep_scan(dom, wappalyzer_path)
+                    dres.setdefault('bulk_phases', {})['phase2_ms'] = int((time.time()-t1)*1000)
+                    dres['bulk_phases']['escalated'] = True
+                    phase1[pos] = {'status':'ok', **dres}
+                except Exception as e:
+                    # retain phase1 but annotate error
+                    if phase1[pos] and phase1[pos].get('status')=='ok':
+                        phase1[pos].setdefault('bulk_phases', {})['phase2_error'] = str(e)
+                    else:
+                        phase1[pos] = {'status':'error','domain':dom,'error':str(e)}
+        threads2 = [threading.Thread(target=worker_d, daemon=True) for _ in range(min(concurrency, len(escalate_indices)))]
+        for t in threads2: t.start()
+        for t in threads2: t.join()
+    # Final assembly mapping back to original order
+    for local_i, orig_i in enumerate(index_map):
+        r = phase1[local_i]
+        if r and r.get('status')=='ok':
+            # ensure bulk_phases present
+            bp = r.setdefault('bulk_phases', {})
+            bp.setdefault('escalated', local_i in escalate_set)
+            results[orig_i] = r
+        else:
+            results[orig_i] = r or {'status':'error','domain': filtered[local_i] if local_i < len(filtered) else None,'error':'unknown'}
+    # Fill None for invalid domains
+    for i, d in enumerate(domains):
+        if results[i] is None:
+            results[i] = {'status':'error','domain': d, 'error':'invalid domain'}
+    return results
+
+def _targeted_version_enrichment(result: Dict[str, Any], timeout: float = 2.5) -> bool:
+    """Attempt fast, technology-specific version lookups for popular CMS/frameworks.
+    Current strategies (low-impact, single short request each):
+      - WordPress: /wp-json (parse greeting, version field) OR meta generator tag already present.
+      - Drupal: /CHANGELOG.txt first line containing version.
+      - Joomla: /language/en-GB/en-GB.xml (version tag) limited bytes.
+    Returns True if any version field was added.
+    Controlled by TECHSCAN_VERSION_ENRICH=1 (caller checks); this function self-guards against long delays.
+    """
+    techs = result.get('technologies') or []
+    domain = result.get('domain')
+    if not domain or not techs:
+        return False
+    # Map simple name variants to canonical enrichment handlers
+    name_map = {}
+    for t in techs:
+        n = (t.get('name') or '').lower()
+        if 'wordpress' in n:
+            name_map['wordpress'] = t
+        elif 'drupal' in n and 'sniff' not in n:
+            name_map['drupal'] = t
+        elif 'joomla' in n and 'sniff' not in n:
+            name_map['joomla'] = t
+    if not name_map:
+        return False
+    import http.client
+    changed = False
+    deadline = time.time() + timeout
+    def remaining():
+        return max(0.3, deadline - time.time())
+    def fetch_path(path: str, max_bytes: int = 15000) -> bytes | None:
+        if time.time() >= deadline:
+            return None
+        data = b''
+        for scheme in ('https','http'):
+            if time.time() >= deadline:
+                break
+            try:
+                conn_cls = http.client.HTTPSConnection if scheme=='https' else http.client.HTTPConnection
+                conn = conn_cls(domain, timeout=remaining())
+                conn.request('GET', path, headers={'User-Agent':'TechScan/enrich'})
+                resp = conn.getresponse()
+                if resp.status >= 400:
+                    conn.close(); continue
+                while len(data) < max_bytes:
+                    chunk = resp.read(min(4096, max_bytes-len(data)))
+                    if not chunk: break
+                    data += chunk
+                conn.close()
+                break
+            except Exception:
+                continue
+        return data or None
+    # WordPress enrichment
+    if 'wordpress' in name_map and not name_map['wordpress'].get('version'):
+        blob = fetch_path('/wp-json')
+        if blob and blob.startswith(b'{'):
+            try:
+                js = json.loads(blob.decode('utf-8','ignore'))
+                v = js.get('generated') or js.get('version') or (js.get('name') if isinstance(js.get('name'), str) and 'WordPress' in js.get('name') else None)
+                # Some WP returns {"name":"Site Title","description":"","url":"...","home":"...","gmt_offset":...}
+                # Real version sometimes under "routes"/"/wp/v2" meta; skip deep parse to stay fast.
+                if isinstance(v, str) and any(ch.isdigit() for ch in v):
+                    # sanitize keep digits and dots
+                    mv = re.findall(r'(\d+\.[0-9][0-9\.\-a-zA-Z]*)', v)
+                    if mv:
+                        name_map['wordpress']['version'] = mv[0]
+                        changed = True
+            except Exception:
+                pass
+    # Drupal enrichment
+    if 'drupal' in name_map and not name_map['drupal'].get('version'):
+        blob = fetch_path('/CHANGELOG.txt', max_bytes=400)
+        if blob:
+            first = blob.decode('utf-8','ignore').splitlines()[0:3]
+            for line in first:
+                m = re.search(r'Drupal (?:core )?(\d+\.[0-9]+(?:\.[0-9]+)?)', line, re.I)
+                if m:
+                    name_map['drupal']['version'] = m.group(1)
+                    changed = True
+                    break
+    # Joomla enrichment
+    if 'joomla' in name_map and not name_map['joomla'].get('version'):
+        blob = fetch_path('/language/en-GB/en-GB.xml', max_bytes=6000)
+        if blob and b'<version>' in blob:
+            try:
+                txt = blob.decode('utf-8','ignore')
+                m = re.search(r'<version>([^<]+)</version>', txt, re.I)
+                if m:
+                    ver = m.group(1).strip()
+                    if any(ch.isdigit() for ch in ver):
+                        name_map['joomla']['version'] = ver
+                        changed = True
+            except Exception:
+                pass
+    if changed:
+        # Rebuild categories to ensure versioned entries reflected (UI may display versions inside badges)
+        cats: Dict[str, List[Dict[str, Any]]] = {}
+        for t in techs:
+            for cat in t.get('categories') or []:
+                bucket = cats.setdefault(cat, [])
+                if not any(b['name']==t.get('name') and b.get('version')==t.get('version') for b in bucket):
+                    bucket.append({'name': t.get('name'), 'version': t.get('version')})
+        if cats:
+            result['categories'] = cats
+    return changed
 
 def snapshot_cache(domains: List[str] | None = None) -> List[Dict[str, Any]]:
     """Return list of cached scan results (non-expired) optionally filtered by domains list.
@@ -728,6 +1514,15 @@ def get_stats() -> Dict[str, Any]:
             return (bucket['total'] / bucket['count']) if bucket['count'] else 0.0
         fast_avg = avg(STATS['durations']['fast'])
         full_avg = avg(STATS['durations']['full'])
+        def percentiles(data: deque, p: float) -> float:
+            if not data:
+                return 0.0
+            arr = sorted(data)
+            k = int(round((p/100.0)*(len(arr)-1)))
+            k = max(0, min(len(arr)-1, k))
+            return arr[k]
+        fast_samples = STATS['recent_samples']['fast']
+        full_samples = STATS['recent_samples']['full']
         return {
             'uptime_seconds': round(now - STATS['start_time'], 2),
             'hits': STATS['hits'],
@@ -740,7 +1535,20 @@ def get_stats() -> Dict[str, Any]:
                 'fast': round(fast_avg * 1000, 2),
                 'full': round(full_avg * 1000, 2)
             },
-            'synthetic': STATS['synthetic']
+            'recent_latency_ms': {
+                'fast': {
+                    'samples': len(fast_samples),
+                    'p50': round(percentiles(fast_samples,50)*1000,2),
+                    'p95': round(percentiles(fast_samples,95)*1000,2)
+                },
+                'full': {
+                    'samples': len(full_samples),
+                    'p50': round(percentiles(full_samples,50)*1000,2),
+                    'p95': round(percentiles(full_samples,95)*1000,2)
+                }
+            },
+            'synthetic': STATS['synthetic'],
+            'errors': STATS.get('errors', {})
         }
 
 def synthetic_header_detection(domain: str, timeout: int = 5) -> List[Dict[str, Any]]:
@@ -786,3 +1594,391 @@ def synthetic_header_detection(domain: str, timeout: int = 5) -> List[Dict[str, 
         if out:
             break
     return out
+
+# --------------------------- QUICK SINGLE SCAN (heuristic only) ---------------------------
+def quick_single_scan(domain: str, wappalyzer_path: str, budget_ms: int | None = None, defer_full: bool = False, timeout_full: int = 45, retries_full: int = 0) -> Dict[str, Any]:
+    """Perform a very fast heuristic-only scan and optionally schedule a background full scan.
+
+        Params:
+            domain: raw or normalized domain/URL (will normalize)
+            budget_ms: override heuristic budget (default from ENV TECHSCAN_QUICK_BUDGET_MS or fallback 700)
+            defer_full: if True schedule background full scan (ENV TECHSCAN_QUICK_DEFER_FULL=1)
+            timeout_full / retries_full: parameters for background full scan
+
+    Returns heuristic result with engine='heuristic-quick'. If background full scheduled, adds tiered.deferred_full_quick=true.
+    Caches result under fast cache key so later full scan may merge (same behavior as tiered deferred logic).
+    """
+    from . import heuristic_fast
+    raw_input = domain
+    domain = validate_domain(extract_host(domain))
+    try:
+        if budget_ms is None:
+            budget_ms = int(os.environ.get('TECHSCAN_QUICK_BUDGET_MS', str(QUICK_DEFAULT_BUDGET_MS)))
+    except ValueError:
+        budget_ms = QUICK_DEFAULT_BUDGET_MS
+    allow_empty = os.environ.get('TECHSCAN_TIERED_ALLOW_EMPTY','0') == '1'
+    hres = heuristic_fast.run_heuristic(domain, budget_ms=budget_ms, allow_empty_early=allow_empty)
+    if logging.getLogger().isEnabledFor(logging.DEBUG):
+        logging.getLogger('techscan.quick').debug('quick start domain=%s heuristic_tech=%d categories=%d budget_ms=%s', domain, len(hres.get('technologies') or []), len(hres.get('categories') or {}), budget_ms)
+    hres.setdefault('tiered', {})['quick'] = True
+    hres['engine'] = 'heuristic-quick'
+    hres['scan_mode'] = 'fast'
+    # Version audit if enabled
+    if os.environ.get('TECHSCAN_VERSION_AUDIT','1') == '1':
+        try:
+            version_audit.audit_versions(hres)
+        except Exception:
+            pass
+    # Defer caching until after sniff/micro fallback adjustments so cache has enriched data
+    cache_key = f"fast:{domain}"
+    now = time.time()
+    # Lightweight HTML sniff: if no technologies OR categories empty (to enrich)
+    if (not hres.get('technologies')) or not hres.get('categories'):
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.getLogger('techscan.quick').debug('sniff decision domain=%s trigger_sniff technologies=%d categories_empty=%s', domain, len(hres.get('technologies') or []), not bool(hres.get('categories')))
+        try:
+            sniff = _sniff_html(domain)
+            techs_found = sniff.get('techs', [])
+            if techs_found:
+                existing_names = {t['name'] for t in hres.get('technologies', [])}
+                added = 0
+                for ft in techs_found:
+                    if ft['name'] not in existing_names:
+                        hres['technologies'].append(ft)
+                        existing_names.add(ft['name'])
+                        added += 1
+                # Ensure categories dict reflects sniff additions
+                if added:
+                    cats = hres.setdefault('categories', {})
+                    for ft in techs_found:
+                        for cat in ft.get('categories', []) or []:
+                            bucket = cats.setdefault(cat, [])
+                            # avoid duplicate entries
+                            if not any(b['name'] == ft['name'] and b.get('version') == ft.get('version') for b in bucket):
+                                bucket.append({'name': ft['name'], 'version': ft.get('version')})
+                if logging.getLogger().isEnabledFor(logging.DEBUG):
+                    logging.getLogger('techscan.quick').debug('sniff added domain=%s added=%d total_tech=%d', domain, added, len(hres.get('technologies') or []))
+                tier = hres.setdefault('tiered', {})
+                tier['html_sniff'] = True
+                tier['html_sniff_added'] = added
+                if sniff.get('meta', {}).get('cached'):
+                    tier['html_sniff_cached'] = True
+                    tier['html_sniff_cache_age'] = sniff['meta'].get('cache_age')
+            else:
+                # still record cached/no detection metadata
+                if sniff.get('meta', {}).get('cached'):
+                    tier = hres.setdefault('tiered', {})
+                    tier['html_sniff_cached'] = True
+                    tier['html_sniff_cache_age'] = sniff['meta'].get('cache_age')
+        except Exception as _sn_err:
+            logging.getLogger('techscan.sniff').debug('sniff error domain=%s err=%s', domain, _sn_err)
+    if not hres.get('technologies') and os.environ.get('TECHSCAN_ULTRA_FALLBACK_MICRO','0') == '1':
+        tier_meta = hres.setdefault('tiered', {})
+        tier_meta['micro_planned'] = True
+        try:
+            micro_timeout_env = os.environ.get('TECHSCAN_MICRO_TIMEOUT_S','2')
+            try:
+                micro_timeout = int(micro_timeout_env)
+            except ValueError:
+                micro_timeout = 2
+            tier_meta['micro_timeout_s'] = micro_timeout
+            tier_meta['micro_started'] = True
+            logging.getLogger('techscan.micro').info('micro fallback start domain=%s timeout=%ss', domain, micro_timeout)
+            # Temporarily disable ULTRA_QUICK so scan_domain actually invokes wappalyzer
+            _old_ultra = os.environ.get('TECHSCAN_ULTRA_QUICK')
+            _old_adapt = os.environ.get('TECHSCAN_DISABLE_ADAPTIVE')
+            _old_implicit = os.environ.get('TECHSCAN_DISABLE_IMPLICIT_RETRY')
+            try:
+                if _old_ultra == '1':
+                    os.environ['TECHSCAN_ULTRA_QUICK'] = '0'
+                # Force disable adaptive for true micro single-shot (unless user explicitly set 1 already)
+                if os.environ.get('TECHSCAN_DISABLE_ADAPTIVE','0') != '1':
+                    os.environ['TECHSCAN_DISABLE_ADAPTIVE'] = '1'
+                # Also disable implicit retry so we truly perform only one Wappalyzer attempt
+                os.environ['TECHSCAN_DISABLE_IMPLICIT_RETRY'] = '1'
+                micro = scan_domain(domain, wappalyzer_path, timeout=micro_timeout, retries=0, full=False)
+            finally:
+                if _old_ultra == '1':
+                    os.environ['TECHSCAN_ULTRA_QUICK'] = '1'
+                if _old_adapt is not None:
+                    os.environ['TECHSCAN_DISABLE_ADAPTIVE'] = _old_adapt
+                else:
+                    # restore default (remove var) if we set it
+                    if os.environ.get('TECHSCAN_DISABLE_ADAPTIVE') == '1':
+                        os.environ.pop('TECHSCAN_DISABLE_ADAPTIVE', None)
+                if _old_implicit is not None:
+                    os.environ['TECHSCAN_DISABLE_IMPLICIT_RETRY'] = _old_implicit
+                else:
+                    if os.environ.get('TECHSCAN_DISABLE_IMPLICIT_RETRY') == '1':
+                        os.environ.pop('TECHSCAN_DISABLE_IMPLICIT_RETRY', None)
+            micro_techs = micro.get('technologies') or []
+            if micro_techs:
+                existing = {t['name'] for t in hres.get('technologies', [])}
+                added = 0
+                for t in micro_techs:
+                    if t['name'] not in existing:
+                        hres['technologies'].append(t)
+                        existing.add(t['name'])
+                        added += 1
+                # merge categories
+                hcats = hres.setdefault('categories', {})
+                for cat, arr in (micro.get('categories') or {}).items():
+                    bucket = hcats.setdefault(cat, [])
+                    exist_pairs = {(b['name'], b.get('version')) for b in bucket}
+                    for it in arr:
+                        key = (it['name'], it.get('version'))
+                        if key not in exist_pairs:
+                            bucket.append(it)
+                tier_meta['micro_fallback'] = True
+                tier_meta['micro_added'] = added
+                tier_meta['micro_engine_seconds'] = micro.get('timing', {}).get('engine_seconds') if isinstance(micro.get('timing'), dict) else None
+                logging.getLogger('techscan.micro').info('micro fallback success domain=%s added=%d engine_seconds=%s', domain, added, tier_meta.get('micro_engine_seconds'))
+            else:
+                tier_meta['micro_attempted'] = True
+                tier_meta['micro_added'] = 0
+                logging.getLogger('techscan.micro').info('micro fallback empty domain=%s', domain)
+        except Exception as mf_err:
+            tier_meta['micro_attempted'] = True
+            tier_meta['micro_error'] = str(mf_err)
+            logging.getLogger('techscan.micro').warning('micro fallback failed domain=%s err=%s', domain, mf_err)
+    # If we have technologies but categories still empty (e.g., added only via sniff), synthesize categories now
+    if hres.get('technologies'):
+        cats_current = hres.get('categories') or {}
+        # Rebuild if empty or missing expected categories from technologies
+        if not cats_current or all(len(v)==0 for v in cats_current.values()):
+            cats: Dict[str, List[Dict[str, Any]]] = {}
+            for t in hres.get('technologies', []):
+                for cat in t.get('categories', []) or []:
+                    bucket = cats.setdefault(cat, [])
+                    if not any(b['name']==t['name'] and b.get('version')==t.get('version') for b in bucket):
+                        bucket.append({'name': t['name'], 'version': t.get('version')})
+            if cats:
+                hres['categories'] = cats
+                if logging.getLogger().isEnabledFor(logging.DEBUG):
+                    logging.getLogger('techscan.quick').debug('category rebuild domain=%s cat_count=%d', domain, len(cats))
+        else:
+            # Force a final reconstruction pass to ensure no category drift (e.g., sniff added after initial categories built elsewhere)
+            forced: Dict[str, List[Dict[str, Any]]] = {}
+            for t in hres.get('technologies', []):
+                for cat in t.get('categories', []) or []:
+                    bucket = forced.setdefault(cat, [])
+                    if not any(b['name']==t['name'] and b.get('version')==t.get('version') for b in bucket):
+                        bucket.append({'name': t['name'], 'version': t.get('version')})
+            # Only overwrite if forced has strictly more non-empty categories than current (avoid shrinking)
+            if forced:
+                cur_non_empty = sum(1 for v in cats_current.values() if v)
+                forced_non_empty = sum(1 for v in forced.values() if v)
+                if forced_non_empty >= cur_non_empty and forced != cats_current:
+                    hres['categories'] = forced
+                    if logging.getLogger().isEnabledFor(logging.DEBUG):
+                        logging.getLogger('techscan.quick').debug('category force rebuild domain=%s old=%d new=%d', domain, cur_non_empty, forced_non_empty)
+    # Write cache now that fast enrichment (sniff/micro/category synthesis) is done
+    with _lock:
+        _cache[cache_key] = {'ts': time.time(), 'data': hres, 'ttl': CACHE_TTL}
+        with _stats_lock:
+            STATS['cache_entries'] = len(_cache)
+    if logging.getLogger().isEnabledFor(logging.DEBUG):
+        logging.getLogger('techscan.quick').debug('quick final domain=%s tech=%d categories=%d sniff_cached=%s', domain, len(hres.get('technologies') or []), len(hres.get('categories') or {}), hres.get('tiered',{}).get('html_sniff_cached'))
+    # Background full scheduling (optional)
+    if defer_full:
+        hres['tiered']['deferred_full_quick'] = True
+        def _bg_full():
+            try:
+                full_res = scan_domain(domain, wappalyzer_path, timeout=timeout_full, retries=retries_full, full=False)
+                # Merge heuristic if not already included
+                if full_res:
+                    try:
+                        existing = {t['name'] for t in full_res.get('technologies', [])}
+                        for t in hres.get('technologies', []):
+                            if t['name'] not in existing:
+                                full_res['technologies'].append(t)
+                        rcats = full_res.setdefault('categories', {})
+                        for cat, arr in (hres.get('categories') or {}).items():
+                            bucket = rcats.setdefault(cat, [])
+                            existing_pairs = {(b['name'], b.get('version')) for b in bucket}
+                            for item in arr:
+                                key = (item['name'], item.get('version'))
+                                if key not in existing_pairs:
+                                    bucket.append(item)
+                        full_res.setdefault('tiered', {})['merged_quick'] = True
+                        full_res['tiered']['final'] = True
+                    except Exception:
+                        pass
+                    # Audit after merge
+                    if os.environ.get('TECHSCAN_VERSION_AUDIT','1') == '1':
+                        try:
+                            version_audit.audit_versions(full_res)
+                        except Exception:
+                            pass
+                    # Persist & cache
+                    try:
+                        from . import db as _db
+                        _db.save_scan(full_res, from_cache=False, timeout_used=timeout_full)
+                    except Exception:
+                        pass
+                    with _lock:
+                        _cache[cache_key] = {'ts': time.time(), 'data': full_res, 'ttl': CACHE_TTL}
+                        with _stats_lock:
+                            STATS['cache_entries'] = len(_cache)
+            except Exception:
+                pass
+        threading.Thread(target=_bg_full, name=f'quick-full-{domain}', daemon=True).start()
+    # Persist heuristic quick
+    try:
+        from . import db as _db
+        _db.save_scan(hres, from_cache=False, timeout_used=0)
+    except Exception:
+        pass
+    # Targeted version enrichment (best-effort, after persistence; updates cache if versions added)
+    if os.environ.get('TECHSCAN_VERSION_ENRICH','1') == '1':
+        try:
+            if any(t.get('version') in (None, '') for t in hres.get('technologies') or []):
+                changed = _targeted_version_enrichment(hres, timeout=2.0)
+                if changed:
+                    with _lock:
+                        _cache[cache_key] = {'ts': time.time(), 'data': hres, 'ttl': CACHE_TTL}
+        except Exception as enr_err:
+            logging.getLogger('techscan.enrich').debug('quick enrich fail domain=%s err=%s', domain, enr_err)
+    return hres
+
+# --------------------------- DEEP (Time-Budgeted) SCAN ---------------------------
+def deep_scan(domain: str, wappalyzer_path: str) -> Dict[str, Any]:
+    """Perform a time-budgeted 'deep' scan:
+
+    Phases:
+      1. Heuristic quick scan with (possibly higher) budget.
+      2. Constrained full Wappalyzer scan (short timeout, single attempt, no adaptive bump).
+      3. Merge results (prefer versions from full scan when both present).
+
+    Environment variables:
+      TECHSCAN_DEEP_QUICK_BUDGET_MS   (default 1200)  – heuristic budget for phase 1
+      TECHSCAN_DEEP_FULL_TIMEOUT_S    (default 6)     – timeout seconds for constrained full scan
+      TECHSCAN_DEEP_DISABLE_CACHE     (if '1' do not write cache)
+      TECHSCAN_DEEP_CACHE_TTL         (override TTL for deep result; default uses fast or full TTL logic => full key)
+
+    Returns consolidated result with:
+      engine = 'deep-combined'
+      scan_mode = 'deep'
+      phases: {quick_ms, full_ms, total_ms, full_error?, partial?}
+    """
+    start_all = time.time()
+    # Phase 1: heuristic (reuse quick_single_scan but without defer scheduling)
+    try:
+        deep_quick_budget = int(os.environ.get('TECHSCAN_DEEP_QUICK_BUDGET_MS','1200'))
+    except ValueError:
+        deep_quick_budget = 1200
+    # Run quick with custom budget (temporarily override env variable consumed inside quick_single_scan)
+    old_budget = os.environ.get('TECHSCAN_QUICK_BUDGET_MS')
+    os.environ['TECHSCAN_QUICK_BUDGET_MS'] = str(deep_quick_budget)
+    try:
+        quick_res = quick_single_scan(domain, wappalyzer_path, budget_ms=deep_quick_budget, defer_full=False)
+    finally:
+        if old_budget is not None:
+            os.environ['TECHSCAN_QUICK_BUDGET_MS'] = old_budget
+        else:
+            os.environ.pop('TECHSCAN_QUICK_BUDGET_MS', None)
+    quick_elapsed = time.time() - start_all
+    # Phase 2: constrained full scan
+    try:
+        deep_full_timeout = float(os.environ.get('TECHSCAN_DEEP_FULL_TIMEOUT_S','6'))
+    except ValueError:
+        deep_full_timeout = 6.0
+    # Prepare environment toggles to enforce single shot, no adaptive, no ultra shortcut
+    old_ultra = os.environ.get('TECHSCAN_ULTRA_QUICK')
+    old_adapt = os.environ.get('TECHSCAN_DISABLE_ADAPTIVE')
+    old_impl = os.environ.get('TECHSCAN_DISABLE_IMPLICIT_RETRY')
+    old_hard = os.environ.get('TECHSCAN_HARD_TIMEOUT_S')
+    try:
+        os.environ['TECHSCAN_ULTRA_QUICK'] = '0'
+        os.environ['TECHSCAN_DISABLE_ADAPTIVE'] = '1'
+        os.environ['TECHSCAN_DISABLE_IMPLICIT_RETRY'] = '1'
+        os.environ['TECHSCAN_HARD_TIMEOUT_S'] = str(deep_full_timeout)
+        full_start = time.time()
+        full_res = scan_domain(domain, wappalyzer_path, timeout=int(deep_full_timeout), retries=0, full=True)
+        full_elapsed = time.time() - full_start
+    except Exception as fe:
+        full_res = None
+        full_elapsed = 0.0
+        full_error = str(fe)
+    finally:
+        # restore env
+        if old_ultra is not None: os.environ['TECHSCAN_ULTRA_QUICK'] = old_ultra
+        else: os.environ.pop('TECHSCAN_ULTRA_QUICK', None)
+        if old_adapt is not None: os.environ['TECHSCAN_DISABLE_ADAPTIVE'] = old_adapt
+        else: os.environ.pop('TECHSCAN_DISABLE_ADAPTIVE', None)
+        if old_impl is not None: os.environ['TECHSCAN_DISABLE_IMPLICIT_RETRY'] = old_impl
+        else: os.environ.pop('TECHSCAN_DISABLE_IMPLICIT_RETRY', None)
+        if old_hard is not None: os.environ['TECHSCAN_HARD_TIMEOUT_S'] = old_hard
+        else: os.environ.pop('TECHSCAN_HARD_TIMEOUT_S', None)
+
+    # Merge logic
+    if full_res:
+        merged = full_res
+        merged.setdefault('tiered', {})['deep_quick_tech_count'] = len(quick_res.get('technologies') or [])
+        # Add any heuristic-only tech not in full
+        existing = {t['name'] for t in merged.get('technologies', [])}
+        added = 0
+        for t in quick_res.get('technologies', []):
+            if t['name'] not in existing:
+                merged['technologies'].append(t)
+                existing.add(t['name'])
+                # categories merge
+                for cat, arr in (quick_res.get('categories') or {}).items():
+                    bucket = merged.setdefault('categories', {}).setdefault(cat, [])
+                    if not any(b['name']==t['name'] and b.get('version')==t.get('version') for b in bucket):
+                        bucket.append({'name': t['name'], 'version': t.get('version')})
+                added += 1
+        merged['engine'] = 'deep-combined'
+        merged['scan_mode'] = 'deep'
+        phases = {
+            'quick_ms': int(quick_elapsed*1000),
+            'full_ms': int(full_elapsed*1000),
+            'total_ms': int((time.time()-start_all)*1000),
+            'heuristic_added': added,
+            'quick_budget_ms': deep_quick_budget,
+            'full_timeout_s': deep_full_timeout
+        }
+        merged['phases'] = phases
+        result = merged
+    else:
+        # Return partial quick result annotated
+        result = quick_res
+        result.setdefault('tiered', {})['deep_full_error'] = full_error  # type: ignore
+        result['engine'] = 'deep-partial'
+        result['scan_mode'] = 'deep'
+        phases = {
+            'quick_ms': int(quick_elapsed*1000),
+            'full_ms': 0,
+            'total_ms': int((time.time()-start_all)*1000),
+            'full_error': full_error,  # type: ignore
+            'partial': True,
+            'quick_budget_ms': deep_quick_budget,
+            'full_timeout_s': deep_full_timeout
+        }
+        result['phases'] = phases
+
+    # Targeted enrichment for deep result if versions still missing
+    if os.environ.get('TECHSCAN_VERSION_ENRICH','1') == '1':
+        try:
+            if any(t.get('version') in (None, '') for t in result.get('technologies') or []):
+                changed = _targeted_version_enrichment(result, timeout=3.0)
+                if changed:
+                    logging.getLogger('techscan.enrich').debug('deep enrich added_versions domain=%s', domain)
+        except Exception as de:
+            logging.getLogger('techscan.enrich').debug('deep enrich fail domain=%s err=%s', domain, de)
+
+    # Cache deep result (under full cache key for richer reuse unless disabled)
+    if os.environ.get('TECHSCAN_DEEP_DISABLE_CACHE','0') != '1':
+        cache_ttl = None
+        try:
+            cache_ttl = int(os.environ.get('TECHSCAN_DEEP_CACHE_TTL','0'))
+        except ValueError:
+            cache_ttl = 0
+        if not cache_ttl or cache_ttl < 0:
+            cache_ttl = CACHE_TTL
+        cache_key = f"full:{result.get('domain')}"
+        with _lock:
+            _cache[cache_key] = {'ts': time.time(), 'data': result, 'ttl': cache_ttl}
+            with _stats_lock:
+                STATS['cache_entries'] = len(_cache)
+    return result

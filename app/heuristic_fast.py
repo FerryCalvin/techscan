@@ -84,13 +84,19 @@ LIB_PATTERNS: List[Tuple[str, re.Pattern]] = [
     ('Alpine.js', re.compile(r'alpine(?:\.min)?\.js', re.I)),
 ]
 
+# Database management panels exposure (low confidence, simple patterns)
+DB_PANEL_PATTERNS: List[Tuple[str, re.Pattern]] = [
+    ('phpMyAdmin', re.compile(r'phpmyadmin.+?(?:mysql|database)', re.I)),
+    ('Adminer', re.compile(r'Adminer\s+(?:[0-9]+\.[0-9.]+)?', re.I)),
+]
+
 VERSION_FROM_QUERY = re.compile(r'[?&](?:ver|v|version)=(\d[\w\.\-]*)', re.I)
 VERSION_IN_FILENAME = re.compile(r'-([0-9]+\.[0-9]+(?:\.[0-9]+)?)\.\w{1,6}\b')
 COMMENT_BANNER = re.compile(r'/\*!?\s*(bootstrap|tailwind(?:css)?|datatables)[^\n]*?v?(\d+\.\d+(?:\.\d+){0,2})', re.I)
 NG_VERSION_ATTR = re.compile(r'ng-version="(\d+\.\d+(?:\.\d+)*)"', re.I)
 NEXT_DATA_BUILDID = re.compile(r'__NEXT_DATA__"?\s*:\s*\{[^}]*?"buildId"\s*:\s*"([a-zA-Z0-9-_]+)"')
 META_GENERATOR = re.compile(r'<meta[^>]+name=["\']generator["\'][^>]+content=["\']([^"\']+)["\']', re.I)
-SERVER_HEADER = re.compile(r'([a-zA-Z0-9_-]+)(?:/([0-9][\w\.-]*))?')
+SERVER_HEADER = re.compile(r'([a-zA-Z0-9_-]+)(?:/([0-9][\w\.-]*))?')  # captures name/version pairs like nginx/1.22.1
 
 PRIORITY_CATEGORIES = {
     'CMS': ['Content management systems','CMS'],
@@ -128,16 +134,110 @@ CATEGORY_MAP = {
     'Apache': ['Web servers'],
     'Nginx': ['Web servers','Reverse proxies'],
     'Cloudflare': ['Reverse proxies','CDN'],
+    'LiteSpeed': ['Web servers'],
+    'OpenResty': ['Web servers','Reverse proxies'],
+    'Caddy': ['Web servers','Reverse proxies'],
+    'PHP': ['Programming languages'],
+    'Express': ['Web frameworks','JavaScript frameworks'],
+    'ASP.NET': ['Web frameworks'],
+    'phpMyAdmin': ['Database management'],
+    'Adminer': ['Database management'],
+    'Gunicorn': ['Web servers','Application servers'],
+    'uWSGI': ['Application servers'],
+    'Fastly': ['CDN','Reverse proxies'],
+    'Varnish': ['Reverse proxies','Caching'],
 }
 
-MAX_HTML_BYTES = 250_000
+MAX_HTML_BYTES = 250_000  # hard upper safety cap
 
-def _http_fetch(domain: str, total_timeout: float) -> tuple[dict, bytes]:
+def _resolve_html_cap() -> int:
+    """Return dynamic HTML byte cap for heuristic fetch.
+    Environment variable TECHSCAN_HEURISTIC_HTML_CAP_BYTES can lower the cap (never raise beyond hard MAX_HTML_BYTES).
+    If invalid or <=0, falls back to MAX_HTML_BYTES.
+    """
+    import os
+    try:
+        v = int(os.environ.get('TECHSCAN_HEURISTIC_HTML_CAP_BYTES','0') or '0')
+        if v > 0:
+            return min(v, MAX_HTML_BYTES)
+    except ValueError:
+        pass
+    return MAX_HTML_BYTES
+
+# Confidence constants (easier tuning)
+CONF_SERVER_PRIMARY = 35
+CONF_SERVER_SECONDARY = 30
+CONF_CDN = 25
+CONF_BACKEND_LANG = 35
+CONF_BACKEND_FRAMEWORK = 30
+CONF_DB_PANEL = 12  # lowered for lower false-positive weight
+
+def parse_server_header(value: str) -> tuple[str | None, str | None]:
+    """Parse a Server header into canonical (technology-name, version).
+    We normalize variant naming (openlitespeed -> LiteSpeed, httpd -> Apache).
+    Returns (name, version) or (None, None).
+    """
+    if not value:
+        return None, None
+    m = SERVER_HEADER.match(value)
+    if not m:
+        return None, None
+    raw, ver = m.group(1), m.group(2)
+    lname = raw.lower()
+    if lname in ('apache','httpd'):
+        return 'Apache', ver
+    if lname == 'nginx':
+        return 'Nginx', ver
+    if lname in ('cloudflare',):
+        return 'Cloudflare', ver
+    if lname in ('litespeed','openlitespeed'):
+        return 'LiteSpeed', ver
+    if lname == 'openresty':
+        return 'OpenResty', ver
+    if lname == 'caddy':
+        return 'Caddy', ver
+    if lname == 'gunicorn':
+        return 'Gunicorn', ver
+    if lname == 'uwsgi':
+        return 'uWSGI', ver
+    if lname == 'fastly':
+        return 'Fastly', ver
+    if lname == 'varnish':
+        return 'Varnish', ver
+    # Future extension handled by caller if needed
+    return raw, ver
+
+def extract_x_powered_by(value: str) -> list[tuple[str, str | None]]:
+    """Extract technology list from X-Powered-By header.
+    Returns list of (name, version|None). Recognized: PHP, Express, ASP.NET.
+    """
+    out: list[tuple[str,str|None]] = []
+    if not value:
+        return out
+    parts = [p.strip() for p in re.split(r'[;,]', value) if p.strip()]
+    for p in parts:
+        mphp = re.match(r'php(?:/([0-9][\w\.-]*))?$', p, re.I)
+        if mphp:
+            out.append(('PHP', mphp.group(1)))
+            continue
+        mexp = re.match(r'express(?:/([0-9][\w\.-]*))?$', p, re.I)
+        if mexp:
+            out.append(('Express', mexp.group(1)))
+            continue
+        if 'asp.net' in p.lower():
+            mver = re.search(r'(\d+\.\d+(?:\.\d+)*)', p)
+            out.append(('ASP.NET', mver.group(1) if mver else None))
+            continue
+    return out
+
+def _http_fetch(domain: str, total_timeout: float) -> tuple[dict, bytes, bool]:
     deadline = time.time() + total_timeout
     def remaining():
         return max(0.2, deadline - time.time())
     headers_lower = {}
     body = b''
+    truncated = False
+    cap = _resolve_html_cap()
     tried = []
     for scheme, conn_cls, port in [
         ('https', http.client.HTTPSConnection, 443),
@@ -152,7 +252,7 @@ def _http_fetch(domain: str, total_timeout: float) -> tuple[dict, bytes]:
             headers_lower = {k.lower(): v for k,v in resp.getheaders()}
             # Read limited body
             buff = []
-            remaining_bytes = MAX_HTML_BYTES
+            remaining_bytes = cap
             while remaining_bytes > 0:
                 chunk = resp.read(min(8192, remaining_bytes))
                 if not chunk:
@@ -162,13 +262,15 @@ def _http_fetch(domain: str, total_timeout: float) -> tuple[dict, bytes]:
                 if time.time() >= deadline:
                     break
             body = b''.join(buff)
+            if remaining_bytes <= 0:
+                truncated = True
             conn.close()
             tried.append(scheme)
             if body:
                 break
         except Exception:
             continue
-    return headers_lower, body
+    return headers_lower, body, truncated
 
 def _add(categories: dict, techs: list, name: str, version: str | None, confidence: int):
     entry = {'name': name, 'version': version, 'categories': CATEGORY_MAP.get(name, []), 'confidence': confidence}
@@ -179,26 +281,25 @@ def _add(categories: dict, techs: list, name: str, version: str | None, confiden
 def run_heuristic(domain: str, budget_ms: int = 1800, allow_empty_early: bool = False) -> dict:
     t0 = time.time()
     started = t0
-    headers, body = _http_fetch(domain, total_timeout=budget_ms / 1000.0)
+    headers, body, truncated = _http_fetch(domain, total_timeout=budget_ms / 1000.0)
     techs: List[Dict[str, Any]] = []
     categories: Dict[str, List[Dict[str, Any]]] = {}
     lower_html = body.decode('utf-8', 'ignore') if body else ''
     version_evidence: dict[str, list[dict[str,str]]] = {}
     alt_versions: dict[str, set[str]] = {}
 
-    # Server header
-    server = headers.get('server')
-    if server:
-        m = SERVER_HEADER.match(server)
-        if m:
-            nm, ver = m.group(1), m.group(2)
-            lname = nm.lower()
-            if lname == 'nginx':
-                _add(categories, techs, 'Nginx', ver, 35)
-            elif lname in ('apache','httpd'):
-                _add(categories, techs, 'Apache', ver, 35)
-            elif lname == 'cloudflare':
-                _add(categories, techs, 'Cloudflare', ver, 25)
+    # Server header parsing (refactored)
+    name, ver = parse_server_header(headers.get('server'))
+    if name:
+        conf = CONF_SERVER_PRIMARY if name in ('Apache','Nginx') else (
+            CONF_CDN if name == 'Cloudflare' else CONF_SERVER_SECONDARY)
+        _add(categories, techs, name, ver, conf)
+    # X-Powered-By parsing (refactored)
+    for bname, bver in extract_x_powered_by(headers.get('x-powered-by')):
+        conf = CONF_BACKEND_LANG if bname == 'PHP' else CONF_BACKEND_FRAMEWORK
+        _add(categories, techs, bname, bver, conf)
+        if bver:
+            version_evidence.setdefault(bname, []).append({'source':'x-powered-by','value':bver})
     if 'strict-transport-security' in headers:
         _add(categories, techs, 'HSTS', None, 20)
 
@@ -340,6 +441,11 @@ def run_heuristic(domain: str, budget_ms: int = 1800, allow_empty_early: bool = 
     # Improve jQuery version if mismatch and asset has newer
     # Already handled by _record_version merging logic.
 
+    # DB exposure panels (very low confidence; purely string presence)
+    for name, pat in DB_PANEL_PATTERNS:
+        if pat.search(lower_html):
+            _add(categories, techs, name, None, CONF_DB_PANEL)
+
     # Determine early return
     names = {t['name'] for t in techs}
     # Infer WordPress if plugin(s) present but WordPress belum muncul
@@ -373,7 +479,8 @@ def run_heuristic(domain: str, budget_ms: int = 1800, allow_empty_early: bool = 
             'stage': 'heuristic',
             'early_return': early,
             'reason': reason,
-            'budget_ms': budget_ms
+            'budget_ms': budget_ms,
+            'html_truncated': truncated
         }
     }
     if version_evidence:
