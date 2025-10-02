@@ -39,7 +39,24 @@ def create_app():
     if os.environ.get('TECHSCAN_DISABLE_DB','0') != '1':
         try:
             from . import db as _db
+            # Log masked DB URL for diagnostics
+            try:
+                from urllib.parse import urlparse
+                u = urlparse(_db.DB_URL)
+                masked = f"{u.scheme}://{u.hostname}:{u.port or ''}{u.path}".rstrip(':')
+                logging.getLogger(__name__).info('DB connecting masked_url=%s', masked)
+            except Exception:
+                pass
             _db.ensure_schema()
+            # Quick test select to confirm live connection
+            try:
+                with _db.get_conn() as conn:  # type: ignore
+                    with conn.cursor() as cur:
+                        cur.execute('SELECT 1')
+                        cur.fetchone()
+                        logging.getLogger(__name__).info('DB connectivity check OK')
+            except Exception as ce:
+                logging.getLogger(__name__).error('DB connectivity check FAILED err=%s', ce)
         except Exception as db_ex:
             logging.getLogger(__name__).error('Failed ensuring DB schema: %s', db_ex)
     else:

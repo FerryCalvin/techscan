@@ -29,6 +29,10 @@
     .tech{background:var(--panel-alt);border:1px solid var(--border);padding:.75rem .85rem;border-radius:8px;display:flex;flex-direction:column;gap:.4rem;position:relative;}
     .tech h3{margin:0;font-size:.9rem;font-weight:600;line-height:1.2}
     .tech .version{font-size:.75rem;color:var(--accent);font-weight:500}
+  .tech-icon{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:600;letter-spacing:.5px;background:#334155;color:#fff;position:absolute;top:8px;left:8px;opacity:.95}
+  .tech.has-icon{padding-top:1.9rem}
+  .tech-logo{width:26px;height:26px;position:absolute;top:8px;left:8px;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#1e2530}
+  .tech-logo img{max-width:100%;max-height:100%;display:block}
     .badge-row{display:flex;flex-wrap:wrap;gap:.35rem}
     .badge{background:#2f3a4a;color:var(--text-dim);padding:.25rem .55rem;border-radius:999px;font-size:.65rem;letter-spacing:.5px;text-transform:uppercase}
     .status-bar{font-size:.7rem;position:absolute;top:6px;right:8px;color:var(--text-dim)}
@@ -49,6 +53,9 @@
     .file-label{background:var(--panel-alt);border:1px dashed var(--border);padding:1rem;border-radius:8px;cursor:pointer;text-align:center;font-size:.8rem;color:var(--text-dim)}
     .spinner{width:18px;height:18px;border:3px solid #1f2933;border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
+  .new-domain{background:rgba(16,185,129,0.08)}
+  .new-domain td{position:relative}
+  .new-chip{background:var(--ok);color:#fff;padding:0 .4rem;border-radius:999px;font-size:.55rem;letter-spacing:.5px;margin-left:.35rem}
     @media (max-width:680px){header{padding:2rem 1.2rem 1rem}main{padding:0 1.2rem 3rem}}
   </style>
 </head>
@@ -56,6 +63,18 @@
   <header>
     <h1>Technology lookup</h1>
     <p class="subtitle">Find out what websites are built with. Masukkan satu domain atau unggah daftar untuk scan bulk. Hasil menampilkan teknologi dan versi (jika terdeteksi).</p>
+    <div style="margin-top:.6rem;display:flex;gap:1rem;flex-wrap:wrap;font-size:.65rem;color:var(--text-dim)">
+      <label style="display:flex;align-items:center;gap:.35rem;cursor:pointer"><input type="checkbox" id="toggle-remote-icons" style="accent-color:var(--accent)"/> Enable remote CDN icons</label>
+      <label style="display:flex;align-items:center;gap:.35rem;cursor:pointer">Variant:
+        <select id="icon-variant" style="background:var(--panel-alt);border:1px solid var(--border);color:var(--text);padding:.3rem .4rem;border-radius:6px;font-size:.6rem">
+          <option value="dark" selected>dark</option>
+          <option value="light">light</option>
+          <option value="grayscale">grayscale</option>
+        </select>
+      </label>
+      <button type="button" id="reset-icon-cache" class="secondary" style="padding:.4rem .7rem;font-size:.6rem">Reset Icon Cache</button>
+      <button type="button" id="switch-local-pack" class="secondary" style="padding:.4rem .7rem;font-size:.6rem">Use Local Pack</button>
+    </div>
   </header>
   <main>
     <section class="panel" id="single-panel">
@@ -64,18 +83,12 @@
         <input type="text" id="domain" placeholder="Enter a website address" required />
         <select id="mode" style="background:var(--panel-alt);border:1px solid var(--border);color:var(--text);padding:.85rem .8rem;border-radius:8px;font-size:.8rem;min-width:140px">
           <option value="quick" selected>Quick</option>
+          <option value="fast_full">Fast-Full</option>
           <option value="deep">Deep</option>
           <option value="full">Full</option>
         </select>
-        <label style="display:flex;align-items:center;gap:.3rem;font-size:.7rem;color:var(--text-dim);padding:0 .4rem">
-          <input type="checkbox" id="fresh" style="accent-color:var(--accent)" /> Fresh
-        </label>
         <button type="submit" id="scanBtn"><span id="scanBtnText">Scan</span><span class="spinner hidden" id="scanSpinner"></span></button>
       </form>
-      <div style="margin-top:.6rem;display:flex;gap:.6rem;flex-wrap:wrap" id="diag-buttons">
-        <button type="button" class="secondary" id="btnMicroDiag" style="font-size:.7rem;padding:.55rem .8rem">Micro Diag</button>
-        <button type="button" class="secondary" id="btnQuickDiag" style="font-size:.7rem;padding:.55rem .8rem">Quick Heuristic Only</button>
-      </div>
       <div id="single-error" class="error hidden"></div>
       <div id="single-result" class="hidden">
         <div class="flex-row">
@@ -102,12 +115,109 @@
       <h2>Upload a list of websites</h2>
       <label class="file-label" for="fileInput">Upload a .txt file (satu domain per baris)</label>
       <input id="fileInput" type="file" accept="text/plain" />
+      <div style="display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.8rem;font-size:.7rem">
+        <button type="button" id="bulk-scan-btn" class="secondary" style="padding:.65rem 1.1rem">Scan Bulk</button>
+        <button type="button" id="bulk-download-csv" class="secondary" style="padding:.65rem 1.1rem">Download CSV</button>
+      </div>
       <div id="bulk-status" class="error hidden"></div>
       <div id="bulk-table-wrapper" class="table-wrap hidden">
         <table id="bulk-table">
           <thead><tr><th>Domain</th><th>Status</th><th>Tech Count</th><th>Top Tech</th></tr></thead>
           <tbody></tbody>
         </table>
+      </div>
+    </section>
+    <section class="panel" id="history-panel">
+      <h2>History</h2>
+      <form class="inline" id="history-form">
+        <input type="text" id="history-domain" placeholder="Domain untuk histori" required />
+        <input type="number" id="history-limit" placeholder="Limit" min="1" value="10" style="flex:0 0 90px;background:var(--panel-alt);border:1px solid var(--border);color:var(--text);padding:.85rem .8rem;border-radius:8px;font-size:.75rem" />
+        <button type="submit">Load History</button>
+        <button type="button" id="history-refresh" class="secondary" style="font-size:.7rem">Refresh</button>
+      </form>
+      <div id="history-error" class="error hidden" style="margin-top:.5rem"></div>
+      <div class="table-wrap hidden" id="history-table-wrap" style="margin-top:.8rem">
+        <table id="history-table">
+          <thead>
+            <tr><th>Mode</th><th>Start</th><th>Finish</th><th>Dur (ms)</th><th>Cache</th><th>Retries</th><th>Timeout Used</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div style="display:flex;gap:.6rem;margin-top:.6rem;align-items:center;font-size:.7rem;flex-wrap:wrap">
+          <button type="button" id="history-prev" class="secondary" style="padding:.4rem .7rem">Prev</button>
+          <button type="button" id="history-next" class="secondary" style="padding:.4rem .7rem">Next</button>
+          <label style="display:flex;align-items:center;gap:.25rem">Page <input type="number" id="history-page-jump" min="1" value="1" style="width:65px;background:var(--panel-alt);border:1px solid var(--border);color:var(--text);padding:.3rem .4rem;border-radius:6px;font-size:.65rem" /></label>
+          <button type="button" id="history-go" class="secondary" style="padding:.35rem .6rem">Go</button>
+          <span id="history-page-info" style="color:var(--text-dim)"></span>
+        </div>
+      </div>
+    </section>
+    <section class="panel" id="search-panel">
+      <h2>Search Technology</h2>
+      <form class="inline" id="search-form">
+        <input type="text" id="search-tech" placeholder="Nama teknologi (misal: Laravel)" required />
+        <input type="text" id="search-version" placeholder="Versi (opsional)" style="flex:0 0 140px;background:var(--panel-alt);border:1px solid var(--border);color:var(--text);padding:.85rem .8rem;border-radius:8px;font-size:.75rem" />
+        <input type="text" id="search-category" placeholder="Kategori (opsional)" style="flex:0 0 150px;background:var(--panel-alt);border:1px solid var(--border);color:var(--text);padding:.85rem .8rem;border-radius:8px;font-size:.75rem" />
+        <label style="display:flex;align-items:center;gap:.35rem;font-size:.65rem;color:var(--text-dim)"><input type="checkbox" id="search-new24" style="accent-color:var(--accent)" /> NEW 24h</label>
+        <input type="number" id="search-limit" placeholder="Limit" min="1" value="50" style="flex:0 0 80px;background:var(--panel-alt);border:1px solid var(--border);color:var(--text);padding:.85rem .8rem;border-radius:8px;font-size:.75rem" />
+        <button type="submit">Search</button>
+      </form>
+      <div id="search-error" class="error hidden" style="margin-top:.5rem"></div>
+      <div class="table-wrap hidden" id="search-table-wrap" style="margin-top:.8rem">
+        <table id="search-table">
+          <thead>
+            <tr><th>Domain</th><th>Tech</th><th>Version</th><th>Categories</th><th>First Seen</th><th>Last Seen</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div style="display:flex;gap:.6rem;margin-top:.6rem;align-items:center;font-size:.7rem;flex-wrap:wrap">
+          <button type="button" id="search-prev" class="secondary" style="padding:.4rem .7rem">Prev</button>
+          <button type="button" id="search-next" class="secondary" style="padding:.4rem .7rem">Next</button>
+          <label style="display:flex;align-items:center;gap:.25rem">Page <input type="number" id="search-page-jump" min="1" value="1" style="width:65px;background:var(--panel-alt);border:1px solid var(--border);color:var(--text);padding:.3rem .4rem;border-radius:6px;font-size:.65rem" /></label>
+          <button type="button" id="search-go" class="secondary" style="padding:.35rem .6rem">Go</button>
+          <span id="search-page-info" style="color:var(--text-dim)"></span>
+        </div>
+      </div>
+    </section>
+    <section class="panel" id="domain-panel">
+      <h2>Cari Domain (Current Tech)</h2>
+      <form class="inline" id="domain-form">
+        <input type="text" id="lookup-domain" placeholder="Domain untuk lookup" required />
+        <button type="submit">Lookup</button>
+      </form>
+      <div id="domain-error" class="error hidden" style="margin-top:.5rem"></div>
+      <div id="domain-result" class="hidden" style="margin-top:.9rem">
+        <h3 style="margin:0 0 .6rem;font-size:.85rem" id="domain-res-title"></h3>
+        <div class="results-grid" id="domain-tech-grid"></div>
+        <details style="margin-top:1rem"><summary style="cursor:pointer;color:var(--text-dim);font-size:.7rem">Categories</summary>
+          <div id="domain-cat" class="categories-list" style="margin-top:.6rem"></div>
+        </details>
+      </div>
+    </section>
+    <section class="panel" id="diff-panel">
+      <h2>Diff Last 2 Scans</h2>
+      <p style="margin:.2rem 0 .8rem;font-size:.65rem;color:var(--text-dim)">Menunjukkan perbedaan teknologi antara dua scan terakhir untuk domain: teknologi baru (Added), hilang (Removed), dan berubah versi (Changed). Berguna memantau update atau perubahan stack.</p>
+      <form class="inline" id="diff-form">
+        <input type="text" id="diff-domain" placeholder="Domain untuk diff" required />
+        <button type="submit">Load Diff</button>
+      </form>
+      <div id="diff-error" class="error hidden" style="margin-top:.5rem"></div>
+      <div id="diff-result" class="hidden" style="margin-top:.8rem;font-size:.75rem;display:flex;flex-direction:column;gap:.9rem">
+        <div id="diff-meta" style="color:var(--text-dim)"></div>
+        <div style="display:flex;flex-wrap:wrap;gap:1.2rem">
+          <div style="flex:1 1 260px;min-width:220px">
+            <h3 style="margin:.2rem 0 .4rem;font-size:.8rem;color:var(--text-dim);text-transform:uppercase">Added</h3>
+            <ul id="diff-added" style="margin:0;padding-left:1.1rem"></ul>
+          </div>
+          <div style="flex:1 1 260px;min-width:220px">
+            <h3 style="margin:.2rem 0 .4rem;font-size:.8rem;color:var(--text-dim);text-transform:uppercase">Removed</h3>
+            <ul id="diff-removed" style="margin:0;padding-left:1.1rem"></ul>
+          </div>
+          <div style="flex:1 1 260px;min-width:220px">
+            <h3 style="margin:.2rem 0 .4rem;font-size:.8rem;color:var(--text-dim);text-transform:uppercase">Changed</h3>
+            <ul id="diff-changed" style="margin:0;padding-left:1.1rem"></ul>
+          </div>
+        </div>
       </div>
     </section>
   </main>
@@ -123,10 +233,17 @@
       return j;
     }
 
+    // Simple deterministic color map for tech icons (hash first char groups)
+    function iconColorFor(name){
+      const palette = ['#3b82f6','#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#0ea5e9','#ef4444','#14b8a6','#84cc16'];
+      if(!name) return '#475569';
+      let h=0; for(let i=0;i<name.length;i++){ h = (h*31 + name.charCodeAt(i))>>>0; }
+      return palette[h % palette.length];
+    }
+
     const form = document.getElementById('single-form');
     const domainInput = document.getElementById('domain');
   const modeSelect = document.getElementById('mode');
-  const freshChk = document.getElementById('fresh');
     const resDiv = document.getElementById('single-result');
     const techGrid = document.getElementById('tech-grid');
     const rawPre = document.getElementById('raw-json');
@@ -135,9 +252,61 @@
     const errorBox = document.getElementById('single-error');
     const scanBtnText = document.getElementById('scanBtnText');
     const scanSpinner = document.getElementById('scanSpinner');
-    const btnMicroDiag = document.getElementById('btnMicroDiag');
-    const btnQuickDiag = document.getElementById('btnQuickDiag');
-    const diagPre = document.getElementById('diag-json');
+  const diagPre = document.getElementById('diag-json');
+
+  // History elements
+  const historyForm = document.getElementById('history-form');
+  const historyDomain = document.getElementById('history-domain');
+  const historyLimit = document.getElementById('history-limit');
+  const historyErr = document.getElementById('history-error');
+  const historyWrap = document.getElementById('history-table-wrap');
+  const historyTbody = document.querySelector('#history-table tbody');
+  const historyRefreshBtn = document.getElementById('history-refresh');
+  const historyPrev = document.getElementById('history-prev');
+  const historyNext = document.getElementById('history-next');
+  const historyPageInfo = document.getElementById('history-page-info');
+  const historyPageJump = document.getElementById('history-page-jump');
+  const historyGo = document.getElementById('history-go');
+  let _lastHistory = {domain:null, limit:10, total:0};
+  let _historyOffset = 0;
+
+  function disableNextHistory(){
+    if(!_lastHistory.total) return false;
+    const nextOffset = _historyOffset + _lastHistory.limit;
+    return nextOffset >= _lastHistory.total;
+  }
+  function updateHistoryPageInfo(){
+    const page = Math.floor(_historyOffset / _lastHistory.limit) + 1;
+    const totalPages = _lastHistory.total ? Math.max(1, Math.ceil(_lastHistory.total / _lastHistory.limit)) : '?';
+    historyPageJump.value = page;
+    historyPageInfo.textContent = `Page ${page}/${totalPages} | Offset ${_historyOffset}${_lastHistory.total? ' | Total '+_lastHistory.total:''}`;
+    historyPrev.disabled = _historyOffset === 0;
+    historyNext.disabled = disableNextHistory();
+  }
+  historyPrev.addEventListener('click', ()=>{ if(!_lastHistory.domain) return; _historyOffset = Math.max(0, _historyOffset - _lastHistory.limit); historyRefreshBtn.click(); });
+  historyNext.addEventListener('click', ()=>{ if(!_lastHistory.domain) return; if(disableNextHistory()) return; _historyOffset += _lastHistory.limit; historyRefreshBtn.click(); });
+  historyGo.addEventListener('click', ()=>{ if(!_lastHistory.domain) return; const p = parseInt(historyPageJump.value); if(!p||p<1) return; _historyOffset = (p-1)*_lastHistory.limit; historyRefreshBtn.click(); });
+
+  // Search elements
+  const searchForm = document.getElementById('search-form');
+  const searchTech = document.getElementById('search-tech');
+  const searchVersion = document.getElementById('search-version');
+  const searchCategory = document.getElementById('search-category');
+  const searchLimit = document.getElementById('search-limit');
+  const searchNew24 = document.getElementById('search-new24');
+  const searchErr = document.getElementById('search-error');
+  const searchWrap = document.getElementById('search-table-wrap');
+  const searchTbody = document.querySelector('#search-table tbody');
+  const searchTable = document.getElementById('search-table');
+  const searchPrev = document.getElementById('search-prev');
+  const searchNext = document.getElementById('search-next');
+  const searchPageInfo = document.getElementById('search-page-info');
+  const searchPageJump = document.getElementById('search-page-jump');
+  const searchGo = document.getElementById('search-go');
+  let _searchData = [];
+  let _searchSort = {key:'last_seen', dir:'desc'};
+  let _searchOffset = 0;
+  let _searchQueryState = {tech:null, version:null, category:null, limit:50, total:0, new24:false};
 
     function setLoading(state){
       if(state){
@@ -157,14 +326,13 @@
       setLoading(true);
       try {
   const mode = modeSelect.value;
-  const freshFlag = freshChk.checked ? 1 : 0;
   const body = {domain};
   if(mode==='quick') body.quick = 1;
+  else if(mode==='fast_full') body.fast_full = 1;
   else if(mode==='deep') body.deep = 1;
   else if(mode==='full') body.full = 1;
-  if(freshFlag) body.fresh = 1;
-  // Quick still defaults to forcing fresh for enrichment if user didn't ask
-  if(mode==='quick' && !freshFlag) body.fresh = 1;
+  // Quick mode: always request fresh to ensure enrichment/version evidence current
+  if(mode==='quick') body.fresh = 1;
   const data = await postJSON('/scan', body);
         renderSingle(domain, data);
       } catch (err) {
@@ -190,15 +358,200 @@
       }
     }
 
+    const ICON_MAP = {
+      'wordpress':'/static/icons/wordpress.svg',
+      'react':'/static/icons/react.svg',
+      'laravel':'/static/icons/laravel.svg',
+      'vue.js':'/static/icons/vue.svg',
+      'vue':'/static/icons/vue.svg',
+      'angular':'/static/icons/angular.svg',
+      'tailwind css':'/static/icons/tailwindcss.svg',
+      'tailwind':'/static/icons/tailwindcss.svg',
+      'php':'/static/icons/php.svg',
+      'mysql':'/static/icons/mysql.svg',
+      'redis':'/static/icons/redis.svg'
+    };
+
+    // Remote icon integration (tech-stack-icons) – use CDN; fallback to local ICON_MAP or letter badge.
+  const ICON_REMOTE_BASE = 'https://unpkg.com/tech-stack-icons@1.4.0/icons'; // CDN fallback
+  const ICON_LOCAL_BASE = '/static/icons/stack'; // base dir; variant subfolders (dark/, light/, grayscale/)
+    const REMOTE_ICON_MAP = {
+      'wordpress':'wordpress',
+      'react':'react',
+      'laravel':'laravel',
+      'vue.js':'vue', 'vue':'vue',
+      'angular':'angular',
+      'tailwind css':'tailwindcss', 'tailwind':'tailwindcss',
+      'php':'php',
+      'mysql':'mysql',
+      'redis':'redis',
+      'nginx':'nginx',
+      'apache':'apache',
+      'cloudflare':'cloudflare',
+      'express':'express',
+      'drupal':'drupal',
+      'joomla':'joomla',
+      'woocommerce':'woocommerce',
+      'jquery':'jquery',
+      'next.js':'nextjs','nextjs':'nextjs',
+      'nuxt.js':'nuxtjs','nuxtjs':'nuxtjs'
+    };
+
+    // Extra local-only placeholder icons (popular plugins / technologies not (yet) in remote pack or we want custom look)
+    // Files exist under app/static/icons/stack/<variant>/<slug>.svg (dark + light provided; grayscale optional)
+    const LOCAL_EXTRA_ICONS = {
+      'yoast seo':'yoastseo','yoastseo':'yoastseo',
+      'wpml':'wpml',
+      'litespeed':'litespeed','lite speed':'litespeed',
+      'google analytics':'ga','ga':'ga',
+      'jquery ui':'jqueryui','jqueryui':'jqueryui',
+      'jquery migrate':'jquerymigrate','jquerymigrate':'jquerymigrate'
+    };
+
+    const failCounts = {};
+    function fallbackIcon(img){
+      try{
+        const name = img.dataset.tech || '?';
+        const key = name.toLowerCase();
+        // Record failed remote icon if it looks like a remote src. Only persist after 2 consecutive failures this session.
+        if(img.src.startsWith(ICON_REMOTE_BASE)){
+          failCounts[key] = (failCounts[key]||0)+1;
+          if(failCounts[key] >= 2){
+            failedRemoteIcons.add(key);
+            try { localStorage.setItem('techscan_failed_remote_icons', JSON.stringify(Array.from(failedRemoteIcons))); } catch(_){ }
+          }
+        }
+        const parent = img.parentElement;
+        if(parent){
+          const letter = name.charAt(0).toUpperCase();
+          const color = iconColorFor(name);
+            parent.innerHTML = `<div class='tech-icon' style="background:${color}">${letter}</div>`;
+        }
+      }catch(_e){/* noop */}
+    }
+
+    // Failed remote icon cache (persisted)
+    let failedRemoteIcons = new Set();
+    try {
+      const storedFail = localStorage.getItem('techscan_failed_remote_icons');
+      if(storedFail){ JSON.parse(storedFail).forEach(k=>failedRemoteIcons.add(k)); }
+    } catch(_e){ /* ignore */ }
+
+  let enableRemoteIcons = true; // remote vs letter/local legacy icons
+  let useLocalPack = false; // when true use locally extracted tech-stack-icons svgs first (and local extras)
+    try { const stored = localStorage.getItem('techscan_remote_icons'); if(stored!==null) enableRemoteIcons = stored === '1'; } catch(_e){}
+    try { const storedLocal = localStorage.getItem('techscan_use_local_pack'); if(storedLocal!==null) useLocalPack = storedLocal === '1'; } catch(_e){}
+    const remoteToggleEl = document.getElementById('toggle-remote-icons');
+    if(remoteToggleEl) remoteToggleEl.checked = enableRemoteIcons;
+
+    const variantSelect = document.getElementById('icon-variant');
+    // Restore variant selection if persisted
+    try { const vStored = localStorage.getItem('techscan_icon_variant'); if(vStored && variantSelect) variantSelect.value = vStored; } catch(_e){}
+    function currentVariant(){ return (variantSelect && variantSelect.value) || 'dark'; }
+    function techIconHTML(name, version){
+      if(!name) return null;
+      const key = name.toLowerCase();
+      const title = version ? `${name} ${version}` : name;
+      // Prefer remote icon if available (toggle + failed cache added later)
+      if(REMOTE_ICON_MAP[key] && !failedRemoteIcons.has(key)){
+        if(useLocalPack){
+          // local extracted files now live in variant subfolders: stack/<variant>/<icon>.svg
+          const localPath = `${ICON_LOCAL_BASE}/${currentVariant()}/${REMOTE_ICON_MAP[key]}.svg`;
+          return `<div class='tech-logo'><img src='${localPath}' alt='${name} logo' title='${title}' data-tech='${name}' data-version='${version||''}' onerror='fallbackIcon(this)'/></div>`;
+        }
+        if(enableRemoteIcons){
+          const remotePath = `${ICON_REMOTE_BASE}/${REMOTE_ICON_MAP[key]}.svg`;
+          return `<div class='tech-logo'><img src='${remotePath}' alt='${name} logo' title='${title}' data-tech='${name}' data-version='${version||''}' onerror='fallbackIcon(this)'/></div>`;
+        }
+      }
+      // Local extra placeholders (plugins etc.) – only if local pack active (or remote disabled and we still want icon)
+      if(LOCAL_EXTRA_ICONS[key]){
+        const slug = LOCAL_EXTRA_ICONS[key];
+        const localExtraPath = `${ICON_LOCAL_BASE}/${currentVariant()}/${slug}.svg`;
+        return `<div class='tech-logo'><img src='${localExtraPath}' alt='${name} logo' title='${title}' data-tech='${name}' data-version='${version||''}' onerror='fallbackIcon(this)'/></div>`;
+      }
+      const path = ICON_MAP[key];
+      if(path) return `<div class='tech-logo'><img src='${path}' alt='${name} logo' title='${title}' data-tech='${name}' data-version='${version||''}' onerror='fallbackIcon(this)'/></div>`;
+      const letter = name.charAt(0).toUpperCase();
+      const color = iconColorFor(name);
+      return `<div class='tech-icon' style="background:${color}" title='${title}'>${letter}</div>`;
+    }
+
+    // Rerender helpers when toggle changes
+    let _lastSingleData = null; let _lastSingleDomain = null;
+    let _lastDomainLookup = null; // {domain, data}
+    function reRenderAfterToggle(){
+      if(_lastSingleData && _lastSingleDomain){
+        renderSingle(_lastSingleDomain, _lastSingleData);
+      }
+      if(_lastDomainLookup){
+        renderDomainLookup(_lastDomainLookup.domain, _lastDomainLookup.data);
+      }
+    }
+    const localPackBtn = document.getElementById('switch-local-pack');
+    if(localPackBtn){ localPackBtn.textContent = useLocalPack? 'Use CDN Pack':'Use Local Pack'; }
+    if(remoteToggleEl){
+      remoteToggleEl.addEventListener('change', ()=>{
+        enableRemoteIcons = remoteToggleEl.checked;
+        try { localStorage.setItem('techscan_remote_icons', enableRemoteIcons? '1':'0'); } catch(_e){}
+        reRenderAfterToggle();
+        if(enableRemoteIcons && !useLocalPack){ preloadCriticalIcons(); }
+      });
+    }
+    if(localPackBtn){
+      localPackBtn.addEventListener('click', ()=>{
+        useLocalPack = !useLocalPack;
+        localPackBtn.textContent = useLocalPack? 'Use CDN Pack':'Use Local Pack';
+        try { localStorage.setItem('techscan_use_local_pack', useLocalPack? '1':'0'); } catch(_e){}
+        reRenderAfterToggle();
+      });
+    }
+    if(variantSelect){
+      variantSelect.addEventListener('change', ()=>{
+        try { localStorage.setItem('techscan_icon_variant', variantSelect.value); } catch(_e){}
+        // variant influences which subfolder we load icons from
+        reRenderAfterToggle();
+      });
+    }
+    const resetBtn = document.getElementById('reset-icon-cache');
+    if(resetBtn){
+      resetBtn.addEventListener('click', ()=>{
+        failedRemoteIcons.clear();
+        Object.keys(failCounts).forEach(k=> delete failCounts[k]);
+        try { localStorage.removeItem('techscan_failed_remote_icons'); } catch(_e){}
+        _preloadedOnce = false;
+        if(enableRemoteIcons){ preloadCriticalIcons(); }
+        reRenderAfterToggle();
+      });
+    }
+
+    const CRITICAL_REMOTE_ICONS = ['wordpress','react','laravel','vue','angular','tailwindcss','php','mysql','redis','nginx','apache'];
+    let _preloadedOnce = false;
+    function preloadCriticalIcons(){
+      if(!enableRemoteIcons) return;
+      if(_preloadedOnce) return; // only once per load
+      _preloadedOnce = true;
+      CRITICAL_REMOTE_ICONS.forEach(k=>{
+        if(!REMOTE_ICON_MAP[k]) return;
+        if(failedRemoteIcons.has(k)) return;
+        const img = new Image();
+        img.onload = ()=>{/* success noop */};
+        img.onerror = ()=>{ failedRemoteIcons.add(k); try { localStorage.setItem('techscan_failed_remote_icons', JSON.stringify(Array.from(failedRemoteIcons))); } catch(_e){} };
+        img.src = `${ICON_REMOTE_BASE}/${REMOTE_ICON_MAP[k]}.svg`;
+      });
+    }
+    if(enableRemoteIcons){ preloadCriticalIcons(); }
+
     function renderSingle(domain, data){
+      _lastSingleData = data; _lastSingleDomain = domain;
       synthesizeCategories(data); // ensure categories fallback if backend still empty
       resDiv.classList.remove('hidden');
       resDomain.textContent = domain + (data.cached ? ' (cached)' : '');
       techGrid.innerHTML='';
       (data.technologies||[]).forEach(t=>{
         const el = document.createElement('div');
-        el.className='tech';
-        el.innerHTML = `<h3>${t.name||''}</h3>` +
+        el.className='tech has-icon';
+        el.innerHTML = techIconHTML(t.name||'', t.version) + `<h3>${t.name||''}</h3>` +
           (t.version?`<div class='version'>${t.version}</div>`:'') +
           `<div class='badge-row'>${(t.categories||[]).map(c=>`<span class='badge'>${c}</span>`).join('')}</div>`;
         techGrid.appendChild(el);
@@ -224,33 +577,339 @@
         return j;
       }
 
-      btnMicroDiag.addEventListener('click', async () => {
-        const domain = domainInput.value.trim().toLowerCase();
-        if(!domain) return;
-        btnMicroDiag.disabled = true; btnMicroDiag.textContent='Micro...';
+      // Diagnostics buttons removed for simplified UI; keep function available if needed later.
+
+      function fmt(ts){
+        if(!ts && ts!==0) return '-';
+        try { return new Date(ts*1000).toLocaleString(); } catch { return ts; }
+      }
+
+      historyForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        const dom = historyDomain.value.trim().toLowerCase();
+        if(!dom) return;
+        historyErr.classList.add('hidden');
+        historyWrap.classList.add('hidden');
+        historyTbody.innerHTML = '';
         try {
-          const res = await fetchDiag({domain, micro:1});
-          diagPre.textContent = JSON.stringify(res, null, 2);
-        } catch(e){
-          diagPre.textContent = 'Error: '+ e.message;
-        } finally {
-          btnMicroDiag.disabled = false; btnMicroDiag.textContent='Micro Diag';
+          const limit = parseInt(historyLimit.value)||10;
+          _lastHistory = {domain: dom, limit, total:0};
+          _historyOffset = 0;
+          const r = await fetch(`/history?domain=${encodeURIComponent(dom)}&limit=${limit}&offset=${_historyOffset}`);
+          const txt = await r.text();
+          let j; try { j = JSON.parse(txt); } catch { throw new Error('Invalid JSON'); }
+          if(!r.ok) throw new Error(j.error || 'History failed');
+          _lastHistory.total = j.total || 0;
+          ;(j.history||[]).forEach(item => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${item.mode}</td>`+
+              `<td>${fmt(item.started_at)}</td>`+
+              `<td>${fmt(item.finished_at)}</td>`+
+              `<td>${item.duration_ms}</td>`+
+              `<td>${item.from_cache? 'yes':'no'}</td>`+
+              `<td>${item.retries}</td>`+
+              `<td>${item.timeout_used}</td>`;
+            historyTbody.appendChild(tr);
+          });
+          historyWrap.classList.remove('hidden');
+          updateHistoryPageInfo();
+          if(!(j.history||[]).length){
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td colspan="7" style="color:var(--text-dim);font-style:italic">No history</td>';
+            historyTbody.appendChild(tr);
+          }
+        } catch(err){
+          historyErr.textContent = err.message;
+          historyErr.classList.remove('hidden');
         }
       });
 
-      btnQuickDiag.addEventListener('click', async () => {
-        const domain = domainInput.value.trim().toLowerCase();
-        if(!domain) return;
-        btnQuickDiag.disabled = true; btnQuickDiag.textContent='Heuristic...';
+      historyRefreshBtn.addEventListener('click', async () => {
+        if(!_lastHistory.domain){
+          historyErr.textContent='Belum ada histori yang dimuat.';
+          historyErr.classList.remove('hidden');
+          return;
+        }
+        // trigger fetch with stored state
+        historyErr.classList.add('hidden');
+        historyWrap.classList.add('hidden');
+        historyTbody.innerHTML='';
         try {
-          const res = await fetchDiag({domain});
-          diagPre.textContent = JSON.stringify(res, null, 2);
-        } catch(e){
-          diagPre.textContent = 'Error: '+ e.message;
-        } finally {
-          btnQuickDiag.disabled = false; btnQuickDiag.textContent='Quick Heuristic Only';
+          const r = await fetch(`/history?domain=${encodeURIComponent(_lastHistory.domain)}&limit=${_lastHistory.limit}&offset=${_historyOffset}`);
+          const txt = await r.text(); let j; try { j = JSON.parse(txt);} catch { throw new Error('Invalid JSON'); }
+          if(!r.ok) throw new Error(j.error || 'History failed');
+          ;(j.history||[]).forEach(item => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${item.mode}</td>`+
+              `<td>${fmt(item.started_at)}</td>`+
+              `<td>${fmt(item.finished_at)}</td>`+
+              `<td>${item.duration_ms}</td>`+
+              `<td>${item.from_cache? 'yes':'no'}</td>`+
+              `<td>${item.retries}</td>`+
+              `<td>${item.timeout_used}</td>`;
+            historyTbody.appendChild(tr);
+          });
+          historyWrap.classList.remove('hidden');
+          if(j.total !== undefined) _lastHistory.total = j.total;
+          updateHistoryPageInfo();
+          if(!(j.history||[]).length){
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td colspan="7" style="color:var(--text-dim);font-style:italic">No history</td>';
+            historyTbody.appendChild(tr);
+          }
+        } catch(err){
+          historyErr.textContent = err.message;
+          historyErr.classList.remove('hidden');
         }
       });
+
+      searchForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        const tech = searchTech.value.trim();
+        if(!tech) return;
+        searchErr.classList.add('hidden');
+        searchWrap.classList.add('hidden');
+        searchTbody.innerHTML='';
+        const params = new URLSearchParams();
+        params.set('tech', tech);
+        const ver = searchVersion.value.trim(); if(ver) params.set('version', ver);
+        const cat = searchCategory.value.trim(); if(cat) params.set('category', cat);
+        const lim = parseInt(searchLimit.value)||50; params.set('limit', lim);
+        if(searchNew24 && searchNew24.checked) params.set('new24','1');
+        try {
+          _searchOffset = 0;
+          _searchQueryState = {tech, version:ver||null, category:cat||null, limit:lim, total:0, new24: (searchNew24? searchNew24.checked:false)};
+          params.set('offset', _searchOffset);
+          const r = await fetch(`/search?${params.toString()}`);
+          const txt = await r.text(); let j; try { j = JSON.parse(txt);} catch { throw new Error('Invalid JSON'); }
+          if(!r.ok) throw new Error(j.error || 'Search failed');
+          _searchData = j.results||[]; _searchQueryState.total = j.total || 0;
+          renderSearchTable();
+          searchWrap.classList.remove('hidden');
+          if(!(j.results||[]).length){
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td colspan="6" style="color:var(--text-dim);font-style:italic">No results</td>';
+            searchTbody.appendChild(tr);
+          }
+          updateSearchPageInfo();
+        } catch(err){
+            searchErr.textContent = err.message;
+            searchErr.classList.remove('hidden');
+        }
+      });
+
+      function renderSearchTable(){
+        searchTbody.innerHTML='';
+        _searchData.forEach(item => {
+          const tr = document.createElement('tr');
+          const isNew = (Date.now()/1000 - item.first_seen) < 86400;
+          if(isNew) tr.classList.add('new-domain');
+          tr.innerHTML = `<td>${item.domain}${isNew?'<span class="new-chip">NEW</span>':''}</td>`+
+            `<td>${item.tech_name}</td>`+
+            `<td>${item.version||''}</td>`+
+            `<td>${(item.categories||[]).join(', ')}</td>`+
+            `<td>${fmt(item.first_seen)}</td>`+
+            `<td>${fmt(item.last_seen)}</td>`;
+          searchTbody.appendChild(tr);
+        });
+      }
+
+      function sortSearch(key){
+        if(_searchSort.key === key){
+          _searchSort.dir = _searchSort.dir === 'asc' ? 'desc':'asc';
+        } else {
+          _searchSort.key = key;
+          _searchSort.dir = 'asc';
+        }
+        _searchOffset = 0;
+        fetchSearchPage();
+      }
+
+      // Attach click handlers to headers
+      (function(){
+        const headers = searchTable.querySelectorAll('thead th');
+        const map = ['domain','tech_name','version','categories','first_seen','last_seen'];
+        headers.forEach((th,i)=>{
+          th.style.cursor='pointer';
+          th.addEventListener('click', ()=>{
+            sortSearch(map[i]);
+          });
+        });
+      })();
+
+      function fetchSearchPage(){
+        const params = new URLSearchParams();
+        params.set('tech', _searchQueryState.tech);
+        if(_searchQueryState.version) params.set('version', _searchQueryState.version);
+        if(_searchQueryState.category) params.set('category', _searchQueryState.category);
+  if(_searchQueryState.new24) params.set('new24','1');
+  params.set('limit', _searchQueryState.limit);
+  if(_searchSort.key){ params.set('sort', _searchSort.key); params.set('dir', _searchSort.dir); }
+        params.set('offset', _searchOffset);
+        fetch(`/search?${params.toString()}`)
+          .then(r=>r.text().then(t=>({ok:r.ok,text:t})))
+          .then(({ok,text})=>{
+            let j; try { j = JSON.parse(text);} catch { throw new Error('Invalid JSON'); }
+            if(!ok) throw new Error(j.error||'Search failed');
+            _searchData = j.results||[]; if(j.total !== undefined) _searchQueryState.total = j.total;
+            renderSearchTable();
+            updateSearchPageInfo();
+            if(!_searchData.length){
+              searchTbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-dim);font-style:italic">No results</td></tr>';
+            }
+          })
+          .catch(e=>{
+            searchErr.textContent = e.message;
+            searchErr.classList.remove('hidden');
+          });
+      }
+  searchPrev.addEventListener('click', ()=>{ if(!_searchQueryState.tech) return; _searchOffset = Math.max(0, _searchOffset - _searchQueryState.limit); fetchSearchPage(); });
+  searchNext.addEventListener('click', ()=>{ if(!_searchQueryState.tech) return; if(disableNextSearch()) return; _searchOffset += _searchQueryState.limit; fetchSearchPage(); });
+      searchGo.addEventListener('click', ()=>{ if(!_searchQueryState.tech) return; const p = parseInt(searchPageJump.value); if(!p||p<1) return; _searchOffset = (p-1)*_searchQueryState.limit; fetchSearchPage(); });
+      function disableNextSearch(){
+        if(!_searchQueryState.total) return false;
+        const nextOffset = _searchOffset + _searchQueryState.limit;
+        return nextOffset >= _searchQueryState.total;
+      }
+      function updateSearchPageInfo(){
+        const page = Math.floor(_searchOffset / _searchQueryState.limit) + 1;
+        const totalPages = _searchQueryState.total ? Math.max(1, Math.ceil(_searchQueryState.total / _searchQueryState.limit)) : '?';
+        searchPageJump.value = page;
+        searchPageInfo.textContent = `Page ${page}/${totalPages} | Offset ${_searchOffset}${_searchQueryState.total? ' | Total '+_searchQueryState.total:''}`;
+        searchPrev.disabled = _searchOffset === 0;
+        searchNext.disabled = disableNextSearch();
+      }
+      if(searchNew24){
+        searchNew24.addEventListener('change', ()=>{ if(!_searchQueryState.tech) return; searchForm.dispatchEvent(new Event('submit')); });
+      }
+      function debounce(fn, wait){ let t; return function(...args){ clearTimeout(t); t=setTimeout(()=>fn.apply(this,args), wait); }; }
+      const autoSearch = debounce(()=>{
+        if(!searchTech.value.trim()) return;
+        if(!_searchQueryState.tech || searchTech.value.trim() !== _searchQueryState.tech){
+          searchForm.dispatchEvent(new Event('submit'));
+        } else {
+          _searchQueryState.version = searchVersion.value.trim()||null;
+          _searchQueryState.category = searchCategory.value.trim()||null;
+          _searchQueryState.new24 = searchNew24? searchNew24.checked:false;
+          _searchOffset = 0;
+          fetchSearchPage();
+        }
+      }, 500);
+      [searchTech, searchVersion, searchCategory].forEach(el=> el.addEventListener('input', autoSearch));
+
+    // Diff logic
+    const diffForm = document.getElementById('diff-form');
+    const diffDomain = document.getElementById('diff-domain');
+    const diffErr = document.getElementById('diff-error');
+    const diffResult = document.getElementById('diff-result');
+    const diffMeta = document.getElementById('diff-meta');
+    const diffAdded = document.getElementById('diff-added');
+    const diffRemoved = document.getElementById('diff-removed');
+    const diffChanged = document.getElementById('diff-changed');
+    diffForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      diffErr.classList.add('hidden');
+      diffResult.classList.add('hidden');
+      diffAdded.innerHTML = diffRemoved.innerHTML = diffChanged.innerHTML = '';
+      const dom = diffDomain.value.trim().toLowerCase(); if(!dom) return;
+      try {
+        const r = await fetch(`/diff?domain=${encodeURIComponent(dom)}`);
+        const txt = await r.text(); let j; try { j = JSON.parse(txt);} catch { throw new Error('Invalid JSON'); }
+        if(!r.ok) throw new Error(j.error || 'Diff failed');
+        diffMeta.textContent = `Latest: ${new Date(j.latest_scan*1000).toLocaleString()} | Previous: ${new Date(j.previous_scan*1000).toLocaleString()} | Added ${j.added.length} | Removed ${j.removed.length} | Changed ${j.changed_count} | Unchanged ${j.unchanged_count}`;
+        (j.added||[]).forEach(t=>{
+          const li = document.createElement('li');
+          li.textContent = t.name + (t.version? ' '+t.version:'');
+          diffAdded.appendChild(li);
+        });
+        (j.removed||[]).forEach(t=>{
+          const li = document.createElement('li');
+            li.textContent = t.name + (t.version? ' '+t.version:'');
+            diffRemoved.appendChild(li);
+        });
+        (j.changed||[]).forEach(c=>{
+          const li = document.createElement('li');
+          let text = c.name;
+          if(c.upgrade_path){
+            text += `: ${c.upgrade_path.from||'(none)'} -> ${c.upgrade_path.to||'(none)'} (${c.upgrade_path.direction})`;
+          } else {
+            if(c.previous_versions && c.current_versions){
+              text += `: [${c.previous_versions.join(',')}] -> [${c.current_versions.join(',')}]`;
+            }
+          }
+          diffChanged.appendChild(li); li.textContent = text;
+        });
+        diffResult.classList.remove('hidden');
+      } catch(err){
+        diffErr.textContent = err.message;
+        diffErr.classList.remove('hidden');
+      }
+    });
+      // persist limit preferences
+      (function(){
+        const hlim = localStorage.getItem('techscan_history_limit'); if(hlim && !isNaN(parseInt(hlim))) historyLimit.value = hlim;
+        const slim = localStorage.getItem('techscan_search_limit'); if(slim && !isNaN(parseInt(slim))) searchLimit.value = slim;
+      })();
+      historyLimit.addEventListener('change', ()=> localStorage.setItem('techscan_history_limit', historyLimit.value));
+      searchLimit.addEventListener('change', ()=> localStorage.setItem('techscan_search_limit', searchLimit.value));
+      function updateSortIndicators(){
+        const headers = searchTable.querySelectorAll('thead th');
+        const map = ['domain','tech_name','version','categories','first_seen','last_seen'];
+        headers.forEach((th,i)=>{
+          const key = map[i];
+          const base = th.textContent.replace(/\s*[▲▼]$/,'');
+          th.textContent = base;
+          if(_searchSort.key === key){ th.textContent = base + (_searchSort.dir==='asc'? ' ▲':' ▼'); }
+        });
+      }
+
+    // Domain lookup panel
+    const domainForm = document.getElementById('domain-form');
+    const lookupDomain = document.getElementById('lookup-domain');
+    const domainError = document.getElementById('domain-error');
+    const domainResult = document.getElementById('domain-result');
+    const domainTitle = document.getElementById('domain-res-title');
+    const domainTechGrid = document.getElementById('domain-tech-grid');
+    const domainCatDiv = document.getElementById('domain-cat');
+    domainForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      const dom = lookupDomain.value.trim().toLowerCase();
+      if(!dom) return;
+      domainError.classList.add('hidden');
+      domainResult.classList.add('hidden');
+      domainTechGrid.innerHTML='';
+      domainCatDiv.innerHTML='';
+      try {
+        const r = await fetch(`/domain?domain=${encodeURIComponent(dom)}`);
+        const txt = await r.text(); let j; try { j = JSON.parse(txt);} catch { throw new Error('Invalid JSON'); }
+        if(!r.ok) throw new Error(j.error || 'Lookup failed');
+        domainTitle.textContent = `${j.domain} (${j.count} tech)`;
+        renderDomainLookup(j.domain, j);
+        const cats = j.categories || {};
+        Object.keys(cats).sort().forEach(c=>{
+          const block = document.createElement('div');
+          block.className='cat-block';
+          block.innerHTML = `<h4>${c}</h4><div class='badge-row'>` +
+            cats[c].map(x=>`<span class='badge'>${x.name}${x.version?' '+x.version:''}</span>`).join('') + '</div>';
+          domainCatDiv.appendChild(block);
+        });
+        domainResult.classList.remove('hidden');
+      } catch(err){
+        domainError.textContent = err.message;
+        domainError.classList.remove('hidden');
+      }
+    });
+
+    function renderDomainLookup(domain, data){
+      _lastDomainLookup = {domain, data};
+      domainTechGrid.innerHTML='';
+      (data.technologies||[]).forEach(t=>{
+        const el = document.createElement('div');
+        el.className='tech has-icon';
+        el.innerHTML = techIconHTML(t.name||'', t.version) + `<h3>${t.name||''}</h3>` + (t.version?`<div class='version'>${t.version}</div>`:'') + `<div class='badge-row'>${(t.categories||[]).map(c=>`<span class='badge'>${c}</span>`).join('')}</div>`;
+        domainTechGrid.appendChild(el);
+      });
+    }
 
     // Bulk upload
     const fileInput = document.getElementById('fileInput');
@@ -258,32 +917,64 @@
     const bulkWrapper = document.getElementById('bulk-table-wrapper');
     const bulkTableBody = document.querySelector('#bulk-table tbody');
 
+    let _bulkDomains = [];
     fileInput.addEventListener('change', async e => {
       const file = e.target.files[0];
       if(!file) return;
       const text = await file.text();
-      const domains = Array.from(new Set(text.split(/\r?\n/).map(l=>l.trim().toLowerCase()).filter(Boolean)));
-      if(!domains.length){
+      _bulkDomains = Array.from(new Set(text.split(/\r?\n/).map(l=>l.trim().toLowerCase()).filter(Boolean)));
+      if(!_bulkDomains.length){
         bulkStatus.textContent='No valid domains found';
         bulkStatus.classList.remove('hidden');
+        bulkWrapper.classList.add('hidden');
         return;
       }
       bulkStatus.classList.add('hidden');
       bulkWrapper.classList.remove('hidden');
       bulkTableBody.innerHTML = '';
-      domains.forEach(d=>{
+      _bulkDomains.forEach(d=>{
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${d}</td><td>queued</td><td>-</td><td>-</td>`;
+        tr.innerHTML = `<td>${d}</td><td>ready</td><td>-</td><td>-</td>`;
         bulkTableBody.appendChild(tr);
       });
+    });
+
+    async function runBulkScan(downloadCsv=false){
+      if(!_bulkDomains.length){
+        bulkStatus.textContent='Upload list terlebih dahulu.';
+        bulkStatus.classList.remove('hidden');
+        return;
+      }
+      bulkStatus.classList.add('hidden');
+      // mark queued
+      Array.from(bulkTableBody.rows).forEach(r=> r.cells[1].textContent='queued');
+      // Use backend defaults (timeout, retries, concurrency). Minimal payload.
+      const payload = {domains: _bulkDomains};
       try {
-        const resp = await postJSON('/bulk', {domains});
+        if(downloadCsv){
+          // request CSV
+            const resp = await fetch('/bulk?format=csv', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+            if(!resp.ok){
+              const txt = await resp.text();
+              bulkStatus.textContent = 'Bulk CSV failed: '+txt.slice(0,120);
+              bulkStatus.classList.remove('hidden');
+              return;
+            }
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'bulk_scan.csv';
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(url);
+            return;
+        }
+        const resp = await postJSON('/bulk', payload);
         resp.results.forEach((r,i)=>{
           const row = bulkTableBody.rows[i];
           if(!row) return;
           if(r.status==='ok'){
             const top = (r.technologies||[])[0];
-            row.cells[1].textContent='ok';
+            row.cells[1].textContent = 'ok';
             row.cells[2].textContent=r.technologies.length;
             row.cells[3].textContent=top? top.name + (top.version? ' '+top.version:'') : '-';
           } else {
@@ -296,7 +987,9 @@
         bulkStatus.textContent=err.message;
         bulkStatus.classList.remove('hidden');
       }
-    });
+    }
+    document.getElementById('bulk-scan-btn').addEventListener('click', ()=> runBulkScan(false));
+    document.getElementById('bulk-download-csv').addEventListener('click', ()=> runBulkScan(true));
   </script>
 </body>
 </html>

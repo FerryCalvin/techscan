@@ -1,0 +1,1139 @@
+{
+  "audit": {
+    "outdated": [
+      {
+        "difference": "minor",
+        "latest": "1.27.1",
+        "name": "Nginx",
+        "version": "1.22.1"
+      }
+    ],
+    "outdated_count": 1,
+    "outdated_major": 0,
+    "outdated_minor": 1,
+    "outdated_patch": 0,
+    "version_dataset": "latest_versions.json"
+  },
+  "cached": true,
+  "categories": {
+    "A/B Testing": [
+      {
+        "name": "OneSignal",
+        "version": null
+      }
+    ],
+    "Accessibility": [
+      {
+        "name": "UserWay",
+        "version": null
+      }
+    ],
+    "Analytics": [
+      {
+        "name": "Site Kit",
+        "version": "1.161.0"
+      },
+      {
+        "name": "MonsterInsights",
+        "version": "9.8.0"
+      },
+      {
+        "name": "Google Analytics",
+        "version": "GA4"
+      }
+    ],
+    "Blogs": [
+      {
+        "name": "WordPress",
+        "version": null
+      }
+    ],
+    "CMS": [
+      {
+        "name": "WordPress",
+        "version": null
+      }
+    ],
+    "Databases": [
+      {
+        "name": "MySQL",
+        "version": null
+      }
+    ],
+    "Font scripts": [
+      {
+        "name": "Twitter Emoji (Twemoji)",
+        "version": null
+      },
+      {
+        "name": "Font Awesome",
+        "version": null
+      },
+      {
+        "name": "Google Font API",
+        "version": null
+      }
+    ],
+    "JavaScript frameworks": [
+      {
+        "name": "Svelte",
+        "version": null
+      }
+    ],
+    "JavaScript libraries": [
+      {
+        "name": "Moment.js",
+        "version": "2.29.4"
+      },
+      {
+        "name": "Marked",
+        "version": null
+      },
+      {
+        "name": "jQuery UI",
+        "version": "1.13.3"
+      },
+      {
+        "name": "jQuery Migrate",
+        "version": "3.4.1"
+      },
+      {
+        "name": "jQuery",
+        "version": "3.7.1"
+      },
+      {
+        "name": "core-js",
+        "version": "3.43.0"
+      },
+      {
+        "name": "Swiper",
+        "version": null
+      }
+    ],
+    "Live chat": [
+      {
+        "name": "WhatsApp Business Chat",
+        "version": null
+      }
+    ],
+    "Marketing automation": [
+      {
+        "name": "OneSignal",
+        "version": null
+      }
+    ],
+    "Miscellaneous": [
+      {
+        "name": "Webpack",
+        "version": null
+      },
+      {
+        "name": "RSS",
+        "version": null
+      },
+      {
+        "name": "PWA",
+        "version": null
+      },
+      {
+        "name": "Open Graph",
+        "version": null
+      },
+      {
+        "name": "Module Federation",
+        "version": null
+      }
+    ],
+    "Page builders": [
+      {
+        "name": "Elementor",
+        "version": "3.31.5"
+      }
+    ],
+    "Performance": [
+      {
+        "name": "Priority Hints",
+        "version": null
+      }
+    ],
+    "Programming languages": [
+      {
+        "name": "PHP",
+        "version": null
+      }
+    ],
+    "Reverse proxies": [
+      {
+        "name": "Nginx",
+        "version": "1.22.1"
+      }
+    ],
+    "SEO": [
+      {
+        "name": "Yoast SEO",
+        "version": "25.5"
+      }
+    ],
+    "SSL/TLS certificate authorities": [
+      {
+        "name": "Sectigo",
+        "version": null
+      }
+    ],
+    "Security": [
+      {
+        "name": "HSTS",
+        "version": null
+      }
+    ],
+    "Tag managers": [
+      {
+        "name": "Google Tag Manager",
+        "version": null
+      }
+    ],
+    "Translation": [
+      {
+        "name": "WPML",
+        "version": "4.7.6"
+      }
+    ],
+    "Web servers": [
+      {
+        "name": "Nginx",
+        "version": "1.22.1"
+      }
+    ],
+    "WordPress plugins": [
+      {
+        "name": "Draftpress HFCM",
+        "version": null
+      },
+      {
+        "name": "Essential Addons for Elementor",
+        "version": null
+      },
+      {
+        "name": "Elementor Header & Footer Builder",
+        "version": null
+      },
+      {
+        "name": "Elementor",
+        "version": "3.31.5"
+      },
+      {
+        "name": "SuperPWA",
+        "version": null
+      },
+      {
+        "name": "Yoast SEO",
+        "version": "25.5"
+      },
+      {
+        "name": "WPML",
+        "version": "4.7.6"
+      },
+      {
+        "name": "Site Kit",
+        "version": "1.161.0"
+      },
+      {
+        "name": "MonsterInsights",
+        "version": "9.8.0"
+      }
+    ],
+    "WordPress themes": [
+      {
+        "name": "Hello Elementor",
+        "version": "3.1.1"
+      }
+    ]
+  },
+  "domain": "unair.ac.id",
+  "duration": 25.59,
+  "engine": "wappalyzer-local",
+  "finished_at": 1759283603.7977436,
+  "raw": {
+    "categories": {
+      "A/B Testing": [
+        {
+          "name": "OneSignal",
+          "version": null
+        }
+      ],
+      "Accessibility": [
+        {
+          "name": "UserWay",
+          "version": null
+        }
+      ],
+      "Analytics": [
+        {
+          "name": "Site Kit",
+          "version": "1.161.0"
+        },
+        {
+          "name": "MonsterInsights",
+          "version": "9.8.0"
+        },
+        {
+          "name": "Google Analytics",
+          "version": "GA4"
+        }
+      ],
+      "Blogs": [
+        {
+          "name": "WordPress",
+          "version": null
+        }
+      ],
+      "CMS": [
+        {
+          "name": "WordPress",
+          "version": null
+        }
+      ],
+      "Databases": [
+        {
+          "name": "MySQL",
+          "version": null
+        }
+      ],
+      "Font scripts": [
+        {
+          "name": "Twitter Emoji (Twemoji)",
+          "version": null
+        },
+        {
+          "name": "Font Awesome",
+          "version": null
+        },
+        {
+          "name": "Google Font API",
+          "version": null
+        }
+      ],
+      "JavaScript frameworks": [
+        {
+          "name": "Svelte",
+          "version": null
+        }
+      ],
+      "JavaScript libraries": [
+        {
+          "name": "Moment.js",
+          "version": "2.29.4"
+        },
+        {
+          "name": "Marked",
+          "version": null
+        },
+        {
+          "name": "jQuery UI",
+          "version": "1.13.3"
+        },
+        {
+          "name": "jQuery Migrate",
+          "version": "3.4.1"
+        },
+        {
+          "name": "jQuery",
+          "version": "3.7.1"
+        },
+        {
+          "name": "core-js",
+          "version": "3.43.0"
+        },
+        {
+          "name": "Swiper",
+          "version": null
+        }
+      ],
+      "Live chat": [
+        {
+          "name": "WhatsApp Business Chat",
+          "version": null
+        }
+      ],
+      "Marketing automation": [
+        {
+          "name": "OneSignal",
+          "version": null
+        }
+      ],
+      "Miscellaneous": [
+        {
+          "name": "Webpack",
+          "version": null
+        },
+        {
+          "name": "RSS",
+          "version": null
+        },
+        {
+          "name": "PWA",
+          "version": null
+        },
+        {
+          "name": "Open Graph",
+          "version": null
+        },
+        {
+          "name": "Module Federation",
+          "version": null
+        }
+      ],
+      "Page builders": [
+        {
+          "name": "Elementor",
+          "version": "3.31.5"
+        }
+      ],
+      "Performance": [
+        {
+          "name": "Priority Hints",
+          "version": null
+        }
+      ],
+      "Programming languages": [
+        {
+          "name": "PHP",
+          "version": null
+        }
+      ],
+      "Reverse proxies": [
+        {
+          "name": "Nginx",
+          "version": "1.22.1"
+        }
+      ],
+      "SEO": [
+        {
+          "name": "Yoast SEO",
+          "version": "25.5"
+        }
+      ],
+      "SSL/TLS certificate authorities": [
+        {
+          "name": "Sectigo",
+          "version": null
+        }
+      ],
+      "Security": [
+        {
+          "name": "HSTS",
+          "version": null
+        }
+      ],
+      "Tag managers": [
+        {
+          "name": "Google Tag Manager",
+          "version": null
+        }
+      ],
+      "Translation": [
+        {
+          "name": "WPML",
+          "version": "4.7.6"
+        }
+      ],
+      "Web servers": [
+        {
+          "name": "Nginx",
+          "version": "1.22.1"
+        }
+      ],
+      "WordPress plugins": [
+        {
+          "name": "Draftpress HFCM",
+          "version": null
+        },
+        {
+          "name": "Essential Addons for Elementor",
+          "version": null
+        },
+        {
+          "name": "Elementor Header & Footer Builder",
+          "version": null
+        },
+        {
+          "name": "Elementor",
+          "version": "3.31.5"
+        },
+        {
+          "name": "SuperPWA",
+          "version": null
+        },
+        {
+          "name": "Yoast SEO",
+          "version": "25.5"
+        },
+        {
+          "name": "WPML",
+          "version": "4.7.6"
+        },
+        {
+          "name": "Site Kit",
+          "version": "1.161.0"
+        },
+        {
+          "name": "MonsterInsights",
+          "version": "9.8.0"
+        }
+      ],
+      "WordPress themes": [
+        {
+          "name": "Hello Elementor",
+          "version": "3.1.1"
+        }
+      ]
+    },
+    "scan_mode": "fast",
+    "technologies": [
+      {
+        "categories": [
+          "CMS",
+          "Blogs"
+        ],
+        "confidence": 100,
+        "name": "WordPress",
+        "version": null
+      },
+      {
+        "categories": [
+          "Databases"
+        ],
+        "confidence": 100,
+        "name": "MySQL",
+        "version": null
+      },
+      {
+        "categories": [
+          "Programming languages"
+        ],
+        "confidence": 100,
+        "name": "PHP",
+        "version": null
+      },
+      {
+        "categories": [
+          "WordPress themes"
+        ],
+        "confidence": 100,
+        "name": "Hello Elementor",
+        "version": "3.1.1"
+      },
+      {
+        "categories": [
+          "WordPress plugins"
+        ],
+        "confidence": 100,
+        "name": "Draftpress HFCM",
+        "version": null
+      },
+      {
+        "categories": [
+          "WordPress plugins"
+        ],
+        "confidence": 100,
+        "name": "Essential Addons for Elementor",
+        "version": null
+      },
+      {
+        "categories": [
+          "WordPress plugins"
+        ],
+        "confidence": 100,
+        "name": "Elementor Header & Footer Builder",
+        "version": null
+      },
+      {
+        "categories": [
+          "Page builders",
+          "WordPress plugins"
+        ],
+        "confidence": 100,
+        "name": "Elementor",
+        "version": "3.31.5"
+      },
+      {
+        "categories": [
+          "WordPress plugins"
+        ],
+        "confidence": 100,
+        "name": "SuperPWA",
+        "version": null
+      },
+      {
+        "categories": [
+          "SEO",
+          "WordPress plugins"
+        ],
+        "confidence": 100,
+        "name": "Yoast SEO",
+        "version": "25.5"
+      },
+      {
+        "categories": [
+          "JavaScript frameworks"
+        ],
+        "confidence": 100,
+        "name": "Svelte",
+        "version": null
+      },
+      {
+        "categories": [
+          "Web servers",
+          "Reverse proxies"
+        ],
+        "confidence": 100,
+        "name": "Nginx",
+        "version": "1.22.1"
+      },
+      {
+        "categories": [
+          "WordPress plugins",
+          "Translation"
+        ],
+        "confidence": 100,
+        "name": "WPML",
+        "version": "4.7.6"
+      },
+      {
+        "categories": [
+          "Analytics",
+          "WordPress plugins"
+        ],
+        "confidence": 100,
+        "name": "Site Kit",
+        "version": "1.161.0"
+      },
+      {
+        "categories": [
+          "WordPress plugins",
+          "Analytics"
+        ],
+        "confidence": 100,
+        "name": "MonsterInsights",
+        "version": "9.8.0"
+      },
+      {
+        "categories": [
+          "Accessibility"
+        ],
+        "confidence": 100,
+        "name": "UserWay",
+        "version": null
+      },
+      {
+        "categories": [
+          "Tag managers"
+        ],
+        "confidence": 100,
+        "name": "Google Tag Manager",
+        "version": null
+      },
+      {
+        "categories": [
+          "Font scripts"
+        ],
+        "confidence": 100,
+        "name": "Twitter Emoji (Twemoji)",
+        "version": null
+      },
+      {
+        "categories": [
+          "Marketing automation",
+          "A/B Testing"
+        ],
+        "confidence": 100,
+        "name": "OneSignal",
+        "version": null
+      },
+      {
+        "categories": [
+          "JavaScript libraries"
+        ],
+        "confidence": 100,
+        "name": "Moment.js",
+        "version": "2.29.4"
+      },
+      {
+        "categories": [
+          "JavaScript libraries"
+        ],
+        "confidence": 100,
+        "name": "Marked",
+        "version": null
+      },
+      {
+        "categories": [
+          "JavaScript libraries"
+        ],
+        "confidence": 100,
+        "name": "jQuery UI",
+        "version": "1.13.3"
+      },
+      {
+        "categories": [
+          "JavaScript libraries"
+        ],
+        "confidence": 100,
+        "name": "jQuery Migrate",
+        "version": "3.4.1"
+      },
+      {
+        "categories": [
+          "JavaScript libraries"
+        ],
+        "confidence": 100,
+        "name": "jQuery",
+        "version": "3.7.1"
+      },
+      {
+        "categories": [
+          "Analytics"
+        ],
+        "confidence": 100,
+        "name": "Google Analytics",
+        "version": "GA4"
+      },
+      {
+        "categories": [
+          "Font scripts"
+        ],
+        "confidence": 100,
+        "name": "Font Awesome",
+        "version": null
+      },
+      {
+        "categories": [
+          "JavaScript libraries"
+        ],
+        "confidence": 100,
+        "name": "core-js",
+        "version": "3.43.0"
+      },
+      {
+        "categories": [
+          "Live chat"
+        ],
+        "confidence": 100,
+        "name": "WhatsApp Business Chat",
+        "version": null
+      },
+      {
+        "categories": [
+          "JavaScript libraries"
+        ],
+        "confidence": 100,
+        "name": "Swiper",
+        "version": null
+      },
+      {
+        "categories": [
+          "Performance"
+        ],
+        "confidence": 100,
+        "name": "Priority Hints",
+        "version": null
+      },
+      {
+        "categories": [
+          "Font scripts"
+        ],
+        "confidence": 100,
+        "name": "Google Font API",
+        "version": null
+      },
+      {
+        "categories": [
+          "SSL/TLS certificate authorities"
+        ],
+        "confidence": 100,
+        "name": "Sectigo",
+        "version": null
+      },
+      {
+        "categories": [
+          "Security"
+        ],
+        "confidence": 100,
+        "name": "HSTS",
+        "version": null
+      },
+      {
+        "categories": [
+          "Miscellaneous"
+        ],
+        "confidence": 50,
+        "name": "Webpack",
+        "version": null
+      },
+      {
+        "categories": [
+          "Miscellaneous"
+        ],
+        "confidence": 100,
+        "name": "RSS",
+        "version": null
+      },
+      {
+        "categories": [
+          "Miscellaneous"
+        ],
+        "confidence": 100,
+        "name": "PWA",
+        "version": null
+      },
+      {
+        "categories": [
+          "Miscellaneous"
+        ],
+        "confidence": 100,
+        "name": "Open Graph",
+        "version": null
+      },
+      {
+        "categories": [
+          "Miscellaneous"
+        ],
+        "confidence": 50,
+        "name": "Module Federation",
+        "version": null
+      }
+    ],
+    "url": "https://unair.ac.id"
+  },
+  "scan_mode": "fast",
+  "started_at": 1759283578.2110522,
+  "technologies": [
+    {
+      "categories": [
+        "CMS",
+        "Blogs"
+      ],
+      "confidence": 100,
+      "name": "WordPress",
+      "version": null
+    },
+    {
+      "categories": [
+        "Databases"
+      ],
+      "confidence": 100,
+      "name": "MySQL",
+      "version": null
+    },
+    {
+      "categories": [
+        "Programming languages"
+      ],
+      "confidence": 100,
+      "name": "PHP",
+      "version": null
+    },
+    {
+      "categories": [
+        "WordPress themes"
+      ],
+      "confidence": 100,
+      "name": "Hello Elementor",
+      "version": "3.1.1"
+    },
+    {
+      "categories": [
+        "WordPress plugins"
+      ],
+      "confidence": 100,
+      "name": "Draftpress HFCM",
+      "version": null
+    },
+    {
+      "categories": [
+        "WordPress plugins"
+      ],
+      "confidence": 100,
+      "name": "Essential Addons for Elementor",
+      "version": null
+    },
+    {
+      "categories": [
+        "WordPress plugins"
+      ],
+      "confidence": 100,
+      "name": "Elementor Header & Footer Builder",
+      "version": null
+    },
+    {
+      "categories": [
+        "Page builders",
+        "WordPress plugins"
+      ],
+      "confidence": 100,
+      "name": "Elementor",
+      "version": "3.31.5"
+    },
+    {
+      "categories": [
+        "WordPress plugins"
+      ],
+      "confidence": 100,
+      "name": "SuperPWA",
+      "version": null
+    },
+    {
+      "categories": [
+        "SEO",
+        "WordPress plugins"
+      ],
+      "confidence": 100,
+      "name": "Yoast SEO",
+      "version": "25.5"
+    },
+    {
+      "categories": [
+        "JavaScript frameworks"
+      ],
+      "confidence": 100,
+      "name": "Svelte",
+      "version": null
+    },
+    {
+      "audit": {
+        "difference": "minor",
+        "latest": "1.27.1",
+        "status": "outdated"
+      },
+      "categories": [
+        "Web servers",
+        "Reverse proxies"
+      ],
+      "confidence": 100,
+      "name": "Nginx",
+      "version": "1.22.1"
+    },
+    {
+      "categories": [
+        "WordPress plugins",
+        "Translation"
+      ],
+      "confidence": 100,
+      "name": "WPML",
+      "version": "4.7.6"
+    },
+    {
+      "categories": [
+        "Analytics",
+        "WordPress plugins"
+      ],
+      "confidence": 100,
+      "name": "Site Kit",
+      "version": "1.161.0"
+    },
+    {
+      "categories": [
+        "WordPress plugins",
+        "Analytics"
+      ],
+      "confidence": 100,
+      "name": "MonsterInsights",
+      "version": "9.8.0"
+    },
+    {
+      "categories": [
+        "Accessibility"
+      ],
+      "confidence": 100,
+      "name": "UserWay",
+      "version": null
+    },
+    {
+      "categories": [
+        "Tag managers"
+      ],
+      "confidence": 100,
+      "name": "Google Tag Manager",
+      "version": null
+    },
+    {
+      "categories": [
+        "Font scripts"
+      ],
+      "confidence": 100,
+      "name": "Twitter Emoji (Twemoji)",
+      "version": null
+    },
+    {
+      "categories": [
+        "Marketing automation",
+        "A/B Testing"
+      ],
+      "confidence": 100,
+      "name": "OneSignal",
+      "version": null
+    },
+    {
+      "categories": [
+        "JavaScript libraries"
+      ],
+      "confidence": 100,
+      "name": "Moment.js",
+      "version": "2.29.4"
+    },
+    {
+      "categories": [
+        "JavaScript libraries"
+      ],
+      "confidence": 100,
+      "name": "Marked",
+      "version": null
+    },
+    {
+      "categories": [
+        "JavaScript libraries"
+      ],
+      "confidence": 100,
+      "name": "jQuery UI",
+      "version": "1.13.3"
+    },
+    {
+      "categories": [
+        "JavaScript libraries"
+      ],
+      "confidence": 100,
+      "name": "jQuery Migrate",
+      "version": "3.4.1"
+    },
+    {
+      "audit": {
+        "latest": "3.7.1",
+        "status": "latest"
+      },
+      "categories": [
+        "JavaScript libraries"
+      ],
+      "confidence": 100,
+      "name": "jQuery",
+      "version": "3.7.1"
+    },
+    {
+      "categories": [
+        "Analytics"
+      ],
+      "confidence": 100,
+      "name": "Google Analytics",
+      "version": "GA4"
+    },
+    {
+      "categories": [
+        "Font scripts"
+      ],
+      "confidence": 100,
+      "name": "Font Awesome",
+      "version": null
+    },
+    {
+      "categories": [
+        "JavaScript libraries"
+      ],
+      "confidence": 100,
+      "name": "core-js",
+      "version": "3.43.0"
+    },
+    {
+      "categories": [
+        "Live chat"
+      ],
+      "confidence": 100,
+      "name": "WhatsApp Business Chat",
+      "version": null
+    },
+    {
+      "categories": [
+        "JavaScript libraries"
+      ],
+      "confidence": 100,
+      "name": "Swiper",
+      "version": null
+    },
+    {
+      "categories": [
+        "Performance"
+      ],
+      "confidence": 100,
+      "name": "Priority Hints",
+      "version": null
+    },
+    {
+      "categories": [
+        "Font scripts"
+      ],
+      "confidence": 100,
+      "name": "Google Font API",
+      "version": null
+    },
+    {
+      "categories": [
+        "SSL/TLS certificate authorities"
+      ],
+      "confidence": 100,
+      "name": "Sectigo",
+      "version": null
+    },
+    {
+      "categories": [
+        "Security"
+      ],
+      "confidence": 100,
+      "name": "HSTS",
+      "version": null
+    },
+    {
+      "categories": [
+        "Miscellaneous"
+      ],
+      "confidence": 50,
+      "name": "Webpack",
+      "version": null
+    },
+    {
+      "categories": [
+        "Miscellaneous"
+      ],
+      "confidence": 100,
+      "name": "RSS",
+      "version": null
+    },
+    {
+      "categories": [
+        "Miscellaneous"
+      ],
+      "confidence": 100,
+      "name": "PWA",
+      "version": null
+    },
+    {
+      "categories": [
+        "Miscellaneous"
+      ],
+      "confidence": 100,
+      "name": "Open Graph",
+      "version": null
+    },
+    {
+      "categories": [
+        "Miscellaneous"
+      ],
+      "confidence": 50,
+      "name": "Module Federation",
+      "version": null
+    }
+  ],
+  "timestamp": 1759283603,
+  "timing": {
+    "engine_seconds": 24.975,
+    "overall_seconds": 25.587,
+    "overhead_seconds": 0.612
+  }
+}

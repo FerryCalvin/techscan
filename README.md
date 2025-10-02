@@ -41,6 +41,171 @@ python run.py
 
 Server default di port 5000.
 
+## Integrasi Database (PostgreSQL)
+
+Secara default aplikasi dapat menyimpan histori scan dan indeks teknologi ke PostgreSQL agar Anda bisa:
+
+- Melihat histori scan per domain (`/history?domain=example.com`)
+- Mencari semua domain yang memakai teknologi tertentu (`/search?tech=Laravel`)
+- Mencari berdasarkan kategori (`/search?category=CMS`) atau kombinasi versi
+
+### Konfigurasi Cepat
+
+1. Siapkan database Postgres lokal, contoh:
+
+```sql
+CREATE DATABASE techscan;
+```
+
+2. Set environment variable koneksi (format psycopg):
+
+```pwsh
+$env:TECHSCAN_DB_URL='postgresql://postgres:postgres@localhost:5432/techscan'
+```
+
+3. Jalankan aplikasi. Schema otomatis dibuat (tabel `scans` dan `domain_techs`).
+
+Jika ingin menonaktifkan DB (misal benchmark tanpa overhead):
+```pwsh
+$env:TECHSCAN_DISABLE_DB='1'
+```
+
+### Struktur Tabel Inti (Ringkas)
+
+- `scans`: setiap eksekusi /scan (termasuk hit cache) → domain, mode/engine, durasi, timestamps, error, snapshot technologies + kolom terhitung:
+  - `tech_count` (jumlah teknologi pada hasil itu)
+  - `versions_count` (berapa yang punya field `version`)
+- `domain_techs`: baris per (domain, tech[, version]) dengan `first_seen` & `last_seen` untuk tracking persistensi.
+
+Kolom `tech_count` dan `versions_count` otomatis terisi untuk scan baru; jika Anda menambahkan kolom ini setelah ada data lama, jalankan skrip backfill:
+
+```pwsh
+python scripts/backfill_counts.py
+```
+
+Tambahkan `--force` bila ingin menghitung ulang semua baris; default hanya yang masih NULL.
+
+### Endpoint Pencarian
+
+Contoh:
+```pwsh
+curl "http://127.0.0.1:5000/search?tech=Laravel&limit=50"
+curl "http://127.0.0.1:5000/search?category=CMS"
+curl "http://127.0.0.1:5000/search?tech=React&version=18.2.0"
+```
+Response:
+```json
+{
+  "count": 2,
+  "results": [
+    {"domain":"example.com","tech_name":"Laravel","version":null,"categories":["Frameworks"],"first_seen":1690001000,"last_seen":1690004000}
+  ]
+}
+```
+
+### Endpoint Histori
+
+```pwsh
+curl "http://127.0.0.1:5000/history?domain=example.com&limit=10"
+```
+Response contoh:
+### Endpoint Statistik Database
+
+Endpoint admin baru menyajikan agregasi data untuk dashboard cepat:
+
+```pwsh
+curl http://127.0.0.1:5000/admin/db_stats
+```
+
+Contoh response:
+
+```json
+{
+  "status": "ok",
+  "db_stats": {
+    "scans_total": 1240,
+    "domains_tracked": 310,
+    "domain_tech_rows": 2280,
+    "top_tech": [
+      {"tech": "WordPress", "count": 140},
+      {"tech": "jQuery", "count": 130}
+    ],
+    "avg_duration_24h": [
+      {"mode": "fast_full", "avg_ms": 1875.4, "samples": 92},
+      {"mode": "fast", "avg_ms": 540.2, "samples": 400}
+    ],
+    "version_presence_pct": 42.35
+  }
+}
+```
+
+Bidang:
+
+- `scans_total` total baris di tabel `scans`.
+- `domains_tracked` jumlah domain unik di `domain_techs`.
+- `domain_tech_rows` total baris teknologi aktif.
+- `top_tech` 15 teknologi teratas berdasarkan jumlah domain.
+- `avg_duration_24h` rata-rata durasi per mode 24 jam terakhir.
+- `version_presence_pct` persentase baris `domain_techs` yang memiliki `version` (indikasi kedalaman versi).
+
+Gunakan untuk memantau coverage versi dan identifikasi teknologi populer.
+```json
+{
+  "domain": "example.com",
+  "count": 3,
+  "history": [
+    {"mode":"fast_full","started_at":1690003900,"finished_at":1690003902,"duration_ms":1890,"from_cache":false},
+    {"mode":"fast","started_at":1690002000,"finished_at":1690002001,"duration_ms":740,"from_cache":true}
+  ]
+}
+```
+
+### Tips DBeaver
+
+Koneksi: gunakan URL, atau host/port/db/user/password manual. Setelah itu Anda bisa:
+Query populer:
+
+```sql
+SELECT tech_name, COUNT(*)
+FROM domain_techs
+GROUP BY tech_name
+ORDER BY COUNT(*) DESC
+LIMIT 20;
+```
+
+Analisis versi:
+
+```sql
+SELECT tech_name, version, COUNT(*)
+FROM domain_techs
+WHERE version IS NOT NULL
+GROUP BY tech_name, version
+ORDER BY COUNT(*) DESC;
+```
+
+### Env Variabel Terkait DB
+
+| Variable | Fungsi | Default |
+|----------|--------|---------|
+| TECHSCAN_DB_URL | Koneksi Postgres | `postgresql://postgres:postgres@localhost:5432/techscan` |
+| TECHSCAN_DISABLE_DB | Matikan persistence | 0 |
+
+Ke depan: rencana tambah diff perubahan teknologi & export historis.
+
+### Catatan Bulk Persistence
+
+Sebelum patch terbaru hanya endpoint `/scan` yang mem-persist. Sekarang `/bulk` juga otomatis menambahkan setiap hasil (termasuk error) ke tabel `scans` dan memperbarui `domain_techs`. Jika Anda melakukan pengisian awal gunakan skrip seed:
+
+```pwsh
+python scripts/seed_db.py --bulk --url http://127.0.0.1:5000
+```
+
+Atau single sequential (lebih lambat, cocok debug):
+
+```pwsh
+python scripts/seed_db.py --url http://127.0.0.1:5000
+```
+
 ## Web UI
 
 Buka di browser: `http://127.0.0.1:5000/`.
@@ -148,6 +313,7 @@ Selain fast (heuristic + optional full) dan full klasik, kini tersedia dua lapis
 | Mode | Jalur Utama | Komponen | Target Latency | Kapan Dipakai |
 |------|-------------|----------|----------------|---------------|
 | Quick | Heuristic tier0 + HTML sniff + (opsional micro fallback) | Tanpa Wappalyzer penuh kecuali micro fallback | ~0.2–0.9s typical | Explorasi massal sangat cepat, CMS utama, plugin populer, front-end framework cepat |
+| Fast-Full | Single bounded full engine (no adaptive retry) | Wappalyzer full 1 attempt (strict ms budget) + enrichment | ~1.0–3.5s typical (default 5s cap) | Saat butuh cakupan mirip full lebih cepat dari full klasik |
 | Deep | Heuristic (budget khusus) + constrained full (timeout rendah) + enrichment | Partial full (timeout < full) + merging | ~1.2–4s typical | Saat butuh versi lebih lengkap tanpa biaya full penuh |
 | Full | Wappalyzer penuh (depth/await standar) | Engine penuh | 3–12s (variatif) | Audit akhir, completeness maksimal |
 
@@ -177,6 +343,9 @@ Jika tidak ada flag → default mengikuti heuristic/fast biasa (atau quick jika 
 | TECHSCAN_QUICK_DEFER_FULL | Jalankan full di background setelah quick | 0 |
 | TECHSCAN_DEEP_QUICK_BUDGET_MS | Budget ms fase heuristic dalam deep | 1200 |
 | TECHSCAN_DEEP_FULL_TIMEOUT_S | Timeout detik mini full dalam deep | 6 |
+| TECHSCAN_FAST_FULL_TIMEOUT_MS | Bounded fast-full hard cap (ms) | 5000 |
+| TECHSCAN_FAST_FULL_DISABLE_CACHE | Jangan cache hasil fast-full | 0 |
+| TECHSCAN_FAST_FULL_CACHE_TTL | TTL cache fast-full custom | (inherit default) |
 | TECHSCAN_DEEP_DISABLE_CACHE | Jangan tulis hasil deep ke cache | 0 |
 | TECHSCAN_DEEP_CACHE_TTL | TTL khusus cache hasil deep | (inherit) |
 | TECHSCAN_VERSION_ENRICH | Aktifkan targeted version enrichment | 1 |
@@ -308,6 +477,94 @@ Tambahan (jika belum tercantum di tabel Variabel Environment Ringkas):
 
 Pastikan tidak ada duplikasi definisi; jika tabel environment utama nanti digabung, hapus baris ganda.
 
+## Runtime Stats (Admin) – Fast-Full Metrics
+
+Endpoint `/admin/stats` sekarang termasuk metrik baru untuk fast_full:
+
+```json
+{
+  "average_duration_ms": {"fast": 210.4, "full": 6820.9, "fast_full": 1895.2},
+  "recent_latency_ms": {
+    "fast_full": {"samples": 37, "p50": 1822.0, "p95": 2955.0}
+  },
+  "mode_hits": {"fast": 1234, "full": 210, "fast_full": 37},
+  "mode_misses": {"fast": 12, "full": 4, "fast_full": 1}
+}
+```
+
+Penjelasan ringkas:
+
+- `average_duration_ms.fast_full` = total durasi eksekusi fast_full dibagi jumlah.
+- `recent_latency_ms.fast_full` = ringkasan window (max 200 sample) dengan p50 & p95.
+- `mode_hits/misses.fast_full` = hit/miss cache untuk key fast_full (jika cache diaktifkan).
+
+Gunakan ini untuk tuning `TECHSCAN_FAST_FULL_TIMEOUT_MS` (misal ingin p95 < 3000ms). Jika p95 mendekati cap berarti banyak partial fallback atau saturasi.
+
+## Benchmark Script: perf_fast_full_scan
+
+Skrip baru `scripts/perf_fast_full_scan.py` membantu menguji beberapa nilai budget fast_full dan menganalisa trade-off latency vs coverage.
+
+Contoh pemakaian (service Flask sudah berjalan):
+
+```pwsh
+python scripts/perf_fast_full_scan.py domains.txt --budgets 4000,5000,6000 --repeat 2 --concurrency 6 > bench.json
+```
+
+Output (JSON list) contoh:
+
+```json
+[
+  {
+    "budget_ms": 4000,
+    "samples": 25,
+    "avg_full_ms": 1780.44,
+    "p50_full_ms": 1712.0,
+    "p95_full_ms": 3110.0,
+    "avg_tech_count": 6.2,
+    "avg_with_version": 2.7,
+    "partial_rate": 0.04,
+    "errors": 0
+  },
+  {
+    "budget_ms": 5000,
+    "samples": 25,
+    "avg_full_ms": 1912.10,
+    "p50_full_ms": 1805.0,
+    "p95_full_ms": 3290.0,
+    "avg_tech_count": 6.6,
+    "avg_with_version": 3.1,
+    "partial_rate": 0.02,
+    "errors": 0
+  }
+]
+```
+
+Switch ke CSV:
+
+```pwsh
+python scripts/perf_fast_full_scan.py domains.txt --budgets 3500,4500 --csv
+```
+
+Kolom penting:
+
+- `avg_full_ms` / `p50_full_ms` / `p95_full_ms` → latency outcome.
+- `avg_tech_count` → rata-rata jumlah teknologi terdeteksi.
+- `avg_with_version` → rata-rata jumlah teknologi yang memiliki versi (indikator depth).
+- `partial_rate` → proporsi scan yang jatuh ke fallback partial (timeout / error short-circuit).
+- `errors` → error transport / HTTP (non-partial logic) yang terjadi.
+
+Strategi tuning umum:
+
+1. Start dengan 5000 ms, ukur p95. Jika p95 jauh < cap dan partial_rate rendah (<0.05) coba turunkan ke 4500 ms.
+2. Bandingkan penurunan `avg_with_version` setelah pengurangan budget. Jika drop <5% bisa diterima.
+3. Batas bawah realistis biasanya saat p95 mulai memotong banyak scan → partial_rate naik tajam.
+
+Tips concurrency:
+
+- Gunakan `--concurrency` mendekati jumlah CPU core / 1.5x jika IO heavy.
+- Tambah `--delay 0.05` bila ingin mencegah burst terlalu agresif ke target eksternal.
+
+
 ## Diagnostik Quick & Micro
 
 Endpoint `/admin/quick_diag?domain=example.com` menampilkan:
@@ -352,6 +609,102 @@ Deteksi script/img/iframe `fls.doubleclick.net/activity` → tambahkan teknologi
 
 Wappalyzer adalah GPLv3. Integrasi ini harus mematuhi GPLv3 jika didistribusikan. Pastikan menyertakan atribusi & lisensi Wappalyzer jika dipublikasikan lebih luas.
 
+### Ikon Teknologi
+
+UI menampilkan ikon untuk sebagian teknologi umum (WordPress, React, Laravel, Vue.js, Angular, Tailwind, PHP, MySQL, Redis, dll). Ikon disediakan sebagai SVG sederhana di `app/static/icons/` dan diinspirasi gaya Simple Icons. Merek dagang dan logo adalah milik pemiliknya masing‑masing. Jika Anda mendistribusikan ulang secara publik pastikan mematuhi kebijakan merek masing‑masing vendor.
+
+Menambah ikon baru:
+1. Tambahkan file SVG ke `app/static/icons/<nama>.svg` (ukuran viewBox 0 0 256 256 disarankan atau akan diskalakan otomatis).
+2. Tambahkan mapping nama teknologi (lowercase) ke path SVG di objek `ICON_MAP` dalam `index.html`.
+3. Refresh browser (aktifkan `TECHSCAN_TEMPLATE_AUTO_RELOAD=1` untuk auto reload saat development).
+
+Fallback: Jika ikon tidak tersedia, UI akan menampilkan huruf pertama dengan warna background pseudo-random deterministik.
+
+#### Sumber Ikon via CDN
+
+Secara default UI mencoba memuat ikon dari paket publik `tech-stack-icons` melalui CDN (unpkg):
+
+`https://unpkg.com/tech-stack-icons@latest/icons/<nama>.svg`
+
+Jika ikon CDN gagal dimuat (404 / jaringan), otomatis fallback ke ikon lokal (jika tersedia) atau huruf berwarna.
+
+Keuntungan:
+- Tidak perlu menambah banyak file SVG lokal.
+- Ikon konsisten & mudah diperbarui (update versi paket).
+
+Risiko / Catatan:
+- Ketergantungan koneksi internet untuk ikon baru.
+- Sebaiknya pin versi tertentu untuk stabilitas produksi, misal ganti `@latest` menjadi `@1.4.0` (contoh):
+  - Ubah konstanta `ICON_REMOTE_BASE` di `index.html`.
+
+Offline / Air‑gapped:
+- Salin ikon yang diperlukan ke `app/static/icons/` dan hapus entri di `REMOTE_ICON_MAP` atau set `ICON_REMOTE_BASE` ke folder lokal.
+
+Lisensi & Merek:
+- Ikon mengikuti gaya Simple Icons / sumber komunitas. Merek tetap milik pemilik masing‑masing.
+
+### Menggunakan Paket `tech-stack-icons` Secara Lokal (Offline / Tanpa CDN)
+
+Jika ingin menghindari ketergantungan CDN dan bekerja sepenuhnya offline:
+
+1. Install paket (sekali):
+
+   ```pwsh
+   npm install tech-stack-icons
+   ```
+2. Ekstrak subset ikon yang dibutuhkan (varian default `dark`):
+
+   ```pwsh
+   node scripts/extract_stack_icons.mjs dark
+   ```
+3. Multi-variant: jalankan lagi untuk varian lain (misal `light`, `grayscale`). Struktur output sekarang:
+
+   ```text
+   app/static/icons/stack/
+     dark/*.svg
+     light/*.svg
+     grayscale/*.svg (opsional)
+   ```
+4. Di UI klik tombol `Use Local Pack` untuk beralih sumber ikon ke folder lokal (menggunakan subfolder sesuai dropdown Variant). Klik lagi untuk kembali ke CDN.
+5. Dropdown `Variant` akan memilih subfolder (`dark` / `light` / `grayscale`). Preferensi disimpan otomatis.
+6. Tombol `Reset Icon Cache` membersihkan cache kegagalan (localStorage) dan mem-preload ulang ikon penting.
+
+Menambah ikon baru / plugin populer:
+
+1. Edit array `ICONS` di `scripts/extract_stack_icons.mjs` (atau tambahkan placeholder SVG manual di `app/static/icons/stack/<variant>/`).
+2. Jalankan skrip untuk tiap varian yang ingin Anda hasilkan.
+3. Jika ikon bukan bagian bawaan remote pack, tambahkan slug ke objek `LOCAL_EXTRA_ICONS` (di `app/templates/index.html`).
+4. Refresh UI.
+
+Placeholder tambahan yang saat ini disertakan (dark & light):
+
+| Teknologi / Plugin | Slug File |
+|--------------------|-----------|
+| Yoast SEO          | yoastseo  |
+| WPML               | wpml      |
+| LiteSpeed          | litespeed |
+| Google Analytics   | ga        |
+| jQuery UI          | jqueryui  |
+| jQuery Migrate     | jquerymigrate |
+
+Semua berada di `app/static/icons/stack/<variant>/<slug>.svg`.
+
+Persistensi preferensi otomatis (localStorage keys):
+
+| Key | Nilai | Deskripsi |
+|-----|-------|-----------|
+| `techscan_remote_icons` | '1' / '0' | Aktif / nonaktif penggunaan CDN remote |
+| `techscan_use_local_pack` | '1' / '0' | Prioritaskan ikon lokal multi-variant |
+| `techscan_icon_variant` | dark / light / grayscale | Varian ikon lokal yang dipilih |
+| `techscan_failed_remote_icons` | JSON array | Daftar slug ikon remote yang gagal dimuat (cache kegagalan) |
+
+Fungsi `techIconHTML` kini otomatis memilih path `app/static/icons/stack/<variant>/<slug>.svg` saat mode lokal aktif dan memanfaatkan mapping tambahan `LOCAL_EXTRA_ICONS` untuk plugin populer yang belum ada di remote pack.
+
+CI/CD: Jalankan skrip ekstraksi di pipeline build sehingga folder `app/static/icons/stack` selalu konsisten dengan versi paket yang ter-pin di `package.json`.
+
+Catatan: Jika struktur internal paket berubah dan skrip tidak menemukan data ikon, Anda akan melihat peringatan. Perbarui heuristik skrip sesuai versi baru.
+
+
 ## Roadmap (opsional lanjutan)
 
 - Persistent storage (DB) untuk histori
@@ -386,33 +739,33 @@ Kadang `npm install` gagal karena Puppeteer tidak bisa mengunduh Chrome (misal f
 
 1. Hapus cache puppeteer korup lalu ulang:
 
-  ```pwsh
-  Remove-Item -Recurse -Force "$env:USERPROFILE\.cache\puppeteer" -ErrorAction SilentlyContinue
-  cd node_scanner
-  npm install
-  ```
+```pwsh
+Remove-Item -Recurse -Force "$env:USERPROFILE\.cache\puppeteer" -ErrorAction SilentlyContinue
+cd node_scanner
+npm install
+```
 
 1. (Direkomendasikan) Lewati download dan gunakan Chrome/Edge yang sudah terpasang di sistem. Script `scanner.js` akan otomatis mencari executable tersebut di Program Files.
 
-  ```pwsh
-  cd node_scanner
-  $env:PUPPETEER_SKIP_DOWNLOAD='1'
-  npm install
-  ```
+```pwsh
+cd node_scanner
+$env:PUPPETEER_SKIP_DOWNLOAD='1'
+npm install
+```
 
   Jika ingin paksa path manual:
 
-  ```pwsh
-  $env:PUPPETEER_EXECUTABLE_PATH='C:\Program Files\Google\Chrome\Application\chrome.exe'
-  node scanner.js example.com
-  ```
+```pwsh
+$env:PUPPETEER_EXECUTABLE_PATH='C:\Program Files\Google\Chrome\Application\chrome.exe'
+node scanner.js example.com
+```
 
 1. Aktifkan debug untuk melihat path yang terdeteksi:
 
-  ```pwsh
-  $env:TECHSCAN_DEBUG='1'
-  node scanner.js example.com
-  ```
+```pwsh
+$env:TECHSCAN_DEBUG='1'
+node scanner.js example.com
+```
 
 Jika semua gagal, coba update Node.js ke versi terbaru LTS dan ulangi.
 
@@ -501,6 +854,48 @@ curl -X POST http://127.0.0.1:5000/scan -H "Content-Type: application/json" -d '
 3. Jika berhasil setelah retry, response menyertakan field `retries` (jumlah retry yang dipakai).
 4. Timeout menghasilkan pesan `timeout after Xs (attempt A/B)`.
 
+### Bulk Fallback Quick (Mitigasi Timeout Massal)
+
+Untuk bulk scanning, Anda dapat menambahkan parameter `"fallback_quick": 1` (atau query `?fallback_quick=1`) agar setiap domain yang berakhir `status=error` dengan pesan mengandung kata kunci timeout (“timeout”, “timed out”, “time out”) segera di-rescan memakai jalur quick heuristic singkat.
+
+Karakteristik:
+
+- Hanya memproses entri yang gagal dengan timeout-like error; error lain (DNS, SSL, dll.) dibiarkan apa adanya.
+- Jika quick scan berhasil, entri akhir diubah menjadi `status="ok"` dan field tambahan:
+  - `fallback: "quick"`
+  - `original_error: "...pesan error awal..."`
+- Jika quick scan juga gagal, entri tetap `status=error` dan ditambah:
+  - `fallback_attempt: "quick"`
+  - `fallback_error: "...error quick..."`
+- Persistensi ke DB tetap dilakukan (hasil ok maupun error) seperti biasa.
+- CSV langsung (`POST /bulk?format=csv`) TIDAK memiliki kolom khusus `fallback` atau `original_error`; hanya kolom `error`. Artinya ketika fallback berhasil, kolom `error` akan kosong (karena status sudah ok) dan Anda hanya bisa melihat jejak fallback di response JSON (bukan di CSV). Jika butuh audit fallback, simpan output JSON sebelum konversi/unduh CSV.
+
+Contoh request JSON:
+
+```pwsh
+curl -X POST http://127.0.0.1:5000/bulk -H "Content-Type: application/json" -d '{"domains":["timeout-domain.test","example.com"],"timeout":45,"retries":1,"fallback_quick":1}'
+```
+
+Contoh langsung CSV:
+
+```pwsh
+curl -X POST 'http://127.0.0.1:5000/bulk?format=csv&fallback_quick=1' -H 'Content-Type: application/json' -d '{"domains":["timeout-domain.test","example.com"],"timeout":45}' > bulk.csv
+```
+
+Kapan dipakai:
+
+- Dataset besar dengan sebagian domain lambat / sering timeout dan Anda ingin tetap memiliki minimal deteksi teknologi dasar tanpa menunggu retry panjang.
+- Fase eksplorasi awal untuk memetakan cakupan teknologi umum sebelum menjalankan deep/full terarah pada subset bermasalah.
+
+Kapan TIDAK disarankan:
+
+- Saat Anda perlu memastikan timeout yang terjadi dianalisis akar penyebabnya (misal isu jaringan atau pemblokiran) — fallback dapat “menutupi” jumlah real timeout.
+- Ketika quick mode diperkirakan tidak memberi sinyal berarti (misal situs heavily client‑side rendering yang butuh eksekusi penuh).
+
+Catatan performa: fallback menambah overhead hanya untuk domain bermasalah. Jika timeout rate rendah, dampak total kecil. Jika timeout rate tinggi, pertimbangkan meningkatkan `timeout` dasar atau mengaktifkan persistent browser sebelum mengandalkan fallback.
+
+UI Web: centang opsi "Fallback Quick" di panel Bulk sebelum menekan tombol "Scan Bulk" untuk mengaktifkan perilaku ini. Tombol "Download CSV" memakai parameter yang sama dengan konfigurasi terakhir.
+
 ### CLI Flags yang Relevan
 
 `scripts/bulk_scan.py` sudah mendukung:
@@ -558,6 +953,10 @@ Query parameters:
 Kolom output:
 
 `domain,timestamp,tech_count,technologies,categories,cached,duration,retries,engine[,raw]`
+
+Jika version audit aktif akan ditambahkan kolom: `outdated_count,outdated_list`.
+
+Pada mode fallback_quick (jika diaktifkan) baris hasil fallback yang sukses tidak menampilkan indikasi khusus di CSV (karena kolom fallback tidak ada). Gunakan output JSON untuk forensik jika diperlukan.
 
 Contoh unduh semua (PowerShell):
 

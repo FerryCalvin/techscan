@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app
 import logging, time
-from ..scan_utils import get_cached_or_scan, scan_bulk, DOMAIN_RE, extract_host, snapshot_cache, validate_domain, quick_single_scan, deep_scan, bulk_quick_then_deep
+from ..scan_utils import get_cached_or_scan, scan_bulk, DOMAIN_RE, extract_host, snapshot_cache, validate_domain, quick_single_scan, deep_scan, bulk_quick_then_deep, fast_full_scan
+from .. import db as _db
 from flask import Response
 from flask_limiter.util import get_remote_address
 from flask_limiter import Limiter
@@ -16,7 +17,7 @@ def limit_decorator():
     limiter: Limiter = current_app.extensions.get('limiter')  # type: ignore
     return limiter
 
-@bp.route('/scan', methods=['POST'])
+@bp.route('/scan', methods=['POST','GET'])
 def _scan_rate_wrapper():
     limiter = current_app.extensions.get('limiter')
     if limiter:
@@ -28,8 +29,21 @@ def _scan_rate_wrapper():
     return scan_single_impl()
 
 def scan_single_impl():
-    # original implementation moved to scan_single_impl
-    data = request.get_json(silent=True) or {}
+    # Support both JSON POST and simple GET query form
+    if request.method == 'GET':
+        data = {
+            'domain': request.args.get('domain') or request.args.get('d'),
+            'timeout': request.args.get('timeout'),
+            'retries': request.args.get('retries'),
+            'ttl': request.args.get('ttl'),
+            'full': request.args.get('full'),
+            'deep': request.args.get('deep'),
+            'fast_full': request.args.get('fast_full'),
+            'fresh': request.args.get('fresh'),
+            'quick': request.args.get('quick'),
+        }
+    else:
+        data = request.get_json(silent=True) or {}
     start = time.time()
     if data is None or not isinstance(data, dict):
         return jsonify({'error': 'invalid JSON body'}), 400
@@ -40,12 +54,13 @@ def scan_single_impl():
     ttl = data.get('ttl')
     full = bool(data.get('full') or False)
     deep = bool(data.get('deep') or False)
+    fast_full = bool(data.get('fast_full') or False)
     try:
         ttl_int = int(ttl) if ttl is not None else None
     except ValueError:
         ttl_int = None
     fresh = bool(data.get('fresh') or False)
-    logging.getLogger('techscan.scan').info('/scan request input=%s domain=%s timeout=%s retries=%s fresh=%s ttl=%s full=%s deep=%s', raw_input, domain, timeout, retries, fresh, ttl_int, full, deep)
+    logging.getLogger('techscan.scan').info('/scan request input=%s domain=%s timeout=%s retries=%s fresh=%s ttl=%s full=%s deep=%s fast_full=%s', raw_input, domain, timeout, retries, fresh, ttl_int, full, deep, fast_full)
     if not raw_input:
         return jsonify({'error': 'missing domain field'}), 400
     try:
@@ -60,7 +75,9 @@ def scan_single_impl():
         quick_flag = True
     defer_quick = os.environ.get('TECHSCAN_QUICK_DEFER_FULL','0') == '1'
     try:
-        if deep:
+        if fast_full:
+            result = fast_full_scan(domain, wpath)
+        elif deep:
             result = deep_scan(domain, wpath)
         elif quick_flag:
             result = quick_single_scan(domain, wpath, defer_full=defer_quick, timeout_full=timeout, retries_full=retries)
@@ -74,10 +91,55 @@ def scan_single_impl():
             result['started_at'] = result.get('timestamp')
         if 'finished_at' not in result:
             result['finished_at'] = int(time.time())
-        logging.getLogger('techscan.scan').info('/scan success domain=%s quick=%s deep=%s duration=%.2fs retries_used=%s', domain, quick_flag, deep, time.time()-start, result.get('retries',0))
+        logging.getLogger('techscan.scan').info('/scan success domain=%s quick=%s deep=%s fast_full=%s duration=%.2fs retries_used=%s', domain, quick_flag, deep, fast_full, time.time()-start, result.get('retries',0))
+        # Persist scan (best-effort) if DB enabled
+        try:
+            duration = (result.get('finished_at', time.time()) - result.get('started_at', result.get('timestamp', time.time())))
+            meta_for_db = {
+                'domain': domain,
+                'scan_mode': result.get('engine') or ('fast_full' if fast_full else 'deep' if deep else 'quick' if quick_flag else ('full' if full else 'fast')),
+                'started_at': result.get('started_at'),
+                'finished_at': result.get('finished_at'),
+                'duration': duration,
+                'technologies': result.get('technologies'),
+                'categories': result.get('categories'),
+                'raw': result.get('raw'),
+                'retries': result.get('retries',0),
+                'adaptive_timeout': result.get('phases',{}).get('adaptive'),
+                'error': result.get('error')
+            }
+            timeout_used = 0
+            # Derive timeout used if present in phases metadata
+            phases = result.get('phases') or {}
+            for k in ('full_budget_ms','timeout_ms','budget_ms'):
+                if k in phases:
+                    try:
+                        timeout_used = int(phases[k])
+                        break
+                    except Exception:
+                        pass
+            _db.save_scan(meta_for_db, result.get('cached', False), timeout_used)
+        except Exception as persist_ex:
+            logging.getLogger('techscan.scan').warning('persist_failed domain=%s err=%s', domain, persist_ex)
         return jsonify(result)
     except Exception as e:
         logging.getLogger('techscan.scan').error('/scan error domain=%s err=%s', domain, e)
+        # Attempt to log failed attempt as scan row too (with error)
+        try:
+            _db.save_scan({
+                'domain': domain,
+                'scan_mode': 'error',
+                'started_at': start,
+                'finished_at': time.time(),
+                'duration': time.time()-start,
+                'technologies': [],
+                'categories': {},
+                'raw': None,
+                'retries': 0,
+                'error': str(e)
+            }, from_cache=False, timeout_used=0)
+        except Exception:
+            pass
         return jsonify({'domain': domain, 'error': str(e)}), 500
 
 @bp.route('/bulk', methods=['POST'])
@@ -99,6 +161,7 @@ def scan_bulk_route_impl():
     ttl = data.get('ttl')
     full = bool(data.get('full') or False)
     two_phase = bool(data.get('two_phase') or (request.args.get('two_phase')=='1'))
+    fallback_quick = bool(data.get('fallback_quick') or (request.args.get('fallback_quick')=='1'))
     try:
         ttl_int = int(ttl) if ttl is not None else None
     except ValueError:
@@ -107,7 +170,7 @@ def scan_bulk_route_impl():
     include_raw = bool(data.get('include_raw')) or (request.args.get('include_raw') == '1')
     fresh = bool(data.get('fresh') or False)
     concurrency = int(data.get('concurrency') or 4)
-    logging.getLogger('techscan.bulk').info('/bulk request count=%s timeout=%s retries=%s fresh=%s concurrency=%s ttl=%s format=%s full=%s two_phase=%s', len(domains), timeout, retries, fresh, concurrency, ttl_int, out_format, full, two_phase)
+    logging.getLogger('techscan.bulk').info('/bulk request count=%s timeout=%s retries=%s fresh=%s concurrency=%s ttl=%s format=%s full=%s two_phase=%s fallback_quick=%s', len(domains), timeout, retries, fresh, concurrency, ttl_int, out_format, full, two_phase, fallback_quick)
     if not isinstance(domains, list):
         return jsonify({'error': 'domains field must be a list'}), 400
     if not domains:
@@ -117,6 +180,30 @@ def scan_bulk_route_impl():
         results = bulk_quick_then_deep(domains, wpath, concurrency=concurrency)
     else:
         results = scan_bulk(domains, wpath, concurrency=concurrency, timeout=timeout, retries=retries, fresh=fresh, ttl=ttl_int, full=full)
+
+    # Optional fallback quick scan for timeouts/errors
+    if fallback_quick:
+        fixed = []
+        for r in results:
+            if not r or r.get('status') == 'ok':
+                fixed.append(r)
+                continue
+            err = (r.get('error') or '').lower()
+            # Consider timeouts / unreachable keywords
+            if 'timeout' in err or 'timed out' in err or 'time out' in err:
+                dom = r.get('domain')
+                try:
+                    quick_res = quick_single_scan(dom, wpath, defer_full=False)
+                    quick_res['status'] = 'ok'
+                    quick_res['fallback'] = 'quick'
+                    quick_res['original_error'] = r.get('error')
+                    fixed.append(quick_res)
+                    continue
+                except Exception as qe:
+                    r['fallback_attempt'] = 'quick'
+                    r['fallback_error'] = str(qe)
+            fixed.append(r)
+        results = fixed
     invalid_count = 0
     for d in domains:
         try:
@@ -177,6 +264,42 @@ def scan_bulk_route_impl():
             writer.writerow(row)
         csv_data = output.getvalue()
         return Response(csv_data, mimetype='text/csv', headers={'Content-Disposition': 'attachment; filename=bulk_scan.csv'})
+    # Persist each successful scan result (and errors) for history
+    try:
+        for r in results:
+            if not r:
+                continue
+            # Normalize timestamps for DB
+            if 'started_at' not in r:
+                r['started_at'] = r.get('timestamp')
+            if 'finished_at' not in r:
+                r['finished_at'] = int(time.time())
+            mode = r.get('engine') or ('full' if (r.get('engine')=='wappalyzer-external') else 'fast')
+            meta_for_db = {
+                'domain': r.get('domain'),
+                'scan_mode': mode,
+                'started_at': r.get('started_at'),
+                'finished_at': r.get('finished_at'),
+                'duration': r.get('duration') or 0,
+                'technologies': r.get('technologies') or [],
+                'categories': r.get('categories') or {},
+                'raw': r.get('raw'),
+                'retries': r.get('retries',0),
+                'adaptive_timeout': (r.get('phases') or {}).get('adaptive'),
+                'error': r.get('error') if r.get('status') != 'ok' else None
+            }
+            timeout_used = 0
+            phases = r.get('phases') or {}
+            for k in ('full_budget_ms','timeout_ms','budget_ms'):
+                if k in phases:
+                    try:
+                        timeout_used = int(phases[k])
+                        break
+                    except Exception:
+                        pass
+            _db.save_scan(meta_for_db, r.get('cached', False), timeout_used)
+    except Exception as bulk_persist_ex:
+        logging.getLogger('techscan.bulk').warning('bulk_persist_failed err=%s', bulk_persist_ex)
     return jsonify({'count': len(results), 'results': results})
 
 @bp.route('/export/csv', methods=['GET'])

@@ -5,6 +5,7 @@ from .. import heuristic_fast
 import subprocess, pathlib, shlex
 from .. import version_audit
 from .. import scan_utils
+from .. import db as dbmod
 from statistics import mean, median
 import random
 
@@ -51,6 +52,17 @@ def stats_view():
     except Exception:
         pass
     return jsonify({'status': 'ok', 'stats': stats})
+
+@admin_bp.route('/db_stats', methods=['GET'])
+def db_stats_view():
+    """Return aggregate database statistics (scans total, domains tracked, top tech, etc.).
+    Lightweight wrapper over db.db_stats().
+    """
+    try:
+        res = dbmod.db_stats()
+        return jsonify({'status': 'ok', 'db_stats': res})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @admin_bp.route('/sniff_cache', methods=['GET','POST','DELETE'])
 def sniff_cache_view():
@@ -422,3 +434,39 @@ def benchmark_quick():
             summary = {'budget_ms': budget, 'samples': 0, 'errors': err_count}
         results.append(summary)
     return jsonify({'status':'ok','domains': domains,'repeat': repeat,'budgets': budgets,'summaries': results,'errors_detail': errors[:10]})
+
+@admin_bp.route('/db_check', methods=['GET'])
+def db_check():
+    """Lightweight DB diagnostics: connectivity, counts, last scan info.
+    Returns JSON with ok flag, error (if any), latency, counts, last_scan.
+    """
+    try:
+        diag = dbmod.get_db_diagnostics()
+        # Optional write-test (?write_test=1) performs an insert+rollback to validate write permissions separately from basic connectivity.
+        write_test_flag = request.args.get('write_test') == '1'
+        if write_test_flag and not diag.get('disabled'):
+            from .. import db as _db
+            try:
+                with _db.get_conn() as conn:  # type: ignore
+                    with conn.cursor() as cur:
+                        # Use a SAVEPOINT so we can rollback just this test without affecting other outer work
+                        cur.execute('SAVEPOINT techscan_diag')
+                        try:
+                            cur.execute("""INSERT INTO scans(domain, mode, started_at, finished_at, duration_ms, from_cache, adaptive_timeout, retries, timeout_used, tech_count, versions_count, technologies_json, categories_json, raw_json, error)
+                                         VALUES ('__diag_write_test__','diag', NOW(), NOW(), 0, FALSE, FALSE, 0, 0, 0, 0, '[]'::jsonb, '{}'::jsonb, NULL, NULL)""")
+                            # Rollback only the savepoint so no real row persists
+                            cur.execute('ROLLBACK TO SAVEPOINT techscan_diag')
+                            diag['write_test'] = {'ok': True}
+                        except Exception as wte:
+                            # Attempt to rollback savepoint; if that fails, full rollback best-effort
+                            try:
+                                cur.execute('ROLLBACK TO SAVEPOINT techscan_diag')
+                            except Exception:
+                                conn.rollback()
+                            diag['write_test'] = {'ok': False, 'error': str(wte)}
+            except Exception as outer_wte:
+                diag['write_test'] = {'ok': False, 'error': str(outer_wte)}
+        status = 200 if diag.get('ok') else 500 if not diag.get('disabled') else 200
+        return jsonify({'status': 'ok' if diag.get('ok') else 'fail', 'diagnostics': diag}), status
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

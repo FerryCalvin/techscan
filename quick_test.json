@@ -1,0 +1,15 @@
+
+audit        : @{outdated=System.Object[]; outdated_count=1; outdated_major=0; outdated_minor=1; outdated_patch=0; version_dataset=latest_versions.json}
+cached       : True
+categories   : @{A/B Testing=System.Object[]; Accessibility=System.Object[]; Analytics=System.Object[]; Blogs=System.Object[]; CMS=System.Object[]; Databases=System.Object[]; Font scripts=System.Object[]; JavaScript frameworks=System.Object[]; JavaScript libraries=System.Object[]; Live chat=System.Object[]; Marketing automation=System.Object[]; Miscellaneous=System.Object[]; Page builders=System.Object[]; Performance=System.Object[]; Programming languages=System.Object[]; Reverse proxies=System.Object[]; SEO=System.Object[]; SSL/TLS certificate authorities=System.Object[]; Security=System.Object[]; Tag managers=System.Object[]; Translation=System.Object[]; Web servers=System.Object[]; WordPress plugins=System.Object[]; WordPress themes=System.Object[]}
+domain       : unair.ac.id
+duration     : 25.59
+engine       : wappalyzer-local
+finished_at  : 1759283603.79774
+raw          : @{categories=; scan_mode=fast; technologies=System.Object[]; url=https://unair.ac.id}
+scan_mode    : fast
+started_at   : 1759283578.21105
+technologies : {@{categories=System.Object[]; confidence=100; name=WordPress; version=}, @{categories=System.Object[]; confidence=100; name=MySQL; version=}, @{categories=System.Object[]; confidence=100; name=PHP; version=}, @{categories=System.Object[]; confidence=100; name=Hello Elementor; version=3.1.1}…}
+timestamp    : 1759283603
+timing       : @{engine_seconds=24.975; overall_seconds=25.587; overhead_seconds=0.612}
+

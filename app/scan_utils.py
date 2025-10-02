@@ -20,19 +20,21 @@ STATS: Dict[str, Any] = {
     'start_time': time.time(),
     'hits': 0,
     'misses': 0,
-    'mode_hits': {'fast': 0, 'full': 0},
-    'mode_misses': {'fast': 0, 'full': 0},
-    'scans': 0,  # total scan_domain invocations (including retries counted once)
-    'cache_entries': 0,  # updated on write
+    'mode_hits': {'fast': 0, 'full': 0, 'fast_full': 0},
+    'mode_misses': {'fast': 0, 'full': 0, 'fast_full': 0},
+    'scans': 0,
+    'cache_entries': 0,
     'synthetic': {'headers': 0, 'tailwind': 0, 'floodlight': 0},
     'durations': {
         'fast': {'count': 0, 'total': 0.0},
-        'full': {'count': 0, 'total': 0.0}
+        'full': {'count': 0, 'total': 0.0},
+        'fast_full': {'count': 0, 'total': 0.0}
     },
     'errors': {'timeout':0,'dns':0,'ssl':0,'conn':0,'quarantine':0,'preflight':0,'other':0},
     'recent_samples': {
         'fast': deque(maxlen=200),
-        'full': deque(maxlen=200)
+        'full': deque(maxlen=200),
+        'fast_full': deque(maxlen=200)
     }
 }
 
@@ -1514,6 +1516,8 @@ def get_stats() -> Dict[str, Any]:
             return (bucket['total'] / bucket['count']) if bucket['count'] else 0.0
         fast_avg = avg(STATS['durations']['fast'])
         full_avg = avg(STATS['durations']['full'])
+        fast_full_avg = avg(STATS['durations'].get('fast_full', {'count':0,'total':0}))
+
         def percentiles(data: deque, p: float) -> float:
             if not data:
                 return 0.0
@@ -1521,8 +1525,11 @@ def get_stats() -> Dict[str, Any]:
             k = int(round((p/100.0)*(len(arr)-1)))
             k = max(0, min(len(arr)-1, k))
             return arr[k]
+
         fast_samples = STATS['recent_samples']['fast']
         full_samples = STATS['recent_samples']['full']
+        fast_full_samples = STATS['recent_samples'].get('fast_full', deque())
+
         return {
             'uptime_seconds': round(now - STATS['start_time'], 2),
             'hits': STATS['hits'],
@@ -1533,6 +1540,7 @@ def get_stats() -> Dict[str, Any]:
             'cache_entries': STATS['cache_entries'],
             'average_duration_ms': {
                 'fast': round(fast_avg * 1000, 2),
+                'fast_full': round(fast_full_avg * 1000, 2),
                 'full': round(full_avg * 1000, 2)
             },
             'recent_latency_ms': {
@@ -1540,6 +1548,11 @@ def get_stats() -> Dict[str, Any]:
                     'samples': len(fast_samples),
                     'p50': round(percentiles(fast_samples,50)*1000,2),
                     'p95': round(percentiles(fast_samples,95)*1000,2)
+                },
+                'fast_full': {
+                    'samples': len(fast_full_samples),
+                    'p50': round(percentiles(fast_full_samples,50)*1000,2),
+                    'p95': round(percentiles(fast_full_samples,95)*1000,2)
                 },
                 'full': {
                     'samples': len(full_samples),
@@ -1982,3 +1995,138 @@ def deep_scan(domain: str, wappalyzer_path: str) -> Dict[str, Any]:
             with _stats_lock:
                 STATS['cache_entries'] = len(_cache)
     return result
+
+# --------------------------- FAST-FULL (Bounded Single-Phase) SCAN ---------------------------
+def fast_full_scan(domain: str, wappalyzer_path: str) -> Dict[str, Any]:
+    """Run a *single* bounded full Wappalyzer scan with a strict wall-clock budget.
+
+    Goals:
+      - Faster than classic full (skip adaptive retry & multi-attempt logic)
+      - More complete than quick (directly runs full engine, not just heuristic)
+      - Deterministic upper bound (timeout budget in ms) returning partial heuristic fallback if exceeded.
+
+    Environment:
+      TECHSCAN_FAST_FULL_TIMEOUT_MS   (default 5000)   – hard cap (ms) for the full engine attempt.
+      TECHSCAN_FAST_FULL_DISABLE_CACHE (='1')          – if set, do not cache result.
+      TECHSCAN_FAST_FULL_CACHE_TTL     (int seconds)   – override cache TTL (default CACHE_TTL).
+
+    Behaviour:
+      - Disables adaptive bump & implicit retry (single shot)
+      - Sets TECHSCAN_HARD_TIMEOUT_S to budget (seconds) so internal loop respects wall clock
+      - If scan succeeds before timeout -> engine='fast-full'
+      - If any exception (timeout/error) -> fallback to heuristic quick scan and mark partial
+
+    Response extras:
+      phases = { 'full_ms', 'timeout_ms', 'partial': bool, 'error'? }
+      engine  = 'fast-full' | 'fast-full-partial'
+      scan_mode = 'fast_full'
+    """
+    start_all = time.time()
+    # Resolve timeout budget
+    try:
+        budget_ms = int(os.environ.get('TECHSCAN_FAST_FULL_TIMEOUT_MS', '5000'))
+    except ValueError:
+        budget_ms = 5000
+    if budget_ms < 1000:  # enforce minimal sane lower bound
+        budget_ms = 1000
+    timeout_s = max(1, int((budget_ms + 999) / 1000))  # round up to whole seconds for scan_domain
+
+    # Preserve env toggles we will override
+    old_ultra = os.environ.get('TECHSCAN_ULTRA_QUICK')
+    old_adapt = os.environ.get('TECHSCAN_DISABLE_ADAPTIVE')
+    old_impl = os.environ.get('TECHSCAN_DISABLE_IMPLICIT_RETRY')
+    old_hard = os.environ.get('TECHSCAN_HARD_TIMEOUT_S')
+    result: Dict[str, Any] | None = None
+    error: str | None = None
+    try:
+        os.environ['TECHSCAN_ULTRA_QUICK'] = '0'
+        os.environ['TECHSCAN_DISABLE_ADAPTIVE'] = '1'
+        os.environ['TECHSCAN_DISABLE_IMPLICIT_RETRY'] = '1'
+        os.environ['TECHSCAN_HARD_TIMEOUT_S'] = str(timeout_s)
+        full_start = time.time()
+        # Single attempt full scan
+        result = scan_domain(domain, wappalyzer_path, timeout=timeout_s, retries=0, full=True)
+        full_elapsed = int((time.time() - full_start) * 1000)
+        result['engine'] = 'fast-full'
+        result['scan_mode'] = 'fast_full'
+        result['phases'] = {
+            'full_ms': full_elapsed,
+            'timeout_ms': budget_ms,
+            'partial': False
+        }
+    except Exception as fe:  # Timeout or other error -> fallback heuristic
+        error = str(fe)
+        logging.getLogger('techscan.fast_full').warning('fast_full primary scan failed domain=%s err=%s (fallback heuristic)', domain, fe)
+        # Fallback heuristic quick scan (best effort, never raise)
+        try:
+            quick_res = quick_single_scan(domain, wappalyzer_path, defer_full=False)
+        except Exception as qe:
+            # If heuristic also fails, synthesize minimal structure
+            logging.getLogger('techscan.fast_full').error('heuristic fallback failed domain=%s err=%s', domain, qe)
+            quick_res = {
+                'domain': domain,
+                'technologies': [],
+                'categories': {},
+                'tiered': {'heuristic_error': str(qe)}
+            }
+        quick_res['engine'] = 'fast-full-partial'
+        quick_res['scan_mode'] = 'fast_full'
+        elapsed_ms = int((time.time() - start_all) * 1000)
+        quick_res['phases'] = {
+            'full_ms': elapsed_ms,  # total time spent attempting full before fallback
+            'timeout_ms': budget_ms,
+            'partial': True,
+            'error': error
+        }
+        result = quick_res
+    finally:
+        # Restore env
+        if old_ultra is not None: os.environ['TECHSCAN_ULTRA_QUICK'] = old_ultra
+        else: os.environ.pop('TECHSCAN_ULTRA_QUICK', None)
+        if old_adapt is not None: os.environ['TECHSCAN_DISABLE_ADAPTIVE'] = old_adapt
+        else: os.environ.pop('TECHSCAN_DISABLE_ADAPTIVE', None)
+        if old_impl is not None: os.environ['TECHSCAN_DISABLE_IMPLICIT_RETRY'] = old_impl
+        else: os.environ.pop('TECHSCAN_DISABLE_IMPLICIT_RETRY', None)
+        if old_hard is not None: os.environ['TECHSCAN_HARD_TIMEOUT_S'] = old_hard
+        else: os.environ.pop('TECHSCAN_HARD_TIMEOUT_S', None)
+
+    # Record stats for fast_full (treat as its own mode)
+    try:
+        elapsed = time.time() - start_all
+        # Guarantee a minimal positive elapsed to avoid zero averages in tests when mocked scan returns instantly
+        if elapsed <= 0:
+            elapsed = 0.0005  # 0.5 ms minimal
+        with _stats_lock:
+            # increment scans separately from scan_domain internal counter (still counts underlying full engine)
+            STATS['durations']['fast_full']['count'] += 1
+            STATS['durations']['fast_full']['total'] += elapsed
+            STATS['recent_samples']['fast_full'].append(elapsed)
+    except Exception:
+        pass
+
+    # Targeted enrichment (only if still missing versions)
+    if os.environ.get('TECHSCAN_VERSION_ENRICH','1') == '1' and result:
+        try:
+            if any(t.get('version') in (None, '') for t in result.get('technologies') or []):
+                _targeted_version_enrichment(result, timeout=2.5)
+        except Exception as ee:
+            logging.getLogger('techscan.enrich').debug('fast_full enrich fail domain=%s err=%s', domain, ee)
+
+    # Cache (unless disabled)
+    if result and os.environ.get('TECHSCAN_FAST_FULL_DISABLE_CACHE','0') != '1':
+        try:
+            cache_ttl = CACHE_TTL
+            try:
+                c_override = int(os.environ.get('TECHSCAN_FAST_FULL_CACHE_TTL','0'))
+                if c_override > 0:
+                    cache_ttl = c_override
+            except ValueError:
+                pass
+            cache_key = f"full:{result.get('domain')}"
+            with _lock:
+                _cache[cache_key] = {'ts': time.time(), 'data': result, 'ttl': cache_ttl}
+                with _stats_lock:
+                    STATS['cache_entries'] = len(_cache)
+        except Exception:
+            pass
+    return result  # type: ignore
