@@ -61,6 +61,17 @@ Thumbs.db
 !data/*.json
 perf_quick_summary.json
 stats_tmp.json
+quick_pass.jsonl
+deep_pass.jsonl
+merged.jsonl
+latest_quick.json
+micro_quick.json
+quick_test.json
+quick_test2.json
+test_out.jsonl
+test_out2.jsonl
+hasil.jsonl
+app/static/
 
 # Allow small curated example JSON if needed (whitelist here)
 # !example_small.jsonl
@@ -76,6 +87,10 @@ stats_tmp.json
 
 # ---- Wappalyzer external path (if copied) ----
 wappalyzer*/
+
+# Bytecode caches (reinforce)
+**/__pycache__/
+*.pyc
 
 # ---- Cache snapshots (if added later) ----
 cache/
