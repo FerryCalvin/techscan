@@ -16,16 +16,16 @@ Minimal service untuk mendeteksi techstack & versi dari satu atau banyak domain 
 - Endpoint admin statistik `/admin/stats` (hits, misses, uptime, durasi rata-rata)
 - Endpoint health check `/health` dan info versi `/version`
 
-## Prasyarat
+## Requirements
 
 - Python 3.10+
 - Node.js (>=14)
 - Clone repo wappalyzer: contoh ke `d:\wappalyzer\wappalyzer3\wappalyzer-master`
 
-## Instalasi
+## How To Install
 
 ```pwsh
-cd d:\magang\techscan
+your directory
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
