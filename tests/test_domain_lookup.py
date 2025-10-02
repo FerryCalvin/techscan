@@ -1,26 +1,21 @@
-import json, time
+import json, time, os, sys, pathlib
+# Ensure project root on path and disable DB before importing app so in-memory stub is used
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+os.environ['TECHSCAN_DISABLE_DB'] = '1'
 from app import create_app
 from app import db as _db
 
 def test_domain_lookup_endpoint(monkeypatch):
     app = create_app()
     client = app.test_client()
-    # Insert a fake scan record directly using save_scan to populate domain_techs
-    sample = {
-        'domain': 'example.com',
-        'scan_mode': 'fast',
-        'started_at': time.time()-2,
-        'finished_at': time.time()-1,
-        'duration': 1.0,
-        'technologies': [
-            {'name':'WordPress','version':'6.5.2','categories':['CMS','Blogs']},
-            {'name':'jQuery','version':'3.7.1','categories':['JavaScript libraries']}
-        ],
-        'categories': {},
-        'raw': {'meta':'x'},
-        'retries':0
-    }
-    _db.save_scan(sample, from_cache=False, timeout_used=0)
+    # Prepare synthetic rows returned by get_domain_techs (matching DB layer shape)
+    fake_rows = [
+        {'tech_name':'WordPress','version':'6.5.2','categories':['CMS','Blogs'],'first_seen':time.time()-2,'last_seen':time.time()-1},
+        {'tech_name':'jQuery','version':'3.7.1','categories':['JavaScript libraries'],'first_seen':time.time()-2,'last_seen':time.time()-1},
+    ]
+    monkeypatch.setattr(_db, 'get_domain_techs', lambda domain: fake_rows if domain=='example.com' else [])
     r = client.get('/domain?domain=example.com')
     assert r.status_code == 200
     data = r.get_json()
