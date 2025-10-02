@@ -643,66 +643,11 @@ Offline / Air‑gapped:
 Lisensi & Merek:
 - Ikon mengikuti gaya Simple Icons / sumber komunitas. Merek tetap milik pemilik masing‑masing.
 
-### Menggunakan Paket `tech-stack-icons` Secara Lokal (Offline / Tanpa CDN)
+### Ikon: Mode CDN Saja
 
-Jika ingin menghindari ketergantungan CDN dan bekerja sepenuhnya offline:
+UI sekarang hanya memuat ikon teknologi dari CDN `tech-stack-icons` (unpkg). Jika ikon tidak tersedia atau gagal dimuat, sistem menampilkan fallback huruf pertama dengan warna deterministik.
 
-1. Install paket (sekali):
-
-   ```pwsh
-   npm install tech-stack-icons
-   ```
-2. Ekstrak subset ikon yang dibutuhkan (varian default `dark`):
-
-   ```pwsh
-   node scripts/extract_stack_icons.mjs dark
-   ```
-3. Multi-variant: jalankan lagi untuk varian lain (misal `light`, `grayscale`). Struktur output sekarang:
-
-   ```text
-   app/static/icons/stack/
-     dark/*.svg
-     light/*.svg
-     grayscale/*.svg (opsional)
-   ```
-4. Di UI klik tombol `Use Local Pack` untuk beralih sumber ikon ke folder lokal (menggunakan subfolder sesuai dropdown Variant). Klik lagi untuk kembali ke CDN.
-5. Dropdown `Variant` akan memilih subfolder (`dark` / `light` / `grayscale`). Preferensi disimpan otomatis.
-6. Tombol `Reset Icon Cache` membersihkan cache kegagalan (localStorage) dan mem-preload ulang ikon penting.
-
-Menambah ikon baru / plugin populer:
-
-1. Edit array `ICONS` di `scripts/extract_stack_icons.mjs` (atau tambahkan placeholder SVG manual di `app/static/icons/stack/<variant>/`).
-2. Jalankan skrip untuk tiap varian yang ingin Anda hasilkan.
-3. Jika ikon bukan bagian bawaan remote pack, tambahkan slug ke objek `LOCAL_EXTRA_ICONS` (di `app/templates/index.html`).
-4. Refresh UI.
-
-Placeholder tambahan yang saat ini disertakan (dark & light):
-
-| Teknologi / Plugin | Slug File |
-|--------------------|-----------|
-| Yoast SEO          | yoastseo  |
-| WPML               | wpml      |
-| LiteSpeed          | litespeed |
-| Google Analytics   | ga        |
-| jQuery UI          | jqueryui  |
-| jQuery Migrate     | jquerymigrate |
-
-Semua berada di `app/static/icons/stack/<variant>/<slug>.svg`.
-
-Persistensi preferensi otomatis (localStorage keys):
-
-| Key | Nilai | Deskripsi |
-|-----|-------|-----------|
-| `techscan_remote_icons` | '1' / '0' | Aktif / nonaktif penggunaan CDN remote |
-| `techscan_use_local_pack` | '1' / '0' | Prioritaskan ikon lokal multi-variant |
-| `techscan_icon_variant` | dark / light / grayscale | Varian ikon lokal yang dipilih |
-| `techscan_failed_remote_icons` | JSON array | Daftar slug ikon remote yang gagal dimuat (cache kegagalan) |
-
-Fungsi `techIconHTML` kini otomatis memilih path `app/static/icons/stack/<variant>/<slug>.svg` saat mode lokal aktif dan memanfaatkan mapping tambahan `LOCAL_EXTRA_ICONS` untuk plugin populer yang belum ada di remote pack.
-
-CI/CD: Jalankan skrip ekstraksi di pipeline build sehingga folder `app/static/icons/stack` selalu konsisten dengan versi paket yang ter-pin di `package.json`.
-
-Catatan: Jika struktur internal paket berubah dan skrip tidak menemukan data ikon, Anda akan melihat peringatan. Perbarui heuristik skrip sesuai versi baru.
+Kustomisasi tambahan (paket lokal, multi-variant) telah dihapus untuk menyederhanakan UI sesuai permintaan. Jika Anda membutuhkan mode offline di masa depan, Anda dapat mengembalikan skrip ekstraksi sebelumnya dari riwayat git.
 
 
 ## Roadmap (opsional lanjutan)

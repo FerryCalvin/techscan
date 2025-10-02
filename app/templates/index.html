@@ -16,24 +16,24 @@
     header {padding:2.5rem 2rem 1.2rem;max-width:1040px;margin:0 auto;}
     .subtitle {color:var(--text-dim);font-size:.95rem;max-width:760px;line-height:1.4}
     main {max-width:1040px;margin:0 auto;padding:0 2rem 4rem;}
-    .panel {background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem 1.25rem 1.4rem;margin-bottom:1.4rem;box-shadow:0 4px 12px -4px rgba(0,0,0,.4)}
-    .panel h2 {font-size:1.05rem;margin:0 0 .9rem;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)}
-    form.inline {display:flex;gap:.75rem;flex-wrap:wrap}
+  .panel {background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:1.15rem 1.15rem 1.25rem;margin-bottom:1.2rem;box-shadow:0 4px 12px -4px rgba(0,0,0,.35)}
+  .panel h2 {font-size:1.02rem;margin:0 0 .75rem;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)}
+  form.inline {display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-start}
     input[type=text]{flex:1 1 360px;background:var(--panel-alt);border:1px solid var(--border);color:var(--text);padding:.85rem 1rem;border-radius:8px;font-size:.95rem;outline:none;}
     input[type=text]:focus{border-color:var(--accent);box-shadow:var(--focus-ring);}
-    button{cursor:pointer;background:var(--accent);color:var(--text);border:none;padding:.85rem 1.2rem;font-size:.95rem;border-radius:8px;font-weight:600;display:inline-flex;align-items:center;gap:.5rem;letter-spacing:.3px;}
+  button{cursor:pointer;background:var(--accent);color:var(--text);border:none;padding:.75rem 1.05rem;font-size:.9rem;border-radius:8px;font-weight:600;display:inline-flex;align-items:center;gap:.45rem;letter-spacing:.3px;}
     button:hover{background:var(--accent-hover)}
     button.secondary{background:var(--panel-alt);border:1px solid var(--border);color:var(--text-dim);}
     button.secondary:hover{border-color:var(--accent);color:var(--text)}
-    .results-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.9rem;margin-top:1.25rem}
-    .tech{background:var(--panel-alt);border:1px solid var(--border);padding:.75rem .85rem;border-radius:8px;display:flex;flex-direction:column;gap:.4rem;position:relative;}
+  .results-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.75rem;margin-top:1.1rem}
+  .tech{background:var(--panel-alt);border:1px solid var(--border);padding:.7rem .8rem;border-radius:8px;display:flex;flex-direction:column;gap:.35rem;position:relative;}
     .tech h3{margin:0;font-size:.9rem;font-weight:600;line-height:1.2}
     .tech .version{font-size:.75rem;color:var(--accent);font-weight:500}
   .tech-icon{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:600;letter-spacing:.5px;background:#334155;color:#fff;position:absolute;top:8px;left:8px;opacity:.95}
   .tech.has-icon{padding-top:1.9rem}
   .tech-logo{width:26px;height:26px;position:absolute;top:8px;left:8px;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#1e2530}
   .tech-logo img{max-width:100%;max-height:100%;display:block}
-    .badge-row{display:flex;flex-wrap:wrap;gap:.35rem}
+  .badge-row{display:flex;flex-wrap:wrap;gap:.3rem}
     .badge{background:#2f3a4a;color:var(--text-dim);padding:.25rem .55rem;border-radius:999px;font-size:.65rem;letter-spacing:.5px;text-transform:uppercase}
     .status-bar{font-size:.7rem;position:absolute;top:6px;right:8px;color:var(--text-dim)}
     pre{background:#0d0f12;border:1px solid var(--border);padding:1rem;border-radius:8px;overflow:auto;font-size:.75rem;line-height:1.3;max-height:340px}
@@ -63,18 +63,7 @@
   <header>
     <h1>Technology lookup</h1>
     <p class="subtitle">Find out what websites are built with. Masukkan satu domain atau unggah daftar untuk scan bulk. Hasil menampilkan teknologi dan versi (jika terdeteksi).</p>
-    <div style="margin-top:.6rem;display:flex;gap:1rem;flex-wrap:wrap;font-size:.65rem;color:var(--text-dim)">
-      <label style="display:flex;align-items:center;gap:.35rem;cursor:pointer"><input type="checkbox" id="toggle-remote-icons" style="accent-color:var(--accent)"/> Enable remote CDN icons</label>
-      <label style="display:flex;align-items:center;gap:.35rem;cursor:pointer">Variant:
-        <select id="icon-variant" style="background:var(--panel-alt);border:1px solid var(--border);color:var(--text);padding:.3rem .4rem;border-radius:6px;font-size:.6rem">
-          <option value="dark" selected>dark</option>
-          <option value="light">light</option>
-          <option value="grayscale">grayscale</option>
-        </select>
-      </label>
-      <button type="button" id="reset-icon-cache" class="secondary" style="padding:.4rem .7rem;font-size:.6rem">Reset Icon Cache</button>
-      <button type="button" id="switch-local-pack" class="secondary" style="padding:.4rem .7rem;font-size:.6rem">Use Local Pack</button>
-    </div>
+    <!-- Controls removed per user request: always use CDN icons now -->
   </header>
   <main>
     <section class="panel" id="single-panel">
@@ -358,23 +347,8 @@
       }
     }
 
-    const ICON_MAP = {
-      'wordpress':'/static/icons/wordpress.svg',
-      'react':'/static/icons/react.svg',
-      'laravel':'/static/icons/laravel.svg',
-      'vue.js':'/static/icons/vue.svg',
-      'vue':'/static/icons/vue.svg',
-      'angular':'/static/icons/angular.svg',
-      'tailwind css':'/static/icons/tailwindcss.svg',
-      'tailwind':'/static/icons/tailwindcss.svg',
-      'php':'/static/icons/php.svg',
-      'mysql':'/static/icons/mysql.svg',
-      'redis':'/static/icons/redis.svg'
-    };
-
-    // Remote icon integration (tech-stack-icons) – use CDN; fallback to local ICON_MAP or letter badge.
-  const ICON_REMOTE_BASE = 'https://unpkg.com/tech-stack-icons@1.4.0/icons'; // CDN fallback
-  const ICON_LOCAL_BASE = '/static/icons/stack'; // base dir; variant subfolders (dark/, light/, grayscale/)
+    // CDN icon integration only (user request) with letter fallback.
+    const ICON_REMOTE_BASE = 'https://unpkg.com/tech-stack-icons@1.4.0/icons';
     const REMOTE_ICON_MAP = {
       'wordpress':'wordpress',
       'react':'react',
@@ -395,17 +369,6 @@
       'jquery':'jquery',
       'next.js':'nextjs','nextjs':'nextjs',
       'nuxt.js':'nuxtjs','nuxtjs':'nuxtjs'
-    };
-
-    // Extra local-only placeholder icons (popular plugins / technologies not (yet) in remote pack or we want custom look)
-    // Files exist under app/static/icons/stack/<variant>/<slug>.svg (dark + light provided; grayscale optional)
-    const LOCAL_EXTRA_ICONS = {
-      'yoast seo':'yoastseo','yoastseo':'yoastseo',
-      'wpml':'wpml',
-      'litespeed':'litespeed','lite speed':'litespeed',
-      'google analytics':'ga','ga':'ga',
-      'jquery ui':'jqueryui','jqueryui':'jqueryui',
-      'jquery migrate':'jquerymigrate','jquerymigrate':'jquerymigrate'
     };
 
     const failCounts = {};
@@ -430,48 +393,15 @@
       }catch(_e){/* noop */}
     }
 
-    // Failed remote icon cache (persisted)
-    let failedRemoteIcons = new Set();
-    try {
-      const storedFail = localStorage.getItem('techscan_failed_remote_icons');
-      if(storedFail){ JSON.parse(storedFail).forEach(k=>failedRemoteIcons.add(k)); }
-    } catch(_e){ /* ignore */ }
-
-  let enableRemoteIcons = true; // remote vs letter/local legacy icons
-  let useLocalPack = false; // when true use locally extracted tech-stack-icons svgs first (and local extras)
-    try { const stored = localStorage.getItem('techscan_remote_icons'); if(stored!==null) enableRemoteIcons = stored === '1'; } catch(_e){}
-    try { const storedLocal = localStorage.getItem('techscan_use_local_pack'); if(storedLocal!==null) useLocalPack = storedLocal === '1'; } catch(_e){}
-    const remoteToggleEl = document.getElementById('toggle-remote-icons');
-    if(remoteToggleEl) remoteToggleEl.checked = enableRemoteIcons;
-
-    const variantSelect = document.getElementById('icon-variant');
-    // Restore variant selection if persisted
-    try { const vStored = localStorage.getItem('techscan_icon_variant'); if(vStored && variantSelect) variantSelect.value = vStored; } catch(_e){}
-    function currentVariant(){ return (variantSelect && variantSelect.value) || 'dark'; }
+    let failedRemoteIcons = new Set(); // simple session-level only now
     function techIconHTML(name, version){
       if(!name) return null;
       const key = name.toLowerCase();
       const title = version ? `${name} ${version}` : name;
-      // Prefer remote icon if available (toggle + failed cache added later)
       if(REMOTE_ICON_MAP[key] && !failedRemoteIcons.has(key)){
-        if(useLocalPack){
-          // local extracted files now live in variant subfolders: stack/<variant>/<icon>.svg
-          const localPath = `${ICON_LOCAL_BASE}/${currentVariant()}/${REMOTE_ICON_MAP[key]}.svg`;
-          return `<div class='tech-logo'><img src='${localPath}' alt='${name} logo' title='${title}' data-tech='${name}' data-version='${version||''}' onerror='fallbackIcon(this)'/></div>`;
-        }
-        if(enableRemoteIcons){
-          const remotePath = `${ICON_REMOTE_BASE}/${REMOTE_ICON_MAP[key]}.svg`;
-          return `<div class='tech-logo'><img src='${remotePath}' alt='${name} logo' title='${title}' data-tech='${name}' data-version='${version||''}' onerror='fallbackIcon(this)'/></div>`;
-        }
+        const remotePath = `${ICON_REMOTE_BASE}/${REMOTE_ICON_MAP[key]}.svg`;
+        return `<div class='tech-logo'><img src='${remotePath}' alt='${name} logo' title='${title}' data-tech='${name}' data-version='${version||''}' onerror='fallbackIcon(this)'/></div>`;
       }
-      // Local extra placeholders (plugins etc.) – only if local pack active (or remote disabled and we still want icon)
-      if(LOCAL_EXTRA_ICONS[key]){
-        const slug = LOCAL_EXTRA_ICONS[key];
-        const localExtraPath = `${ICON_LOCAL_BASE}/${currentVariant()}/${slug}.svg`;
-        return `<div class='tech-logo'><img src='${localExtraPath}' alt='${name} logo' title='${title}' data-tech='${name}' data-version='${version||''}' onerror='fallbackIcon(this)'/></div>`;
-      }
-      const path = ICON_MAP[key];
-      if(path) return `<div class='tech-logo'><img src='${path}' alt='${name} logo' title='${title}' data-tech='${name}' data-version='${version||''}' onerror='fallbackIcon(this)'/></div>`;
       const letter = name.charAt(0).toUpperCase();
       const color = iconColorFor(name);
       return `<div class='tech-icon' style="background:${color}" title='${title}'>${letter}</div>`;
@@ -488,59 +418,10 @@
         renderDomainLookup(_lastDomainLookup.domain, _lastDomainLookup.data);
       }
     }
-    const localPackBtn = document.getElementById('switch-local-pack');
-    if(localPackBtn){ localPackBtn.textContent = useLocalPack? 'Use CDN Pack':'Use Local Pack'; }
-    if(remoteToggleEl){
-      remoteToggleEl.addEventListener('change', ()=>{
-        enableRemoteIcons = remoteToggleEl.checked;
-        try { localStorage.setItem('techscan_remote_icons', enableRemoteIcons? '1':'0'); } catch(_e){}
-        reRenderAfterToggle();
-        if(enableRemoteIcons && !useLocalPack){ preloadCriticalIcons(); }
-      });
-    }
-    if(localPackBtn){
-      localPackBtn.addEventListener('click', ()=>{
-        useLocalPack = !useLocalPack;
-        localPackBtn.textContent = useLocalPack? 'Use CDN Pack':'Use Local Pack';
-        try { localStorage.setItem('techscan_use_local_pack', useLocalPack? '1':'0'); } catch(_e){}
-        reRenderAfterToggle();
-      });
-    }
-    if(variantSelect){
-      variantSelect.addEventListener('change', ()=>{
-        try { localStorage.setItem('techscan_icon_variant', variantSelect.value); } catch(_e){}
-        // variant influences which subfolder we load icons from
-        reRenderAfterToggle();
-      });
-    }
-    const resetBtn = document.getElementById('reset-icon-cache');
-    if(resetBtn){
-      resetBtn.addEventListener('click', ()=>{
-        failedRemoteIcons.clear();
-        Object.keys(failCounts).forEach(k=> delete failCounts[k]);
-        try { localStorage.removeItem('techscan_failed_remote_icons'); } catch(_e){}
-        _preloadedOnce = false;
-        if(enableRemoteIcons){ preloadCriticalIcons(); }
-        reRenderAfterToggle();
-      });
-    }
-
-    const CRITICAL_REMOTE_ICONS = ['wordpress','react','laravel','vue','angular','tailwindcss','php','mysql','redis','nginx','apache'];
-    let _preloadedOnce = false;
-    function preloadCriticalIcons(){
-      if(!enableRemoteIcons) return;
-      if(_preloadedOnce) return; // only once per load
-      _preloadedOnce = true;
-      CRITICAL_REMOTE_ICONS.forEach(k=>{
-        if(!REMOTE_ICON_MAP[k]) return;
-        if(failedRemoteIcons.has(k)) return;
-        const img = new Image();
-        img.onload = ()=>{/* success noop */};
-        img.onerror = ()=>{ failedRemoteIcons.add(k); try { localStorage.setItem('techscan_failed_remote_icons', JSON.stringify(Array.from(failedRemoteIcons))); } catch(_e){} };
-        img.src = `${ICON_REMOTE_BASE}/${REMOTE_ICON_MAP[k]}.svg`;
-      });
-    }
-    if(enableRemoteIcons){ preloadCriticalIcons(); }
+    // Preload a few common icons (session only)
+    ['wordpress','react','laravel','vue','angular','tailwindcss','php','mysql','redis'].forEach(k=>{
+      if(!REMOTE_ICON_MAP[k]) return; const img = new Image(); img.src = `${ICON_REMOTE_BASE}/${REMOTE_ICON_MAP[k]}.svg`;
+    });
 
     function renderSingle(domain, data){
       _lastSingleData = data; _lastSingleDomain = domain;
