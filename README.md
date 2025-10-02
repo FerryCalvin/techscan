@@ -609,45 +609,22 @@ Deteksi script/img/iframe `fls.doubleclick.net/activity` → tambahkan teknologi
 
 Wappalyzer adalah GPLv3. Integrasi ini harus mematuhi GPLv3 jika didistribusikan. Pastikan menyertakan atribusi & lisensi Wappalyzer jika dipublikasikan lebih luas.
 
-### Ikon Teknologi
+### Ikon Teknologi (CDN Only)
 
-UI menampilkan ikon untuk sebagian teknologi umum (WordPress, React, Laravel, Vue.js, Angular, Tailwind, PHP, MySQL, Redis, dll). Ikon disediakan sebagai SVG sederhana di `app/static/icons/` dan diinspirasi gaya Simple Icons. Merek dagang dan logo adalah milik pemiliknya masing‑masing. Jika Anda mendistribusikan ulang secara publik pastikan mematuhi kebijakan merek masing‑masing vendor.
+UI menampilkan ikon untuk sebagian teknologi umum (WordPress, React, Laravel, Vue.js, Angular, Tailwind, PHP, MySQL, Redis, dll) langsung dari paket publik `tech-stack-icons` via CDN (unpkg) dengan versi dipin (`@1.4.0` atau sesuai yang Anda tetapkan) untuk stabilitas:
 
-Menambah ikon baru:
-1. Tambahkan file SVG ke `app/static/icons/<nama>.svg` (ukuran viewBox 0 0 256 256 disarankan atau akan diskalakan otomatis).
-2. Tambahkan mapping nama teknologi (lowercase) ke path SVG di objek `ICON_MAP` dalam `index.html`.
-3. Refresh browser (aktifkan `TECHSCAN_TEMPLATE_AUTO_RELOAD=1` untuk auto reload saat development).
+`https://unpkg.com/tech-stack-icons@1.4.0/icons/<nama>.svg`
 
-Fallback: Jika ikon tidak tersedia, UI akan menampilkan huruf pertama dengan warna background pseudo-random deterministik.
+Jika ikon gagal dimuat, UI otomatis menampilkan fallback berupa huruf pertama nama teknologi dengan warna deterministik (pseudo-random seeded dari nama) sehingga tetap terbaca dan konsisten.
 
-#### Sumber Ikon via CDN
+Semua mekanisme ikon lokal, multi-variant (dark/light), dan toggle sudah dihapus untuk menyederhanakan kode dan mengurangi aset repo. Bila suatu saat diperlukan mode offline / air‑gapped, Anda bisa:
 
-Secara default UI mencoba memuat ikon dari paket publik `tech-stack-icons` melalui CDN (unpkg):
+1. Menyalin subset ikon dari paket ke folder lokal (lihat riwayat git sebelum commit pembersihan ikon).
+2. Mengubah konstanta `ICON_REMOTE_BASE` di `index.html` untuk menunjuk ke path lokal.
 
-`https://unpkg.com/tech-stack-icons@latest/icons/<nama>.svg`
+Karena saat ini mode CDN-only, instruksi penambahan file SVG lokal telah dihapus dari README agar tidak membingungkan.
 
-Jika ikon CDN gagal dimuat (404 / jaringan), otomatis fallback ke ikon lokal (jika tersedia) atau huruf berwarna.
-
-Keuntungan:
-- Tidak perlu menambah banyak file SVG lokal.
-- Ikon konsisten & mudah diperbarui (update versi paket).
-
-Risiko / Catatan:
-- Ketergantungan koneksi internet untuk ikon baru.
-- Sebaiknya pin versi tertentu untuk stabilitas produksi, misal ganti `@latest` menjadi `@1.4.0` (contoh):
-  - Ubah konstanta `ICON_REMOTE_BASE` di `index.html`.
-
-Offline / Air‑gapped:
-- Salin ikon yang diperlukan ke `app/static/icons/` dan hapus entri di `REMOTE_ICON_MAP` atau set `ICON_REMOTE_BASE` ke folder lokal.
-
-Lisensi & Merek:
-- Ikon mengikuti gaya Simple Icons / sumber komunitas. Merek tetap milik pemilik masing‑masing.
-
-### Ikon: Mode CDN Saja
-
-UI sekarang hanya memuat ikon teknologi dari CDN `tech-stack-icons` (unpkg). Jika ikon tidak tersedia atau gagal dimuat, sistem menampilkan fallback huruf pertama dengan warna deterministik.
-
-Kustomisasi tambahan (paket lokal, multi-variant) telah dihapus untuk menyederhanakan UI sesuai permintaan. Jika Anda membutuhkan mode offline di masa depan, Anda dapat mengembalikan skrip ekstraksi sebelumnya dari riwayat git.
+Lisensi & Merek: Ikon mengikuti gaya komunitas (mirip Simple Icons). Merek dagang & logo tetap milik pemilik masing‑masing; hormati panduan merek saat distribusi.
 
 
 ## Roadmap (opsional lanjutan)
