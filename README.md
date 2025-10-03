@@ -611,7 +611,7 @@ Wappalyzer adalah GPLv3. Integrasi ini harus mematuhi GPLv3 jika didistribusikan
 
 ### Ikon Teknologi (CDN Only)
 
-UI menampilkan ikon untuk sebagian teknologi umum (WordPress, React, Laravel, Vue.js, Angular, Tailwind, PHP, MySQL, Redis, dll) langsung dari paket publik `tech-stack-icons` via CDN (unpkg) dengan versi dipin (`@1.4.0` atau sesuai yang Anda tetapkan) untuk stabilitas:
+UI menampilkan ikon untuk sebagian teknologi umum (WordPress, React, Laravel, Vue.js, Angular, Tailwind, PHP, MySQL, Redis, dll) langsung dari CDN `tech-stack-icons` (unpkg) dengan versi dipin untuk stabilitas:
 
 `https://unpkg.com/tech-stack-icons@1.4.0/icons/<nama>.svg`
 

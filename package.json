@@ -1,5 +1,7 @@
 {
-  "dependencies": {
-    "tech-stack-icons": "^3.3.2"
-  }
+  "name": "techscan",
+  "private": true,
+  "description": "Tech stack scanning UI (icons via CDN)",
+  "license": "MIT",
+  "dependencies": {}
 }
