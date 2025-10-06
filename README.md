@@ -15,6 +15,8 @@ Minimal service untuk mendeteksi techstack & versi dari satu atau banyak domain 
 - Endpoint admin untuk flush cache & reload heuristik
 - Endpoint admin statistik `/admin/stats` (hits, misses, uptime, durasi rata-rata)
 - Endpoint health check `/health` dan info versi `/version`
+- Persistent Wappalyzer worker (mode daemon) untuk eliminasi overhead spawn per scan (`TECHSCAN_PERSIST_BROWSER=1`)
+- Endpoint metrics `/metrics` (cache stats, phase aggregates, persistent worker stats, single-flight dedupe)
 
 ## Requirements
 
@@ -206,18 +208,150 @@ Atau single sequential (lebih lambat, cocok debug):
 python scripts/seed_db.py --url http://127.0.0.1:5000
 ```
 
-## Web UI
+## Web UI (Multi-Page Architecture)
 
-Buka di browser: `http://127.0.0.1:5000/`.
+Alamat utama: `http://127.0.0.1:5000/` (alias `/dashboard`).
 
-Fitur halaman:
+Sejak refactor terbaru, UI lama single-page `index.html` telah dihapus dan diganti struktur multi-halaman yang lebih tersegmentasi. Jika Anda masih melihat tampilan lama: pastikan server sudah di-restart dan lakukan hard refresh (Ctrl+F5). Rute legacy `/index.html` sekarang melakukan redirect (302) ke `/dashboard`.
 
-- Form single lookup: masukkan domain lalu Scan.
-- Bulk upload: unggah file `.txt` (satu domain per baris) → tabel status.
-- Kartu teknologi: nama, versi (jika ada), kategori.
-- Panel kategori: agregasi per kategori.
-- Raw JSON: expandable (details tag) untuk inspeksi.
-- Penanda `(cached)` bila hasil diambil dari cache TTL 5 menit.
+### Halaman Utama
+
+1. Dashboard (`/dashboard` atau `/`)
+   - Ringkas DB stats (`/admin/db_stats`) dan runtime scan stats (`/admin/stats`).
+   - Form Single Scan (opsi fast_full) dan Bulk Scan ringan langsung dari UI.
+2. Websites (`/websites`)
+   - Menampilkan daftar domain ter-group berdasarkan konfigurasi `data/domain_groups.json` (lihat Domain Grouping di bawah).
+   - Setiap domain menampilkan meta ringkas: last scan, tech count, mode terakhir.
+   - Klik domain membuka modal detail (AJAX ke `/api/domain/<domain>/detail`) yang memuat diff antar dua scan terbaru + metrics fase.
+3. Technology Search (`/technology`)
+   - Form pencarian teknologi / kategori (wrapper UI untuk endpoint existing `/search`).
+4. History (`/history`)
+   - Viewer paginated histori scan per domain (menggunakan endpoint baru `/api/domain/<domain>/history`).
+
+Semua halaman berbagi layout dasar `base.html` (navigasi utama). CSS minimal berbasis Pico.css (CDN) untuk ringan tanpa build pipeline.
+
+### Domain Grouping
+
+File konfigurasi: `data/domain_groups.json`
+
+Struktur contoh:
+
+```json
+{
+  "faculty": ["ft.example.ac.id", "fk.example.ac.id"],
+  "directorate": ["dir.example.ac.id"],
+  "work_unit": [],
+  "bem_ukm": []
+}
+```
+
+Endpoint memuat grouping: `GET /api/domains`
+
+Response ringkas:
+```json
+{
+  "groups": {
+    "faculty": [{"domain":"ft.example.ac.id","tech_count":6,"last_scan":1696500100,"last_mode":"fast_full"}],
+    "directorate": [],
+    "work_unit": [],
+    "bem_ukm": []
+  },
+  "ungrouped": [
+    {"domain":"example.com","tech_count":4,"last_scan":1696500123,"last_mode":"fast"}
+  ],
+  "group_counts": {"faculty": 1, "directorate": 0, "work_unit": 0, "bem_ukm": 0},
+  "total_domains": 2
+}
+```
+
+Reload grouping setelah edit file tanpa restart:
+
+```pwsh
+curl -X POST http://127.0.0.1:5000/admin/domain_groups/reload
+```
+
+Output:
+```json
+{"status":"reloaded","groups_version": 3, "updated_at": 1696500999}
+```
+
+Versi meningkat setiap reload berhasil (counter in-memory) – gunakan untuk memverifikasi UI telah memuat konfigurasi baru.
+
+### Domain Detail & Diff
+
+Endpoint: `GET /api/domain/<domain>/detail`
+
+Mengembalikan dua scan terbaru (jika tersedia) + diff ringkas perubahan teknologi:
+
+```json
+{
+  "domain": "example.com",
+  "latest": {"scan_id": 42, "mode": "fast_full", "started_at": 1696500400, "finished_at": 1696500402, "duration_ms": 1890, "from_cache": false, "retries":0, "timeout_used":5000},
+  "previous": {"scan_id": 41, "mode": "fast", "finished_at": 1696499900},
+  "diff": {
+    "added": [{"name":"WooCommerce","version":"8.2.1"}],
+    "removed": [{"name":"Elementor","version":"3.19.0"}],
+    "changed": [{"name":"WordPress","from":"6.5.2","to":"6.5.3"}]
+  },
+  "technologies": [
+    {"name":"WordPress","version":"6.5.3","categories":["CMS"],"confidence":95}
+  ],
+  "metrics": {"engine_ms":1820,"heuristic_total_ms":120,"version_audit_ms":40}
+}
+```
+
+Field diff:
+
+| List | Kriteria |
+|------|----------|
+| added | Teknologi muncul di scan terbaru tapi tidak ada di scan sebelumnya |
+| removed | Ada di scan sebelumnya, tidak ada di terbaru |
+| changed | Nama sama, versi berbeda / versi muncul / versi hilang |
+
+Catatan: Bila DB dinonaktifkan (`TECHSCAN_DISABLE_DB=1`), endpoint mengembalikan `503 {"error":"db_disabled"}`.
+
+### History Pagination
+
+Endpoint: `GET /api/domain/<domain>/history?limit=<n>&offset=<n>`
+
+Aturan:
+- `limit`: 1–200 (default 20 bila out-of-range / tidak valid)
+- `offset`: >=0 (default 0 bila negatif / tidak valid)
+
+Contoh response:
+```json
+{
+  "domain":"example.com",
+  "limit": 10,
+  "offset": 0,
+  "total": 57,
+  "scans": [
+    {"scan_id": 101,"mode":"fast_full","started_at":1696501200,"finished_at":1696501202,"duration_ms":2010,"from_cache":false,"retries":0,"timeout_used":5000,"tech_count":7,"with_version":3},
+    {"scan_id": 100,"mode":"fast","started_at":1696500600,"finished_at":1696500601,"duration_ms":750,"from_cache":true,"retries":0,"timeout_used":0,"tech_count":5,"with_version":2}
+  ]
+}
+```
+
+UI `/history` melakukan fetch AJAX sesuai domain yang dimasukkan user dan menampilkan kontrol Next/Prev berdasarkan `limit` & `offset`.
+
+### Ringkasan Endpoint Baru UI
+
+| Endpoint | Method | Deskripsi |
+|----------|--------|-----------|
+| `/api/domains` | GET | Daftar domain + grouping & counts |
+| `/api/domain/<domain>/detail` | GET | Dua scan terbaru + diff teknologi |
+| `/api/domain/<domain>/history` | GET | Histori paginated (limit/offset) |
+| `/admin/domain_groups/reload` | POST | Reload file grouping JSON |
+
+### Migrasi dari UI Lama
+
+- File `templates/index.html` dihapus (legacy monolith).
+- Redirect 302 `/index.html` → `/dashboard` untuk menjaga bookmark lama masih bekerja.
+- Hapus cache browser jika masih melihat struktur lama (service worker tidak digunakan, jadi biasanya cukup hard reload).
+- Dokumentasi di bagian sebelumnya terkait ikon lokal pada `index.html` tidak lagi relevan; layout kini generik tanpa bundling ikon lokal.
+
+Jika Anda memiliki automasi yang sebelumnya mem-parsing elemen HTML di halaman lama, sesuaikan ke endpoint JSON baru agar lebih stabil.
+
 
 ## Contoh Request
 
@@ -346,11 +480,21 @@ Jika tidak ada flag → default mengikuti heuristic/fast biasa (atau quick jika 
 | TECHSCAN_FAST_FULL_TIMEOUT_MS | Bounded fast-full hard cap (ms) | 5000 |
 | TECHSCAN_FAST_FULL_DISABLE_CACHE | Jangan cache hasil fast-full | 0 |
 | TECHSCAN_FAST_FULL_CACHE_TTL | TTL cache fast-full custom | (inherit default) |
+| TECHSCAN_BLOCK_RESOURCES | Force resource blocking (1=always, 0=never, unset=fast only) | (unset) |
+| TECHSCAN_BLOCK_RESOURCE_TYPES | Comma list resource types to block (image,media,font,stylesheet,script,...) | (image,media,font,stylesheet) |
+| TECHSCAN_BLOCK_MAX_KB | Abort image/media responses larger than this KB (only if interception active) | (disabled) |
 | TECHSCAN_DEEP_DISABLE_CACHE | Jangan tulis hasil deep ke cache | 0 |
 | TECHSCAN_DEEP_CACHE_TTL | TTL khusus cache hasil deep | (inherit) |
 | TECHSCAN_VERSION_ENRICH | Aktifkan targeted version enrichment | 1 |
 | TECHSCAN_ULTRA_QUICK | Heuristic-only ekstrem (tanpa full) | 0 |
 | TECHSCAN_ULTRA_FALLBACK_MICRO | Aktifkan micro fallback saat ultra kosong | 0 |
+| TECHSCAN_PERSIST_BROWSER | Aktifkan persistent Node daemon (server.js) | 0 |
+| TECHSCAN_PERSIST_WATCHDOG | Restart otomatis bila banyak gagal | 0 |
+| TECHSCAN_PERSIST_FAIL_THRESHOLD | Ambang gagal sebelum restart | 5 |
+| TECHSCAN_PERSIST_RESTART_WINDOW | Window detik untuk threshold gagal | 180 |
+| TECHSCAN_PERSIST_TIMEOUT | Timeout tunggu respon daemon (detik) | 70 |
+| TECHSCAN_BROWSER_RECYCLE | Jumlah scan sebelum recycle browser | 250 |
+| TECHSCAN_NODE | Path executable node custom | node |
 
 ### Contoh Potongan Response Deep
 
@@ -385,6 +529,79 @@ Karakteristik:
 - Ditandai dengan flag di block phases / tiered: `enriched=true`.
 
 Disarankan mematikan enrichment (`TECHSCAN_VERSION_ENRICH=0`) untuk workload ultra-bulk yang hanya butuh nama teknologi (latency mikro lebih ketat).
+
+## Persistent Mode (Mengurangi Overhead Spawn)
+
+Default (non-persist): setiap scan memanggil proses Node baru atau memulai konteks Wappalyzer → overhead ratusan ms.
+
+Dengan persistent mode (`TECHSCAN_PERSIST_BROWSER=1`):
+1. Saat scan pertama dipanggil, daemon `server.js` diluncurkan sekali.
+2. Permintaan scan dikirim via stdin JSON → hasil lebih cepat (re-use browser & halaman).
+3. Metrics tambahan tersedia di `/metrics` → field `persistent_worker`:
+  - `requests`, `failures`, `timeouts`, `restarts`, `last_start_ts`, `avg_latency_ms`.
+
+### Cara Aktifkan (Windows PowerShell contoh)
+```pwsh
+$env:TECHSCAN_PERSIST_BROWSER='1'
+python run.py
+```
+
+### Watchdog Restart
+```pwsh
+$env:TECHSCAN_PERSIST_BROWSER='1'
+$env:TECHSCAN_PERSIST_WATCHDOG='1'
+$env:TECHSCAN_PERSIST_FAIL_THRESHOLD='5'
+$env:TECHSCAN_PERSIST_RESTART_WINDOW='180'
+```
+
+### Tuning Lanjutan
+| Variabel | Dampak |
+|----------|--------|
+| TECHSCAN_BROWSER_RECYCLE | Recycle berkala browser untuk mencegah memory leak |
+| TECHSCAN_NODE | Pakai Node versi khusus / path portable |
+| TECHSCAN_PERSIST_TIMEOUT | Batas menunggu respon (hindari hang jika daemon crash) |
+
+### Fallback
+Jika daemon crash, client mencatat failure & (jika watchdog aktif) restart otomatis. Jika persistent dimatikan (env=0), jalur lama tetap digunakan.
+
+### Observasi & Evaluasi
+Bandingkan sebelum & sesudah persistent: lihat `/metrics` → kurangi `phase_aggregates.engine_ms / engine_count` dan turunnya `avg_latency_ms` persistent. Target penurunan >40%.
+
+### Single-Flight (Deduplication Concurrency Guard)
+
+Untuk mencegah banyak request paralel memicu scan domain yang sama secara bersamaan (boros CPU & memperpanjang tail latency), sistem memakai mekanisme single-flight per cache key (`fast:domain` / `full:domain`).
+
+Ringkasan:
+
+- Leader: request pertama yang belum ada in-flight → menjalankan scan.
+- Followers: request datang saat leader berjalan → menunggu selesai lalu membaca hasil cache (tidak spawn proses / browser lagi).
+- Aktif default (`TECHSCAN_SINGLE_FLIGHT=1`). Set `TECHSCAN_SINGLE_FLIGHT=0` hanya untuk eksperimen throughput tanpa deduplikasi.
+
+Metrik baru (di `/admin/stats` & `/metrics`):
+
+```json
+"single_flight": {
+  "hits": 42,
+  "wait_ms": 1234,
+  "inflight": 0
+}
+```
+
+Definisi:
+
+| Field | Arti |
+|-------|------|
+| hits | Jumlah follower yang berhasil menghindari duplicate scan |
+| wait_ms | Akumulasi waktu tunggu followers (ms) |
+| inflight | Jumlah leader aktif saat snapshot (diagnostik) |
+
+Interpretasi:
+
+- `hits` tinggi + `wait_ms` moderat = efektif (banyak dedupe, latency masih OK).
+- `wait_ms` sangat tinggi → pertimbangkan optimasi latency (persistent mode, kurangi timeout besar, tiered early return).
+- `hits` selalu 0 padahal Anda mengirim burst paralel → scan terlalu cepat atau single-flight dimatikan.
+
+Tidak ada konfigurasi tambahan lain; bekerja transparan bersama cache. Followers diberi flag `single_flight_follower=true` di response (saat jalur follower langsung). Gunakan untuk debugging.
 
 ## Bulk Two-Phase (Quick lalu Deep Selektif)
 
@@ -496,6 +713,115 @@ Penjelasan ringkas:
 
 - `average_duration_ms.fast_full` = total durasi eksekusi fast_full dibagi jumlah.
 - `recent_latency_ms.fast_full` = ringkasan window (max 200 sample) dengan p50 & p95.
+
+### Fast-Full Timing Fields (Patch 2025-10)
+
+Mulai patch ini struktur timing fast_full lebih konsisten:
+
+Field tambahan / perubahan:
+
+| Field | Keterangan |
+|-------|-----------|
+| `started_at` / `finished_at` | Sekarang selalu hadir di hasil fast_full (sebelumnya hanya di scan_domain normal) |
+| `duration` | Total wall time (detik, 3 desimal) dari start hingga selesai (atau fallback) |
+| `phases.full_attempt_ms` | Durasi ms percobaan full utama (berhasil atau gagal) |
+| `phases.fallback_ms` | Saat ini 0 (heuristic fallback cepat); dapat diekspansi jika timing granular quick di-ekspos |
+| `phases.full_ms` | Alias legacy = sama dengan `full_attempt_ms` (dipertahankan demi kompatibilitas klien lama) |
+| `phases.partial` | True jika fallback heuristic dipakai (timeout/error) |
+| `phases.timeout_ms` | Budget hard cap ms yang digunakan pada percobaan full |
+| `phases.error` | String error original jika partial |
+
+Jika Anda memiliki parser lama yang hanya membaca `phases.full_ms`, tidak perlu diubah (nilai identik). Untuk analitik baru gunakan `full_attempt_ms`.
+
+Patch lanjutan: sekarang `full_attempt_ms` dihitung sampai titik kegagalan attempt full (bukan total - heuristic_ms), sehingga `fallback_ms` benar-benar mencerminkan durasi heuristic quick fallback.
+
+### Heuristic Timing Breakdown (Quick / Fallback)
+
+Quick scan & fallback heuristic sekarang memiliki struktur phases lebih detail:
+
+| Field | Arti |
+|-------|------|
+| `heuristic_core_ms` | Durasi eksekusi inti heuristic (pattern/header fetch lokal) |
+| `sniff_ms` | Waktu HTML sniff (jika dijalankan) |
+| `micro_ms` | Waktu micro fallback (jika aktif & dijalankan) |
+| `heuristic_total_ms` | Penjumlahan ketiganya (alias lama: `heuristic_ms`) |
+
+Jika suatu langkah tidak terjadi, field bisa absen atau 0. Klien lama masih bisa membaca `heuristic_ms` tanpa perubahan.
+
+### Admin Endpoint: /admin/log_level
+
+Endpoint baru untuk inspeksi & perubahan level log runtime tanpa restart.
+
+GET `/admin/log_level` -> `{"status":"ok","level":"INFO"}`
+
+POST `/admin/log_level` body:
+
+```json
+{"level": "DEBUG"}
+```
+
+Level yang valid: DEBUG, INFO, WARNING, ERROR, CRITICAL. Bila `TECHSCAN_ADMIN_TOKEN` diset, sertakan header `X-Admin-Token`.
+
+Perubahan juga meng-update env `TECHSCAN_LOG_LEVEL` sehingga proses turunan mengikuti preferensi jika diluncurkan setelahnya.
+
+### Resource Blocking Kustom (scanner.js)
+
+Sebelumnya blok resource hanya aktif pada mode fast & tipe baku. Kini dapat dikontrol:
+
+| Env | Fungsi |
+|-----|--------|
+| `TECHSCAN_BLOCK_RESOURCES=0` | Tidak pernah blok resource |
+| `TECHSCAN_BLOCK_RESOURCES=1` | Selalu blok (termasuk full) |
+| (unset) | Blok hanya untuk fast / quick (default perilaku lama) |
+| `TECHSCAN_BLOCK_RESOURCE_TYPES="image,media,font,stylesheet"` | Daftar tipe yang dibatalkan (tambahkan misal `script` kalau mau agresif) |
+| `TECHSCAN_BLOCK_MAX_KB=80` | Batalkan response image/media dengan Content-Length > 80KB |
+
+Gunakan kombinasi ini untuk domain berat (YouTube, portal berita) guna mengurangi kemungkinan timeout penuh, lalu sesuaikan budget fast_full (`TECHSCAN_FAST_FULL_TIMEOUT_MS`).
+
+### Synthetic Detection Tambahan: YouTube / Polymer SPA
+
+Ditambahkan deteksi ringan untuk platform YouTube / Polymer di sisi Node (`scanner.js`). Aktif default (set `TECHSCAN_SYNTHETIC_YOUTUBE=0` untuk mematikan). Logika mendeteksi keberadaan objek global saat halaman awal selesai dimuat:
+
+- `window.ytcfg.get` (konfigurasi runtime YouTube)
+- `window.ytplayer` atau `window.yt`
+- `window.Polymer` atau jejak webcomponents
+
+Jika sinyal kuat (ytcfg + ytplayer) → confidence 80, jika kombinasi moderat (ytcfg/ytplayer + polymer) → confidence 55.
+
+Output menghasilkan entri teknologi:
+
+```json
+{ "name": "YouTube Platform", "version": null, "categories": ["Video platforms","CDN"], "confidence": 80 }
+```
+
+Kapan berguna:
+- Domain yang embed halaman root YouTube custom (kadang white-label) di-resolve sebagai youtube.* namun engine full timeouts.
+- Ingin tetap menandai platform (reporting) meski full attempt dipotong.
+
+Matikan jika: Anda membutuhkan baseline murni Wappalyzer tanpa sinyal synthetic → `TECHSCAN_SYNTHETIC_YOUTUBE=0`.
+
+### Synthetic SPA (React / Vue / Angular)
+
+Tambahan deteksi generik framework SPA untuk meningkatkan coverage saat mode cepat / partial:
+
+Toggle utama:
+```
+TECHSCAN_SYNTHETIC_SPA=0   # matikan semua SPA synthetic
+```
+Sub-toggle (aktif kecuali diset ke 0):
+```
+TECHSCAN_SYNTHETIC_REACT=0
+TECHSCAN_SYNTHETIC_VUE=0
+TECHSCAN_SYNTHETIC_ANGULAR=0
+```
+Heuristik:
+- React: `__REACT_DEVTOOLS_GLOBAL_HOOK__` atau pola embed script "react@x.y.z".
+- Vue: `window.Vue` / devtools hook + `Vue.version`.
+- Angular: atribut `[ng-version]` atau `window.ng.coreTokens`.
+
+Confidence: 55 (framework terdeteksi tanpa versi), 70 (dengan versi). Versi diambil heuristik ringan (pola script atau atribut), tidak dijamin akurat penuh.
+
+Kapan dimatikan: benchmarking baseline Wappalyzer murni, atau jika ingin menghindari false positive di bundel minified custom.
 - `mode_hits/misses.fast_full` = hit/miss cache untuk key fast_full (jika cache diaktifkan).
 
 Gunakan ini untuk tuning `TECHSCAN_FAST_FULL_TIMEOUT_MS` (misal ingin p95 < 3000ms). Jika p95 mendekati cap berarti banyak partial fallback atau saturasi.
