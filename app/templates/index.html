@@ -61,75 +61,10 @@
 </head>
 <body>
   <header>
-    <h1>Technology lookup</h1>
-    <p class="subtitle">Find out what websites are built with. Masukkan satu domain atau unggah daftar untuk scan bulk. Hasil menampilkan teknologi dan versi (jika terdeteksi).</p>
-    <!-- Controls removed per user request: always use CDN icons now -->
-  </header>
-  <main>
-    <section class="panel" id="single-panel">
-      <h2>Look up a website</h2>
-      <form class="inline" id="single-form">
-        <input type="text" id="domain" placeholder="Enter a website address" required />
-        <select id="mode" style="background:var(--panel-alt);border:1px solid var(--border);color:var(--text);padding:.85rem .8rem;border-radius:8px;font-size:.8rem;min-width:140px">
-          <option value="quick" selected>Quick</option>
-          <option value="fast_full">Fast-Full</option>
-          <option value="deep">Deep</option>
-          <option value="full">Full</option>
-        </select>
-        <button type="submit" id="scanBtn"><span id="scanBtnText">Scan</span><span class="spinner hidden" id="scanSpinner"></span></button>
-      </form>
-      <div id="single-error" class="error hidden"></div>
-      <div id="single-result" class="hidden">
-        <div class="flex-row">
-          <div class="col">
-            <h3 style="margin:1.2rem 0 .6rem;font-size:.95rem" id="res-domain"></h3>
-            <div class="results-grid" id="tech-grid"></div>
-          </div>
-          <div class="col">
-            <h3 style="margin:1.2rem 0 .6rem;font-size:.95rem">Categories</h3>
-            <div id="categories" class="categories-list"></div>
-          </div>
-        </div>
-        <details style="margin-top:1.4rem">
-          <summary style="cursor:pointer;color:var(--text-dim);font-size:.8rem">Raw JSON</summary>
-          <pre id="raw-json"></pre>
-        </details>
-        <details style="margin-top:1rem">
-          <summary style="cursor:pointer;color:var(--text-dim);font-size:.8rem">Diagnostics</summary>
-          <pre id="diag-json" style="max-height:260px"></pre>
-        </details>
-      </div>
-    </section>
-    <section class="panel" id="bulk-panel">
-      <h2>Upload a list of websites</h2>
-      <label class="file-label" for="fileInput">Upload a .txt file (satu domain per baris)</label>
-      <input id="fileInput" type="file" accept="text/plain" />
-      <div style="display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.8rem;font-size:.7rem">
-        <button type="button" id="bulk-scan-btn" class="secondary" style="padding:.65rem 1.1rem">Scan Bulk</button>
-        <button type="button" id="bulk-download-csv" class="secondary" style="padding:.65rem 1.1rem">Download CSV</button>
-      </div>
-      <div id="bulk-status" class="error hidden"></div>
-      <div id="bulk-table-wrapper" class="table-wrap hidden">
-        <table id="bulk-table">
-          <thead><tr><th>Domain</th><th>Status</th><th>Tech Count</th><th>Top Tech</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
-    <section class="panel" id="history-panel">
-      <h2>History</h2>
-      <form class="inline" id="history-form">
-        <input type="text" id="history-domain" placeholder="Domain untuk histori" required />
-        <input type="number" id="history-limit" placeholder="Limit" min="1" value="10" style="flex:0 0 90px;background:var(--panel-alt);border:1px solid var(--border);color:var(--text);padding:.85rem .8rem;border-radius:8px;font-size:.75rem" />
-        <button type="submit">Load History</button>
-        <button type="button" id="history-refresh" class="secondary" style="font-size:.7rem">Refresh</button>
-      </form>
-      <div id="history-error" class="error hidden" style="margin-top:.5rem"></div>
-      <div class="table-wrap hidden" id="history-table-wrap" style="margin-top:.8rem">
-        <table id="history-table">
-          <thead>
-            <tr><th>Mode</th><th>Start</th><th>Finish</th><th>Dur (ms)</th><th>Cache</th><th>Retries</th><th>Timeout Used</th></tr>
-          </thead>
+    <!-- Legacy index.html intentionally blank after migration to multi-page UI.
+    Keperluan: beberapa browser mungkin masih meminta /index.html secara langsung.
+    Tindakan: redirect ditangani di route Flask (/index.html -> /dashboard). File kosong ini mencegah fallback ke UI lama.
+    -->
           <tbody></tbody>
         </table>
         <div style="display:flex;gap:.6rem;margin-top:.6rem;align-items:center;font-size:.7rem;flex-wrap:wrap">
