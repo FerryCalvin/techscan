@@ -26,6 +26,9 @@
   table { width:100%; font-size:0.75rem; }
   table thead th { font-weight:600; }
   #detail-tech-table td, #detail-tech-table th { padding:4px 6px; }
+  .spinner { width:32px; height:32px; border:4px solid #2d3440; border-top-color:#5aa9ff; border-radius:50%; animation:spin 0.9s linear infinite; margin:1rem auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-overlay { display:flex; align-items:center; justify-content:center; position:absolute; inset:0; background:rgba(0,0,0,0.35); }
   </style>
 </head>
 <body>

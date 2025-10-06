@@ -14,11 +14,13 @@
   <!-- Sections injected here -->
 </div>
 <dialog id="detail-dialog">
-  <article style="max-width:880px;">
-    <header>
-      <h5 id="detail-title">Domain Detail</h5>
+  <article style="max-width:880px; position:relative;">
+    <header style="display:flex; align-items:center; gap:.75rem;">
+      <h5 id="detail-title" style="flex:1 1 auto;">Domain Detail</h5>
+      <button id="rescan-btn" class="secondary outline" style="font-size:.65rem;">Re-Scan</button>
       <button id="detail-close" rel="prev" class="close" aria-label="Close"></button>
     </header>
+    <div id="detail-loader" class="loading-overlay" style="display:none"><div class="spinner"></div></div>
     <section id="detail-meta" class="small"></section>
     <section>
       <h6 style="margin-bottom:0.3rem">Technologies</h6>
@@ -58,8 +60,16 @@ const diffRemoved = document.getElementById('diff-removed');
 const diffChanged = document.getElementById('diff-changed');
 
 function sectionSkeleton(title, key){
-  return `<section data-group="${key}"><h4>${title}</h4><div class="card-grid" id="cards-${key}"></div></section>`;
+  return `<section data-group="${key}">
+    <h4>${title}</h4>
+    <div class="card-grid" id="cards-${key}"></div>
+    <div class="small" id="more-wrapper-${key}" style="margin-top:.5rem"></div>
+  </section>`;
 }
+
+// state for pagination
+const groupState = {}; // key -> {all:[], shown:0}
+const PAGE_SIZE = 60;
 
 async function load(){
   sectionsDiv.innerHTML = '<p>Loading...</p>';
@@ -80,10 +90,12 @@ function render(data){
   // cards
   orderKeys.forEach(k=>{
     const g = data.groups.find(x=> x.key===k) || {domains:[]};
-    const container = document.getElementById('cards-'+k);
     const filtered = (g.domains||[]).filter(d=> !f || d.domain.includes(f));
+    groupState[k] = { all: filtered, shown: 0 };
+    const container = document.getElementById('cards-'+k);
     if(!filtered.length){ container.innerHTML = '<p class="small">(empty)</p>'; return; }
-    container.innerHTML = filtered.map(d=> cardHTML(d)).join('');
+    container.innerHTML = '';
+    renderMore(k);
   });
   // append ungrouped at bottom if any
   if(data.ungrouped && data.ungrouped.length){
@@ -91,9 +103,48 @@ function render(data){
     extra.innerHTML = `<h4>Ungrouped (${data.ungrouped.length})</h4><div class='card-grid' id='cards-ungrouped'></div>`;
     sectionsDiv.appendChild(extra);
     const container = document.getElementById('cards-ungrouped');
-    container.innerHTML = data.ungrouped.filter(d=> !f || d.domain.includes(f)).map(d=> cardHTML(d)).join('');
+    const filteredUG = data.ungrouped.filter(d=> !f || d.domain.includes(f));
+    groupState['ungrouped'] = { all: filteredUG, shown:0 };
+    container.innerHTML='';
+    // add load more wrapper
+    const wrap = document.createElement('div');
+    wrap.id = 'more-wrapper-ungrouped';
+    wrap.className='small';
+    wrap.style.marginTop='.5rem';
+    container.parentElement.appendChild(wrap);
+    renderMore('ungrouped');
   }
   sectionsDiv.querySelectorAll('.domain-card').forEach(el=> el.addEventListener('click', ()=> showDetail(el.dataset.domain)));
+}
+
+function renderMore(key){
+  const st = groupState[key];
+  if(!st) return;
+  const container = document.getElementById('cards-'+key);
+  const slice = st.all.slice(st.shown, st.shown + PAGE_SIZE);
+  slice.forEach(d=> container.insertAdjacentHTML('beforeend', cardHTML(d)));
+  st.shown += slice.length;
+  const wrap = document.getElementById('more-wrapper-'+key);
+  if(wrap){
+    if(st.shown < st.all.length){
+      wrap.innerHTML = `<button class='secondary outline small' data-more='${key}'>Load More (${st.shown}/${st.all.length})</button>`;
+      wrap.querySelector('button').addEventListener('click', ()=>{ renderMore(key); attachCardHandlers(); });
+    } else if(st.all.length > PAGE_SIZE) {
+      wrap.innerHTML = `<span>All loaded (${st.all.length})</span>`;
+    } else {
+      wrap.innerHTML='';
+    }
+  }
+  attachCardHandlers();
+}
+
+function attachCardHandlers(){
+  sectionsDiv.querySelectorAll('.domain-card').forEach(el=>{
+    if(!el.dataset.bound){
+      el.dataset.bound='1';
+      el.addEventListener('click', ()=> showDetail(el.dataset.domain));
+    }
+  });
 }
 
 function cardHTML(d){
@@ -110,6 +161,8 @@ async function showDetail(domain){
   diffAdded.innerHTML = diffRemoved.innerHTML = diffChanged.innerHTML = '';
   detailMeta.textContent='';
   dlg.showModal();
+  const loader = document.getElementById('detail-loader');
+  loader.style.display='flex';
   try {
     const data = await apiFetch(`/api/domain/${domain}/detail`);
     // Meta
@@ -124,16 +177,48 @@ async function showDetail(domain){
     });
     if(!techTbody.children.length){ techTbody.innerHTML = '<tr><td colspan="4" class="small">(no technologies)</td></tr>'; }
     // Diff
-    (data.diff.added||[]).forEach(a=>{ const li=document.createElement('li'); li.textContent = a.name + (a.version? ' '+a.version:''); diffAdded.appendChild(li); });
-    (data.diff.removed||[]).forEach(r=>{ const li=document.createElement('li'); li.textContent = r.name + (r.version? ' '+r.version:''); diffRemoved.appendChild(li); });
-    (data.diff.changed||[]).forEach(c=>{ const li=document.createElement('li'); li.textContent = `${c.name}: ${c.from||'(none)'} -> ${c.to||'(none)'}`; diffChanged.appendChild(li); });
+  (data.diff.added||[]).forEach(a=>{ const li=document.createElement('li'); li.className='diff-added'; li.textContent = a.name + (a.version? ' '+a.version:''); diffAdded.appendChild(li); });
+  (data.diff.removed||[]).forEach(r=>{ const li=document.createElement('li'); li.className='diff-removed'; li.textContent = r.name + (r.version? ' '+r.version:''); diffRemoved.appendChild(li); });
+  (data.diff.changed||[]).forEach(c=>{ const li=document.createElement('li'); li.className='diff-changed'; li.textContent = `${c.name}: ${c.from||'(none)'} -> ${c.to||'(none)'}`; diffChanged.appendChild(li); });
     if(!diffAdded.children.length) diffAdded.innerHTML = '<li class="small">(none)</li>';
     if(!diffRemoved.children.length) diffRemoved.innerHTML = '<li class="small">(none)</li>';
     if(!diffChanged.children.length) diffChanged.innerHTML = '<li class="small">(none)</li>';
   } catch(e){
     techTbody.innerHTML = `<tr><td colspan='4' class='small'>Error ${e.message}</td></tr>`;
+  } finally {
+    loader.style.display='none';
   }
 }
+
+// quick re-scan with polling
+let polling = null;
+async function triggerRescan(){
+  const domain = detailTitle.textContent;
+  const btn = document.getElementById('rescan-btn');
+  if(!domain) return;
+  if(polling){ return; }
+  btn.disabled = true; btn.textContent='Scanning...';
+  try {
+    await fetch('/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain, fast_full:1}) });
+  } catch(e){
+    btn.disabled=false; btn.textContent='Re-Scan'; alert('Scan start failed: '+e.message); return;
+  }
+  // poll detail every 2s up to 60s
+  const start = Date.now();
+  const poll = async ()=>{
+    try {
+      const data = await apiFetch(`/api/domain/${domain}/detail`);
+      if(data.latest && (Date.now()/1000 - data.latest.finished_at) < 120){
+        // assume new scan finished (recent finished_at)
+        btn.disabled=false; btn.textContent='Re-Scan'; polling=null; showDetail(domain); return;
+      }
+    } catch(e){}
+    if(Date.now() - start < 60000){ polling = setTimeout(poll, 2000); } else { btn.disabled=false; btn.textContent='Re-Scan'; polling=null; }
+  };
+  poll();
+}
+
+document.getElementById('rescan-btn').addEventListener('click', triggerRescan);
 
 filterInput.addEventListener('input', load);
 document.getElementById('detail-close').addEventListener('click', ()=> dlg.close());
