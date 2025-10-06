@@ -52,7 +52,14 @@ def home():
 @ui_bp.route('/index.html')
 def legacy_index_redirect():
     """Redirect old single-page UI path to new dashboard so cached bookmarks still work."""
-    return redirect(url_for('ui.home'), 302)
+    resp = redirect(url_for('ui.home'), 301)
+    try:
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+    except Exception:
+        pass
+    return resp
 
 @ui_bp.route('/websites')
 def websites_page():
