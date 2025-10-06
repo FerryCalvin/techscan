@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Technology Search</h2>
+<form id="tech-form" class="grid cols-2">
+  <input name="tech" placeholder="Technology (e.g. WordPress)" />
+  <input name="category" placeholder="Category (optional)" />
+  <input name="version" placeholder="Version (optional)" />
+  <label><input type="checkbox" name="new24" value="1" /> New (24h)</label>
+  <button type="submit">Search</button>
+</form>
+<section>
+  <pre id="tech-results" class="small mono">Enter a query and submit.</pre>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+const form = document.getElementById('tech-form');
+const results = document.getElementById('tech-results');
+form.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const fd = new FormData(form);
+  const tech = fd.get('tech')||'';
+  const category = fd.get('category')||'';
+  const version = fd.get('version')||'';
+  const new24 = fd.get('new24') ? 1 : 0;
+  results.textContent='Searching...';
+  const params = new URLSearchParams();
+  if(tech) params.set('tech', tech);
+  if(category) params.set('category', category);
+  if(version) params.set('version', version);
+  if(new24) params.set('new24','1');
+  try { const data = await apiFetch('/search?'+params.toString()); results.textContent = JSON.stringify(data,null,2);} catch(e){ results.textContent='Error '+e.message; }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TechScan</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    body { padding-top: 4.5rem; }
+    nav.site-nav { position: fixed; top:0; left:0; right:0; z-index: 50; }
+    .badge { display:inline-block; background:#223; color:#fff; padding:2px 6px; border-radius:4px; font-size:0.7rem; margin:2px; }
+    .diff-added { color:#0a0; }
+    .diff-removed { color:#c00; }
+    .diff-changed { color:#c60; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; }
+    .scroll-x { overflow-x:auto; }
+    .small { font-size:0.8rem; }
+    .grid { display:grid; gap:1rem; }
+    .grid.cols-2 { grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); }
+  .card-grid { display:grid; gap:0.75rem; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); }
+  .domain-card { border:1px solid #2b2f36; padding:0.75rem 0.8rem; border-radius:8px; background:#181c22; cursor:pointer; transition:background .15s,border .15s; }
+  .domain-card:hover { background:#1f242b; border-color:#3a4350; }
+  .domain-card .dc-title { font-size:0.9rem; font-weight:600; word-break:break-all; }
+  .domain-card .dc-meta { margin-top:0.35rem; font-size:0.65rem; opacity:0.85; }
+  dialog article { max-height:80vh; overflow:auto; }
+  table { width:100%; font-size:0.75rem; }
+  table thead th { font-weight:600; }
+  #detail-tech-table td, #detail-tech-table th { padding:4px 6px; }
+  </style>
+</head>
+<body>
+  <nav class="site-nav container-fluid">
+    <ul>
+      <li><strong>TechScan</strong></li>
+    </ul>
+    <ul>
+      <li><a href="/dashboard">Dashboard</a></li>
+      <li><a href="/websites">Websites</a></li>
+      <li><a href="/technology">Technology Search</a></li>
+      <li><a href="/history">History</a></li>
+    </ul>
+  </nav>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    window.apiFetch = async function(path, opts={}) {
+      const r = await fetch(path, opts);
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    }
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

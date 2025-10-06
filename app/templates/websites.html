@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Website List</h2>
+<div class="grid cols-2">
+  <article>
+    <input id="filter" placeholder="Cari domain..." />
+    <small id="summary" class="mono"></small>
+  </article>
+  <article style="text-align:right">
+    <button id="reload-groups" class="secondary">Reload Groups</button>
+  </article>
+</div>
+<div class="group-grid" id="group-sections">
+  <!-- Sections injected here -->
+</div>
+<dialog id="detail-dialog">
+  <article style="max-width:880px;">
+    <header>
+      <h5 id="detail-title">Domain Detail</h5>
+      <button id="detail-close" rel="prev" class="close" aria-label="Close"></button>
+    </header>
+    <section id="detail-meta" class="small"></section>
+    <section>
+      <h6 style="margin-bottom:0.3rem">Technologies</h6>
+      <table id="detail-tech-table">
+        <thead><tr><th>Name</th><th>Version</th><th>Categories</th><th>Confidence</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+    <section class="grid cols-2">
+      <article>
+        <h6>Diff Added</h6>
+        <ul id="diff-added" class="small"></ul>
+      </article>
+      <article>
+        <h6>Diff Removed</h6>
+        <ul id="diff-removed" class="small"></ul>
+      </article>
+    </section>
+    <section>
+      <h6>Diff Changed</h6>
+      <ul id="diff-changed" class="small"></ul>
+    </section>
+  </article>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script>
+const sectionsDiv = document.getElementById('group-sections');
+const filterInput = document.getElementById('filter');
+const summaryEl = document.getElementById('summary');
+const dlg = document.getElementById('detail-dialog');
+const detailTitle = document.getElementById('detail-title');
+const detailMeta = document.getElementById('detail-meta');
+const techTbody = document.querySelector('#detail-tech-table tbody');
+const diffAdded = document.getElementById('diff-added');
+const diffRemoved = document.getElementById('diff-removed');
+const diffChanged = document.getElementById('diff-changed');
+
+function sectionSkeleton(title, key){
+  return `<section data-group="${key}"><h4>${title}</h4><div class="card-grid" id="cards-${key}"></div></section>`;
+}
+
+async function load(){
+  sectionsDiv.innerHTML = '<p>Loading...</p>';
+  try {
+    const data = await apiFetch('/api/domains');
+    render(data);
+  } catch(e){ sectionsDiv.innerHTML = '<p class="small">Error '+e.message+'</p>'; }
+}
+
+function render(data){
+  summaryEl.textContent = `Total ${data.summary.total_domains} | Scanned ${data.summary.scanned} | Unscanned ${data.summary.unscanned}`;
+  const f = (filterInput.value||'').toLowerCase();
+  const orderKeys = ['faculty','directorate','work_unit','bem_ukm'];
+  sectionsDiv.innerHTML = orderKeys.map(k=>{
+    const g = data.groups.find(x=> x.key===k) || {key:k,label:k.replace('_',' ').toUpperCase(),domains:[],count:0};
+    return sectionSkeleton(g.label + ` (${g.count})`, k);
+  }).join('');
+  // cards
+  orderKeys.forEach(k=>{
+    const g = data.groups.find(x=> x.key===k) || {domains:[]};
+    const container = document.getElementById('cards-'+k);
+    const filtered = (g.domains||[]).filter(d=> !f || d.domain.includes(f));
+    if(!filtered.length){ container.innerHTML = '<p class="small">(empty)</p>'; return; }
+    container.innerHTML = filtered.map(d=> cardHTML(d)).join('');
+  });
+  // append ungrouped at bottom if any
+  if(data.ungrouped && data.ungrouped.length){
+    const extra = document.createElement('section');
+    extra.innerHTML = `<h4>Ungrouped (${data.ungrouped.length})</h4><div class='card-grid' id='cards-ungrouped'></div>`;
+    sectionsDiv.appendChild(extra);
+    const container = document.getElementById('cards-ungrouped');
+    container.innerHTML = data.ungrouped.filter(d=> !f || d.domain.includes(f)).map(d=> cardHTML(d)).join('');
+  }
+  sectionsDiv.querySelectorAll('.domain-card').forEach(el=> el.addEventListener('click', ()=> showDetail(el.dataset.domain)));
+}
+
+function cardHTML(d){
+  const last = d.last_scan_ts ? new Date(d.last_scan_ts*1000).toLocaleString() : 'never';
+  return `<div class='domain-card' data-domain='${d.domain}'>
+    <div class='dc-title'>${d.domain}</div>
+    <div class='dc-meta small mono'>tech:${d.tech_count} | last:${last}${d.last_mode? ' | '+d.last_mode:''}</div>
+  </div>`;
+}
+
+async function showDetail(domain){
+  detailTitle.textContent = domain;
+  techTbody.innerHTML = '<tr><td colspan="4" class="small">Loading...</td></tr>';
+  diffAdded.innerHTML = diffRemoved.innerHTML = diffChanged.innerHTML = '';
+  detailMeta.textContent='';
+  dlg.showModal();
+  try {
+    const data = await apiFetch(`/api/domain/${domain}/detail`);
+    // Meta
+    const latest = data.latest; const prev = data.previous;
+    detailMeta.innerHTML = `<strong>Latest Mode:</strong> ${latest.mode} | <strong>Finished:</strong> ${new Date(latest.finished_at*1000).toLocaleString()}${prev? ' | Prev: '+new Date(prev.finished_at*1000).toLocaleString():''}`;
+    // Tech table
+    techTbody.innerHTML = '';
+    (data.technologies||[]).forEach(t=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${t.name}</td><td>${t.version||''}</td><td>${(t.categories||[]).join(', ')}</td><td>${t.confidence||''}</td>`;
+      techTbody.appendChild(tr);
+    });
+    if(!techTbody.children.length){ techTbody.innerHTML = '<tr><td colspan="4" class="small">(no technologies)</td></tr>'; }
+    // Diff
+    (data.diff.added||[]).forEach(a=>{ const li=document.createElement('li'); li.textContent = a.name + (a.version? ' '+a.version:''); diffAdded.appendChild(li); });
+    (data.diff.removed||[]).forEach(r=>{ const li=document.createElement('li'); li.textContent = r.name + (r.version? ' '+r.version:''); diffRemoved.appendChild(li); });
+    (data.diff.changed||[]).forEach(c=>{ const li=document.createElement('li'); li.textContent = `${c.name}: ${c.from||'(none)'} -> ${c.to||'(none)'}`; diffChanged.appendChild(li); });
+    if(!diffAdded.children.length) diffAdded.innerHTML = '<li class="small">(none)</li>';
+    if(!diffRemoved.children.length) diffRemoved.innerHTML = '<li class="small">(none)</li>';
+    if(!diffChanged.children.length) diffChanged.innerHTML = '<li class="small">(none)</li>';
+  } catch(e){
+    techTbody.innerHTML = `<tr><td colspan='4' class='small'>Error ${e.message}</td></tr>`;
+  }
+}
+
+filterInput.addEventListener('input', load);
+document.getElementById('detail-close').addEventListener('click', ()=> dlg.close());
+document.getElementById('reload-groups').addEventListener('click', async ()=>{ try { await fetch('/admin/domain_groups/reload',{method:'POST'}); load(); } catch(e){ alert('Reload failed '+e.message);} });
+load();
+</script>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Dashboard</h2>
+<section class="grid cols-2">
+  <article>
+    <h5>Single Scan</h5>
+    <form id="single-scan-form">
+      <input name="domain" placeholder="example.com" required />
+      <label><input type="checkbox" name="fast_full" value="1" checked /> fast_full</label>
+      <button type="submit">Scan</button>
+    </form>
+    <pre id="single-scan-result" class="small mono"></pre>
+  </article>
+  <article>
+    <h5>Bulk Scan (one per line)</h5>
+    <form id="bulk-scan-form">
+      <textarea name="domains" rows="6" placeholder="a.com\nb.org"></textarea>
+      <label><input type="checkbox" name="fast_full" value="1" checked /> fast_full</label>
+      <button type="submit">Bulk Scan</button>
+    </form>
+    <pre id="bulk-scan-result" class="small mono"></pre>
+  </article>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+// Dashboard minimized: only single + bulk scan
+
+// Single scan
+const singleForm = document.getElementById('single-scan-form');
+singleForm.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const fd = new FormData(singleForm);
+  const domain = fd.get('domain');
+  const fast_full = fd.get('fast_full') ? 1 : 0;
+  document.getElementById('single-scan-result').textContent='Scanning...';
+  try {
+    const res = await fetch('/scan', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain, fast_full})});
+    const data = await res.json();
+    document.getElementById('single-scan-result').textContent = JSON.stringify(data,null,2);
+  } catch(err){
+    document.getElementById('single-scan-result').textContent='Error '+err.message;
+  }
+});
+// Bulk scan
+const bulkForm = document.getElementById('bulk-scan-form');
+bulkForm.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const fd = new FormData(bulkForm);
+  const domains = (fd.get('domains')||'').split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  const fast_full = fd.get('fast_full') ? 1 : 0;
+  document.getElementById('bulk-scan-result').textContent='Bulk scanning...';
+  try {
+    const res = await fetch('/scan/bulk', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domains, fast_full})});
+    const data = await res.json();
+    document.getElementById('bulk-scan-result').textContent = JSON.stringify(data,null,2);
+  } catch(err){
+    document.getElementById('bulk-scan-result').textContent='Error '+err.message;
+  }
+});
+</script>
+{% endblock %}
