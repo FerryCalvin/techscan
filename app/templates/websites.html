@@ -149,9 +149,15 @@ function attachCardHandlers(){
 
 function cardHTML(d){
   const last = d.last_scan_ts ? new Date(d.last_scan_ts*1000).toLocaleString() : 'never';
+  const badges = [];
+  if(d.diff_added) badges.push(`<span class='badge diff-added' title='Added technologies'>+${d.diff_added}</span>`);
+  if(d.diff_removed) badges.push(`<span class='badge diff-removed' title='Removed technologies'>-${d.diff_removed}</span>`);
+  if(d.diff_changed) badges.push(`<span class='badge diff-changed' title='Changed versions'>±${d.diff_changed}</span>`);
+  const badgeHtml = badges.length? `<div class='dc-badges'>${badges.join(' ')}</div>`:'';
   return `<div class='domain-card' data-domain='${d.domain}'>
     <div class='dc-title'>${d.domain}</div>
     <div class='dc-meta small mono'>tech:${d.tech_count} | last:${last}${d.last_mode? ' | '+d.last_mode:''}</div>
+    ${badgeHtml}
   </div>`;
 }
 
@@ -168,10 +174,17 @@ async function showDetail(domain){
     // Meta
     const latest = data.latest; const prev = data.previous;
     detailMeta.innerHTML = `<strong>Latest Mode:</strong> ${latest.mode} | <strong>Finished:</strong> ${new Date(latest.finished_at*1000).toLocaleString()}${prev? ' | Prev: '+new Date(prev.finished_at*1000).toLocaleString():''}`;
+    if(data.status === 'in-progress'){
+      detailMeta.innerHTML += ` <span class='badge' style='background:#1e3a8a;margin-left:.5rem'>In Progress${data.eta_seconds? ' ~'+data.eta_seconds+'s':''}</span>`;
+    }
     // Tech table
     techTbody.innerHTML = '';
+    const addedNames = new Set((data.diff.added||[]).map(x=> x.name));
+    const changedNames = new Set((data.diff.changed||[]).map(x=> x.name));
     (data.technologies||[]).forEach(t=>{
       const tr = document.createElement('tr');
+      if(addedNames.has(t.name)) tr.classList.add('diff-added');
+      else if(changedNames.has(t.name)) tr.classList.add('diff-changed');
       tr.innerHTML = `<td>${t.name}</td><td>${t.version||''}</td><td>${(t.categories||[]).join(', ')}</td><td>${t.confidence||''}</td>`;
       techTbody.appendChild(tr);
     });
