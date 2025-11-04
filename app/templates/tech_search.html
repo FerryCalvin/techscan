@@ -1,35 +1,477 @@
 {% extends 'base.html' %}
 {% block content %}
-<h2>Technology Search</h2>
-<form id="tech-form" class="grid cols-2">
-  <input name="tech" placeholder="Technology (e.g. WordPress)" />
-  <input name="category" placeholder="Category (optional)" />
-  <input name="version" placeholder="Version (optional)" />
-  <label><input type="checkbox" name="new24" value="1" /> New (24h)</label>
-  <button type="submit">Search</button>
-</form>
-<section>
-  <pre id="tech-results" class="small mono">Enter a query and submit.</pre>
-</section>
+<div class="page-centered" style="display:flex;flex-direction:column;gap:1.25rem;">
+  <style>
+  .ts-controls{display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end;justify-content:center;margin-bottom:.75rem;}
+    .ts-group{display:flex;flex-direction:column;gap:.25rem;}
+    .ts-group label{font-size:0.55rem;letter-spacing:.5px;opacity:.85;}
+  .ts-group input[type=text]{height:32px;padding:0 .6rem;font-size:.65rem;background:var(--ts-input-bg);border:1px solid var(--ts-input-border);line-height:1;}
+  .ts-group input[type=text]:focus{outline:2px solid var(--ts-accent);outline-offset:2px;}
+    #ts-new24{height:32px;display:flex;align-items:center;gap:.4rem;font-size:.55rem;}
+    #ts-new24 input{width:14px;height:14px;}
+    #ts-submit,#ts-reset{height:32px;font-size:.6rem;padding:0 14px;}
+    #ts-reset{background:#252e36;}
+    #ts-reset:hover{background:#303b45;}
+    #ts-summary{font-size:0.6rem;opacity:.8;margin:.2rem 0 .6rem;}
+  table#ts-table{width:100%;font-size:0.65rem;border-collapse:separate;border-spacing:0;}
+  #ts-table thead th{position:sticky;top:0;background:var(--glass-surf-2);color:var(--ts-text);z-index:5;font-size:0.62rem;}
+  #ts-table tbody tr{background:var(--glass-surf-1);}
+  #ts-table tbody tr:nth-child(even){background:var(--glass-surf-2);}
+  #ts-table tbody tr:hover{background:var(--glass-surf-3);}
+  .glass-panel{background:var(--glass-surf-1);border:1px solid var(--glass-border-strong);box-shadow:var(--glass-shadow-1),var(--glass-shadow-2);backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));}
+  body.dark .glass-panel{background:rgba(60,80,110,0.22);border:1px solid #b6c2e0;}
+  body.dark #ts-table thead th{background:rgba(90,120,170,0.22);color:#eaf2ff;}
+  body.dark #ts-table tbody tr{background:rgba(60,80,110,0.18);}
+  body.dark #ts-table tbody tr:nth-child(even){background:rgba(90,120,170,0.18);}
+  body.dark #ts-table tbody tr:hover{background:rgba(120,160,220,0.22);}
+  /* Pagination refined (matched to websites.html) */
+  #paging-bar{display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-top:.9rem;font-size:0.6rem;}
+  #paging-bar .pg-box{display:flex;align-items:center;gap:.5rem;background:var(--ts-input-bg);border:1px solid var(--ts-input-border);padding:6px 10px;border-radius:10px;height:38px;}
+  #paging-bar .pg-box select{background:var(--ts-input-bg);border:1px solid var(--ts-input-border);color:var(--ts-text);font-size:0.6rem;padding:3px 6px;border-radius:6px;height:26px;line-height:1;}
+  #paging-bar .pg-nav{display:flex;align-items:center;gap:.4rem;}
+  #paging-bar .pg-btn{font-size:.55rem;padding:3px 10px;min-width:36px;height:26px;line-height:1;display:inline-flex;align-items:center;justify-content:center;}
+  #paging-bar .pg-info{min-width:120px;text-align:center;font-size:0.6rem;}
+  #paging-bar .pg-btn[disabled]{opacity:.4;cursor:not-allowed;}
+  #paging-bar .pg-btn:not([disabled]){border-color:var(--glass-border-strong);}
+  #paging-bar .pg-btn:not([disabled]):hover{background:rgba(255,255,255,0.06);}
+    #ts-empty{font-size:.6rem;opacity:.7;padding:.6rem;}
+    .badge-new{background:#143d24;color:#59ff9c;font-size:.5rem;padding:1px 5px;border-radius:12px;margin-left:4px;}
+    .nowrap{white-space:nowrap;}
+  </style>
+  <h2 class="page-title" style="text-align:center;margin-top:0;margin-bottom:1.4rem;">Technology Search</h2>
+  <!-- Glass sample wrapper (intense for control bar) -->
+  <div class="glass-panel" style="padding:1.1rem 1.25rem;">
+  <form id="tech-form" class="ts-controls" autocomplete="off" style="margin:0;">
+      <div class="ts-group" style="flex:0 0 260px;min-width:200px;position:relative;">
+        <label for="ts-tech">Technology</label>
+        <input id="ts-tech" name="tech" type="text" placeholder="WordPress" autocomplete="off" />
+  <div id="ts-suggest" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--glass-surf-2);border:1px solid var(--glass-border-strong);border-radius:12px;margin-top:4px;z-index:40;max-height:240px;overflow:auto;box-shadow:var(--glass-shadow-1), var(--glass-shadow-2);backdrop-filter:blur(calc(var(--glass-blur)*.55)) saturate(var(--glass-sat));-webkit-backdrop-filter:blur(calc(var(--glass-blur)*.55)) saturate(var(--glass-sat));font-size:.6rem;">
+          <div class="sg-status" style="display:none;padding:8px 10px;opacity:.7;">Loading...</div>
+          <div class="sg-items"></div>
+        </div>
+      </div>
+      <div class="ts-group" style="width:160px;position:relative;">
+        <label for="ts-category">Category</label>
+        <input id="ts-category" name="category" type="text" placeholder="cms" autocomplete="off" />
+  <div id="cat-suggest" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--glass-surf-2);border:1px solid var(--glass-border-strong);border-radius:12px;margin-top:4px;z-index:40;max-height:220px;overflow:auto;box-shadow:var(--glass-shadow-1), var(--glass-shadow-2);backdrop-filter:blur(calc(var(--glass-blur)*.55)) saturate(var(--glass-sat));-webkit-backdrop-filter:blur(calc(var(--glass-blur)*.55)) saturate(var(--glass-sat));font-size:.6rem;">
+          <div class="cat-status" style="display:none;padding:6px 8px;opacity:.7;">Loading...</div>
+          <div class="cat-items"></div>
+        </div>
+      </div>
+      <div class="ts-group" style="width:140px;">
+        <label for="ts-version">Version</label>
+        <input id="ts-version" name="version" type="text" placeholder="6.5.3" />
+      </div>
+      <!-- Search button moved to far right for better grouping of all filters -->
+      <div class="ts-group" style="width:auto;flex-direction:row;gap:.5rem;align-items:center;min-width:60px;">
+        <button id="ts-submit" class="secondary" type="submit" aria-label="Search" title="Search" style="display:inline-flex;align-items:center;justify-content:center;width:60px;padding:0;">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="7"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+        <!-- <button id="ts-reset" class="secondary outline" type="button">Reset</button> -->
+      </div>
+      <!-- <label id="ts-new24" class="ts-group" style="width:auto;flex:0 0 auto;">
+        <span>New (24h)</span>
+        <input type="checkbox" name="new24" value="1" />
+      </label> -->
+  </form>
+  </div>
+  <div id="ts-summary" class="mono"></div>
+  <!-- Results glass panel -->
+  <div class="glass-panel glass-surface--intense" id="ts-results-wrap" style="padding:1.1rem 1.25rem;">
+    <table id="ts-table" class="table-glass">
+      <thead>
+        <tr>
+          <th style="width:34px;">#</th>
+          <th class="sortable" data-sort="domain">Domain</th>
+          <th class="sortable" data-sort="tech_name">Technology</th>
+          <th>Version</th>
+          <th>Category</th>
+          <th class="sortable" data-sort="first_seen">First Seen</th>
+          <th class="sortable" data-sort="last_seen">Last Seen</th>
+        </tr>
+      </thead>
+      <tbody id="ts-tbody"><tr><td colspan="7" id="ts-empty">Enter a query and press Search.</td></tr></tbody>
+    </table>
+    <div id="ts-loading" style="display:none;">Loading...</div>
+  </div>
+  <style>
+  /* Light mode table tokens for Tech Search */
+  body.light #ts-table thead th{ background:var(--glass-surf-2); color:#374151; border-bottom:1px solid var(--glass-border-strong); }
+  body.light #ts-table tbody tr{ background:var(--glass-surf-1); }
+  body.light #ts-table tbody tr:nth-child(even){ background:var(--glass-surf-2); }
+  body.light #ts-table tbody tr:hover{ background:var(--glass-surf-3); }
+  </style>
+  <div id="paging-bar" class="small" style="display:none;">
+    <div class="pg-box">
+      <label for="page-size" style="margin:0;opacity:.75;">Tampil</label>
+      <select style="margin-top:1rem;" id="page-size">
+        <option value="10">10</option>
+        <option value="20" selected>20</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+    </div>
+    <div class="pg-box pg-nav">
+      <button id="page-first" class="secondary outline pg-btn" disabled>&laquo;</button>
+      <button id="page-prev" class="secondary outline pg-btn" disabled>&lt;</button>
+      <span id="page-info" class="pg-info">Page 1/1</span>
+      <button id="page-next" class="secondary outline pg-btn" disabled>&gt;</button>
+      <button id="page-last" class="secondary outline pg-btn" disabled>&raquo;</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>
-const form = document.getElementById('tech-form');
-const results = document.getElementById('tech-results');
-form.addEventListener('submit', async (e)=>{
-  e.preventDefault();
-  const fd = new FormData(form);
-  const tech = fd.get('tech')||'';
-  const category = fd.get('category')||'';
-  const version = fd.get('version')||'';
-  const new24 = fd.get('new24') ? 1 : 0;
-  results.textContent='Searching...';
-  const params = new URLSearchParams();
-  if(tech) params.set('tech', tech);
-  if(category) params.set('category', category);
-  if(version) params.set('version', version);
-  if(new24) params.set('new24','1');
-  try { const data = await apiFetch('/search?'+params.toString()); results.textContent = JSON.stringify(data,null,2);} catch(e){ results.textContent='Error '+e.message; }
+document.addEventListener('DOMContentLoaded', () => {
+  const form = document.getElementById('tech-form');
+  const tbody = document.getElementById('ts-tbody');
+  const summary = document.getElementById('ts-summary');
+  const loading = document.getElementById('ts-loading');
+  const pagingBar = document.getElementById('paging-bar');
+  const pageInfo = document.getElementById('page-info');
+  const pageSizeSel = document.getElementById('page-size');
+  const btnFirst = document.getElementById('page-first');
+  const btnPrev = document.getElementById('page-prev');
+  const btnNext = document.getElementById('page-next');
+  const btnLast = document.getElementById('page-last');
+
+  if(!form){ console.error('[TechSearch] form #tech-form tidak ditemukan'); return; }
+
+  // Diagnostics / fallback apiFetch
+  if(typeof window.apiFetch !== 'function'){
+    console.warn('[TechSearch] apiFetch tidak ditemukan; memakai fallback fetch');
+    window.apiFetch = async (url, opts={}) => {
+      const r = await fetch(url, opts); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); };
+  }
+
+  let currentPage = 1;
+  let pageSize = parseInt(pageSizeSel?.value || '10',10);
+  let totalRows = 0;
+  let sortKey = 'last_seen';
+  let sortDir = 'desc';
+
+  function fmtTime(ts){
+    if(!ts) return '';
+    try { const d = new Date(ts*1000); return d.toLocaleDateString(undefined,{year:'numeric',month:'2-digit',day:'2-digit'})+' '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});}catch(_){return ''}
+  }
+
+  function buildParams(extra={}){
+    const fd = new FormData(form);
+    const params = new URLSearchParams();
+    const tech = (fd.get('tech')||'').trim();
+    const category = (fd.get('category')||'').trim();
+    const version = (fd.get('version')||'').trim();
+    if(tech) params.set('tech', tech);
+    if(category) params.set('category', category);
+    if(version) params.set('version', version);
+    params.set('limit', pageSize);
+    params.set('offset', (currentPage-1)*pageSize);
+    if(sortKey) params.set('sort', sortKey);
+    if(sortDir) params.set('dir', sortDir);
+    Object.entries(extra).forEach(([k,v])=>{ if(v!==undefined && v!==null) params.set(k,v); });
+    return params;
+  }
+
+  async function runSearch(){
+    loading.style.display='flex';
+    tbody.innerHTML = `<tr><td colspan="7" id="ts-empty">Searching...</td></tr>`;
+    summary.textContent='';
+    const t0 = performance.now();
+    try {
+      const params = buildParams();
+      const data = await apiFetch('/search?'+params.toString());
+      totalRows = data.total || 0;
+      renderResults(data.results || [], data.offset || 0);
+      updateSummary();
+      updatePaging();
+      persistQueryToURL();
+      console.info('[TechSearch] Search OK', {duration_ms: +(performance.now()-t0).toFixed(1), total: totalRows});
+    } catch(e){
+      tbody.innerHTML = `<tr><td colspan="7" class="small" style="color:#d66;">Error: ${e.message}</td></tr>`;
+      pagingBar.style.display='none';
+      console.error('[TechSearch] Search failed', e);
+    } finally {
+      loading.style.display='none';
+      // Close suggestions after search completes
+      try { hideSuggest(); } catch(_){ }
+    }
+  }
+
+  function renderResults(rows, offset){
+    if(!rows.length){
+      tbody.innerHTML = `<tr><td colspan="7" id="ts-empty"><div style='padding:.9rem 0;display:flex;flex-direction:column;align-items:center;gap:.4rem;'>
+        <div style='font-size:.7rem;font-weight:600;letter-spacing:.5px;'>Tidak ada hasil</div>
+        <div style='font-size:.55rem;opacity:.65;'>Ubah kata kunci atau filter untuk mencoba lagi.</div>
+      </div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = rows.map((r,i)=>{
+      const idx = offset + i + 1;
+      const cat = (r.categories||[]).join(', ');
+      return `<tr>
+        <td class='mono' style='text-align:right;opacity:.7;'>${idx}</td>
+        <td class='mono' style='word-break:break-all;'>${r.domain}</td>
+        <td>${r.tech_name||''}</td>
+        <td class='nowrap'>${r.version||''}</td>
+        <td>${cat||'<span style="opacity:.4">-</span>'}</td>
+        <td class='nowrap'>${fmtTime(r.first_seen)}</td>
+        <td class='nowrap'>${fmtTime(r.last_seen)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Small UI helper functions (prevent runtime errors if shared helpers are absent)
+  function updateSummary(){
+    try{
+      summary.textContent = totalRows? (totalRows + ' hasil') : '';
+    }catch(_){ }
+  }
+
+  function updatePaging(){
+    try{
+      const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+      pageInfo.textContent = `Page ${currentPage}/${totalPages}`;
+      pagingBar.style.display = totalRows>0? 'flex':'none';
+      btnPrev.disabled = currentPage<=1; btnFirst.disabled = currentPage<=1;
+      btnNext.disabled = currentPage>=totalPages; btnLast.disabled = currentPage>=totalPages;
+    }catch(_){ }
+  }
+
+  function persistQueryToURL(){
+    try{
+      const qp = buildParams();
+      const newUrl = window.location.pathname + '?' + qp.toString();
+      window.history.replaceState(null, '', newUrl);
+    }catch(_){ }
+  }
+
+  function restoreFromURL(){
+    try{
+      const params = new URLSearchParams(window.location.search);
+      const t = params.get('tech'); const c = params.get('category'); const v = params.get('version');
+      if(t) document.getElementById('ts-tech').value = t;
+      if(c) document.getElementById('ts-category').value = c;
+      if(v) document.getElementById('ts-version').value = v;
+      const p = parseInt(params.get('limit')||'',10);
+      if(p) { pageSize = p; pageSizeSel.value = String(p); }
+      const off = parseInt(params.get('offset')||'',10);
+      if(!isNaN(off) && pageSize) { currentPage = Math.floor(off / pageSize) + 1; }
+      // If any query param present, perform search
+      if(t||c||v) { runSearch(); }
+    }catch(_){ }
+  }
+
+  // Debounce auto-search (450ms) & suggestions debounce (1000ms) with min length 2 (now for tech & category)
+  const techInput = document.getElementById('ts-tech');
+  const catInput = document.getElementById('ts-category');
+  const verInput = document.getElementById('ts-version');
+  const suggestBox = document.getElementById('ts-suggest');
+  const suggestItemsEl = suggestBox?.querySelector('.sg-items');
+  const suggestStatusEl = suggestBox?.querySelector('.sg-status');
+  // Category suggestion elements
+  const catSuggestBox = document.getElementById('cat-suggest');
+  const catItemsEl = catSuggestBox?.querySelector('.cat-items');
+  const catStatusEl = catSuggestBox?.querySelector('.cat-status');
+  let searchDebounce = null;
+  let suggestDebounce = null;
+  let catSuggestDebounce = null;
+  const SUGGEST_DELAY = 1000; // updated to 1s per request
+  const SUGGEST_MIN = 2;
+  let activeIndex = -1; // keyboard navigation
+  let currentSuggestions = [];
+  const suggestCache = {}; // prefix -> array
+  const catSuggestCache = {}; // prefix -> categories array
+  function scheduleSearch(){
+    currentPage = 1;
+    if(searchDebounce) clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(()=> runSearch(), 450);
+  }
+  function scheduleSuggest(){
+    if(!techInput) return;
+    const val = techInput.value.trim();
+    if(suggestDebounce) clearTimeout(suggestDebounce);
+    if(!val || val.length < SUGGEST_MIN){ hideSuggest(); return; }
+    showSuggestStatus('Loading...');
+    suggestDebounce = setTimeout(()=> fetchSuggestions(val), SUGGEST_DELAY);
+  }
+  function scheduleCatSuggest(){
+    if(!catInput) return;
+    const val = catInput.value.trim();
+    if(catSuggestDebounce) clearTimeout(catSuggestDebounce);
+    if(!val || val.length < SUGGEST_MIN){ hideCatSuggest(); return; }
+    showCatStatus('Loading...');
+    catSuggestDebounce = setTimeout(()=> fetchCatSuggestions(val), SUGGEST_DELAY);
+  }
+  [techInput, catInput, verInput].filter(Boolean).forEach(inp=>{
+    inp.addEventListener('input', (e)=>{
+      scheduleSearch();
+      if(e.target === techInput) scheduleSuggest();
+      if(e.target === catInput) scheduleCatSuggest();
+    });
+  });
+
+  function hideSuggest(){
+    if(!suggestBox) return;
+    suggestBox.style.display='none';
+    if(suggestItemsEl) suggestItemsEl.innerHTML='';
+    if(suggestStatusEl) suggestStatusEl.style.display='none';
+    activeIndex = -1; currentSuggestions = [];
+  }
+  function hideCatSuggest(){
+    if(!catSuggestBox) return;
+    catSuggestBox.style.display='none';
+    if(catItemsEl) catItemsEl.innerHTML='';
+    if(catStatusEl) catStatusEl.style.display='none';
+  }
+  function showSuggestStatus(text){
+    if(!suggestBox || !suggestStatusEl) return;
+    suggestStatusEl.textContent = text;
+    suggestStatusEl.style.display='block';
+    suggestBox.style.display='block';
+  }
+  function showCatStatus(text){
+    if(!catSuggestBox || !catStatusEl) return;
+    catStatusEl.textContent = text;
+    catStatusEl.style.display='block';
+    catSuggestBox.style.display='block';
+  }
+  function showSuggestItems(){
+    if(!suggestBox || !suggestItemsEl) return;
+    suggestStatusEl && (suggestStatusEl.style.display='none');
+    suggestBox.style.display='block';
+  }
+  function showCatItems(){
+    if(!catSuggestBox || !catItemsEl) return;
+    catStatusEl && (catStatusEl.style.display='none');
+    catSuggestBox.style.display='block';
+  }
+
+  async function fetchSuggestions(prefix){
+    // ...existing code...
+    const safePrefix = prefix.toLowerCase();
+    const html = list.map((name,i)=>{
+      const lower = name.toLowerCase();
+      let label = name;
+      if(lower.startsWith(safePrefix)){
+        label = `<strong>${name.slice(0,prefix.length)}</strong>${name.slice(prefix.length)}`;
+      }
+      return `<div class='sg-item' data-idx='${i}' data-val="${name.replace(/"/g,'&quot;') }" style='padding:6px 8px;font-size:.6rem;cursor:pointer;display:flex;align-items:center;gap:.4rem;'>${label}</div>`;
+    }).join('');
+    suggestItemsEl.innerHTML = html;
+    showSuggestItems();
+    suggestBox.querySelectorAll('.sg-item').forEach(div=>{
+      div.addEventListener('mouseenter', ()=> setActive(parseInt(div.dataset.idx,10)));
+      div.addEventListener('click', ()=> selectActive(parseInt(div.dataset.idx,10)));
+    });
+  }
+
+  function renderCatSuggestionList(prefix, list){
+    if(!catItemsEl){ return; }
+    const preLower = prefix.toLowerCase();
+    const html = list.map((c,i)=>{
+      const lower = c.toLowerCase();
+      let label = c;
+      if(lower.startsWith(preLower)) label = `<strong>${c.slice(0,prefix.length)}</strong>${c.slice(prefix.length)}`;
+      return `<div class='cat-item' data-idx='${i}' data-val="${c.replace(/"/g,'&quot;')}" style='padding:6px 8px;font-size:.6rem;cursor:pointer;'>${label}</div>`;
+    }).join('');
+    catItemsEl.innerHTML = html;
+    showCatItems();
+    catSuggestBox.querySelectorAll('.cat-item').forEach(div=>{
+      div.addEventListener('click', ()=>{
+        catInput.value = div.getAttribute('data-val');
+        hideCatSuggest();
+        currentPage=1; runSearch();
+      });
+    });
+  }
+
+  function setActive(idx){
+    if(!suggestItemsEl) return;
+    activeIndex = idx;
+    suggestItemsEl.querySelectorAll('.sg-item').forEach(el=> el.style.background='');
+    const el = suggestItemsEl.querySelector(`.sg-item[data-idx='${idx}']`);
+    if(el) el.style.background='#20303b';
+  }
+  function moveActive(delta){
+    if(!currentSuggestions.length){ return; }
+    if(activeIndex===-1){ activeIndex = delta>0?0:currentSuggestions.length-1; }
+    else { activeIndex = (activeIndex + delta + currentSuggestions.length) % currentSuggestions.length; }
+    setActive(activeIndex);
+  }
+  function selectActive(idxOverride){
+    const idx = typeof idxOverride==='number'? idxOverride : activeIndex;
+    if(idx<0 || idx>=currentSuggestions.length) return;
+    const val = currentSuggestions[idx];
+    techInput.value = val;
+    hideSuggest();
+    currentPage=1; runSearch();
+  }
+
+  // Hide suggestions on outside click / escape
+  document.addEventListener('click', (e)=>{
+    if(!suggestBox || !techInput) return;
+    if(suggestBox.contains(e.target) || e.target===techInput) return;
+    hideSuggest();
+  });
+  document.addEventListener('click', (e)=>{
+    if(!catSuggestBox || !catInput) return;
+    if(catSuggestBox.contains(e.target) || e.target===catInput) return;
+    hideCatSuggest();
+  });
+  techInput?.addEventListener('keydown', (e)=>{
+    if(e.key==='Escape'){ hideSuggest(); return; }
+    if(e.key==='ArrowDown'){ moveActive(1); e.preventDefault(); }
+    else if(e.key==='ArrowUp'){ moveActive(-1); e.preventDefault(); }
+    else if(e.key==='Enter' && suggestBox && suggestBox.style.display!=='none' && activeIndex>=0){
+      e.preventDefault(); selectActive(activeIndex); }
+  });
+  catInput?.addEventListener('keydown', (e)=>{
+    if(e.key==='Escape'){ hideCatSuggest(); return; }
+    if(e.key==='Enter' && catSuggestBox && catSuggestBox.style.display!=='none'){
+      const first = catItemsEl?.querySelector('.cat-item[data-idx="0"]');
+      if(first){
+        catInput.value = first.getAttribute('data-val');
+        hideCatSuggest(); currentPage=1; runSearch(); e.preventDefault();
+      }
+    }
+  });
+
+  // If user manually clicks Search, cancel pending debounce to avoid duplicate
+  document.getElementById('ts-submit')?.addEventListener('click', ()=>{
+    if(searchDebounce) { clearTimeout(searchDebounce); searchDebounce = null; }
+  });
+  pageSizeSel?.addEventListener('change', ()=>{
+    const newSize = parseInt(pageSizeSel.value,10) || pageSize;
+    if(newSize !== pageSize){
+      pageSize = newSize;
+      currentPage = 1;
+      runSearch();
+    }
+  });
+  btnPrev?.addEventListener('click', ()=>{ if(currentPage>1){ currentPage--; runSearch(); }});
+  btnNext?.addEventListener('click', ()=>{ currentPage++; runSearch(); });
+  btnFirst?.addEventListener('click', ()=>{ if(currentPage!==1){ currentPage=1; runSearch(); }});
+  btnLast?.addEventListener('click', ()=>{ const tp = Math.max(1, Math.ceil(totalRows/pageSize)); if(currentPage!==tp){ currentPage=tp; runSearch(); }});
+
+  document.querySelectorAll('#ts-table thead th.sortable').forEach(th=>{
+    th.style.cursor='pointer';
+    th.addEventListener('click', ()=>{
+      const k = th.dataset.sort;
+      if(sortKey === k){ sortDir = (sortDir==='asc'?'desc':'asc'); }
+      else { sortKey = k; sortDir='asc'; }
+      currentPage=1; runSearch();
+      document.querySelectorAll('#ts-table thead th.sortable').forEach(o=> o.classList.remove('sorted-asc','sorted-desc'));
+      th.classList.add(sortDir==='asc'?'sorted-asc':'sorted-desc');
+    });
+  });
+
+  restoreFromURL();
+  document.getElementById('ts-tech')?.focus();
 });
 </script>
 {% endblock %}
+  

@@ -1,62 +1,446 @@
 {% extends 'base.html' %}
 {% block content %}
-<h2>Dashboard</h2>
-<section class="grid cols-2">
-  <article>
-    <h5>Single Scan</h5>
-    <form id="single-scan-form">
-      <input name="domain" placeholder="example.com" required />
-      <label><input type="checkbox" name="fast_full" value="1" checked /> fast_full</label>
-      <button type="submit">Scan</button>
-    </form>
-    <pre id="single-scan-result" class="small mono"></pre>
-  </article>
-  <article>
-    <h5>Bulk Scan (one per line)</h5>
-    <form id="bulk-scan-form">
-      <textarea name="domains" rows="6" placeholder="a.com\nb.org"></textarea>
-      <label><input type="checkbox" name="fast_full" value="1" checked /> fast_full</label>
-      <button type="submit">Bulk Scan</button>
-    </form>
-    <pre id="bulk-scan-result" class="small mono"></pre>
-  </article>
+<section class="hero-intro" style="padding:1.1rem 0 0.4rem; text-align:center;">
+  <h1 class="hero-title" style="font-size:clamp(2.1rem,5.2vw,3.4rem); line-height:1.5; font-weight:700; letter-spacing:.5px; margin:0 0 .6rem; background:linear-gradient(92deg,#8b5cf6,#6366f1 55%,#60a5fa); -webkit-background-clip:text; background-clip:text; color:transparent;">Technology Lookup</h1>
+  <p class="hero-lead" style="max-width:860px; margin:0 auto; font-size:clamp(.78rem,1.6vw,.95rem); line-height:1.45; opacity:.92;">Masukkan satu domain untuk mendeteksi teknologi (CMS, framework, analytics, dll). Engine kini <strong>Unified</strong> (adaptif) tanpa perlu memilih mode. Panel di bawah bersifat real-time.</p>
 </section>
+<div class="dashboard-wrapper" style="display:flex; flex-direction:column; align-items:center; text-align:center; gap:1.35rem; margin-top:.35rem;">
+  <div class="glass-card compact" style="max-width:880px; width:100%; text-align:left;">
+  <div id="single-loader" style="display:none;"></div>
+    <div class="header-row" style="display:flex; align-items:center; gap:.65rem; margin-bottom:.55rem;">
+      <span class="badge-pill" style="font-size:.55rem; letter-spacing:.6px;">SINGLE SCAN</span>
+  <div class="status-line" id="status-line" style="flex:1 1 auto; font-size:.55rem; letter-spacing:.5px;"></div>
+    </div>
+    <form id="single-scan-form" class="inline-form" autocomplete="off" title="Masukkan satu domain tanpa http:// atau https://" style="display:flex; flex-wrap:wrap; gap:.55rem; align-items:center;">
+      <input type="text" name="domain" placeholder="example.com" required class="glass-input" style="flex:1 1 230px; font-size:.75rem;" />
+      <button type="submit" class="btn-glass" id="scan-btn" style="min-width:84px;">Scan</button>
+    </form>
+    <div class="results" id="results" style="display:none; margin-top:.8rem;">
+      <h4 style="margin:.15rem 0 .55rem; font-size:.9rem; letter-spacing:.4px;">Hasil</h4>
+      <div class="flex-row small-note" id="meta-line" style="display:flex; gap:.8rem; flex-wrap:wrap; font-size:.55rem; letter-spacing:.4px;"></div>
+      <div id="category-groups" style="margin-top:.55rem;"></div>
+      <details style="margin-top:.85rem;">
+        <summary style="cursor:pointer; font-size:.6rem; letter-spacing:.4px;">Raw JSON</summary>
+        <pre class="result-raw" id="raw-json" style="max-height:320px; overflow:auto;"></pre>
+      </details>
+    </div>
+    <div id="error-box" class="small" style="color:#f87171; display:none; margin-top:.6rem;"></div>
+  </div>
+  <div class="glass-card compact" style="max-width:880px; width:100%; text-align:left;">
+    <details id="bulk-section" open style="margin:0;">
+      <summary style="cursor:pointer; display:flex; align-items:center; gap:.55rem; font-weight:600; font-size:.7rem; letter-spacing:.5px; padding:.2rem 0;"> <span class="badge-pill" style="font-size:.55rem; letter-spacing:.6px;">BULK</span> Scan Banyak Domain</summary>
+      <form id="bulk-scan-form" class="bulk-form" autocomplete="off" title="Satu domain per baris. Duplikat akan dihapus otomatis." style="margin-top:.75rem; text-align:left;">
+        <textarea name="domains" rows="6" placeholder="domain1.com\ndomain2.org\nsub.domain3.id" class="glass-input" style="font-size:.63rem; width:100%; resize:vertical;"></textarea>
+        <div class="bulk-controls" style="margin-top:.6rem; display:flex; gap:.75rem; flex-wrap:wrap; align-items:center; font-size:.65rem;">
+          <label class="small-note btn-glass btn-glass-small" style="cursor:pointer;">Upload TXT
+            <input type="file" id="bulk-file" accept="text/plain" style="display:none;" />
+          </label>
+          <span id="file-info" class="small-note" style="opacity:.8;"></span>
+          
+          <label><input type="checkbox" name="sequential" value="1" checked /> queue sequential</label>
+          <span id="bulk-stats" class="small-note"></span>
+        </div>
+        <div style="display:flex; gap:.5rem; margin-top:.6rem; flex-wrap:wrap;">
+          <button type="submit" class="btn-glass btn-glass-small" id="bulk-btn">Scan</button>
+          <button type="button" class="btn-glass btn-glass-small is-hidden" id="bulk-cancel">Cancel</button>
+          
+          <span id="bulk-error" class="small" style="color:#f87171; display:none;"></span>
+        </div>
+        <div class="progress-wrapper" style="margin-top:.8rem; display:none;">
+          <div style="height:6px; border-radius:4px; overflow:hidden; position:relative;">
+            <div id="bulk-progress" style="height:100%; width:0%;"></div>
+            <div id="bulk-progress-ind" style="display:none; position:absolute; inset:0; animation: indeterm 1.2s linear infinite;"></div>
+          </div>
+          <div id="bulk-progress-text" class="small-note" style="margin-top:.3rem; text-align:left; font-size:.6rem; letter-spacing:.5px;">0%</div>
+        </div>
+      </form>
+      <div id="bulk-table-wrapper" style="margin-top:1rem; display:none; position:relative;">
+        <table class="table-glass" style="width:100%; font-size:.65rem; border-collapse:collapse;">
+          <thead>
+            <tr style="text-align:left;">
+              <th style="padding:4px 6px;">#</th>
+              <th style="padding:4px 6px;">Domain</th>
+              <th style="padding:4px 6px;">Status</th>
+              <th style="padding:4px 6px;">Engine</th>
+              <th style="padding:4px 6px;">Tech Count</th>
+              <th style="padding:4px 6px;">Technologies (preview)</th>
+              <th style="padding:4px 6px;">Error</th>
+            </tr>
+          </thead>
+          <tbody id="bulk-tbody"></tbody>
+        </table>
+        <div style="display:flex; justify-content:flex-end; margin-top:.5rem;">
+          <button type="button" class="btn-glass btn-glass-small is-hidden" id="bulk-download-bottom">Download CSV</button>
+        </div>
+        <div id="bulk-error-summary" class="small-note" style="margin-top:.6rem; text-align:left; display:none; font-size:.55rem;"></div>
+      </div>
+    </details>
+  </div>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>
-// Dashboard minimized: only single + bulk scan
-
-// Single scan
 const singleForm = document.getElementById('single-scan-form');
+const loader = document.getElementById('single-loader');
+const scanBtnOriginalText = 'Scan';
+const resultsBox = document.getElementById('results');
+const categoryGroups = document.getElementById('category-groups');
+const rawPre = document.getElementById('raw-json');
+const statusLine = document.getElementById('status-line');
+const metaLine = document.getElementById('meta-line');
+const errorBox = document.getElementById('error-box');
+const scanBtn = document.getElementById('scan-btn');
+
+// Button progress loader: animate background fill
+let scanProgressRAF=null;
+function setLoading(flag){
+  if(flag){
+    scanBtn.classList.add('is-loading');
+    scanBtn.disabled = true;
+    scanBtn.dataset.progress='0';
+    scanBtn.style.position='relative';
+    scanBtn.innerHTML='<span class="btn-label">Scanning...</span>';
+    if(!scanBtn.querySelector('.btn-progress')){
+      const bar=document.createElement('span');
+      bar.className='btn-progress';
+      Object.assign(bar.style,{position:'absolute',inset:'0',width:'0%',background:'linear-gradient(90deg,#10b981,#4ade80)',borderRadius:'inherit',zIndex:'0',transition:'width .25s ease'});
+      scanBtn.prepend(bar);
+      const fg=document.createElement('span');
+      fg.className='btn-fg';
+      Object.assign(fg.style,{position:'relative',zIndex:'1'});
+      fg.innerHTML='Scanning...';
+      scanBtn.appendChild(fg);
+    }
+    const bar=scanBtn.querySelector('.btn-progress');
+    let startTs=null;
+    const loop=(ts)=>{
+      if(!startTs) startTs=ts;
+      const elapsed=ts-startTs;
+      // Simulate progress up to 85% while waiting
+      const pct=Math.min(85, (elapsed/8000)*85); // 8s virtual fill to 85%
+      bar.style.width=pct+'%';
+      scanBtn.dataset.progress=pct.toFixed(0);
+      if(scanBtn.disabled) scanProgressRAF=requestAnimationFrame(loop);
+    };
+    scanProgressRAF=requestAnimationFrame(loop);
+    statusLine.textContent='Scanning...';
+  } else {
+    scanBtn.classList.remove('is-loading');
+    scanBtn.disabled = false;
+    const bar=scanBtn.querySelector('.btn-progress');
+    if(bar){ bar.style.width='100%'; setTimeout(()=>{ bar.style.transition='none'; bar.style.width='0%'; },600); }
+    cancelAnimationFrame(scanProgressRAF);
+    scanBtn.innerHTML=scanBtnOriginalText;
+    if(!statusLine.textContent) statusLine.textContent='';
+  }
+}
+
+function techCard(t, outdated){
+  const catsArr = t.categories||[];
+  const primary = catsArr[0] || 'Other';
+  const cats = catsArr.join(', ');
+  const iconClass = mapTechToIcon(t.name); // returns a slug or null
+  const tooltip = `${t.name}${t.version? ' v'+t.version:''}\n${cats||''}`.replace(/"/g,'&quot;');
+  const innerIcon = iconClass
+    ? `<img src="${ICON_REMOTE_BASE}/${iconClass}.svg" alt="${t.name}" style="width:18px;height:18px;display:block;" onerror="this.parentElement.textContent='${(t.name||'').substring(0,2)}';" />`
+    : (t.name||'').substring(0,2);
+  return `<div class="tech-card${outdated? ' tech-outdated':''}" data-cat="${primary}" title="${tooltip}">`+
+    `<div class="tech-card-header">`+
+      `<span class="tech-icon" data-icon="${iconClass||''}">${innerIcon}</span>`+
+      `<h5>${t.name}${t.version? ' <span class=\"version-badge\">'+t.version+'</span>':''}</h5>`+
+    `</div>`+
+    `<div class="tech-meta">${cats||'(no categories)'}${t.confidence? ' • conf '+t.confidence:''}</div>`+
+  `</div>`;
+}
+
+// Minimal mapping (extend later)
+// Mapping tech names to tech-stack-icons slug (subset; can be expanded)
+const ICON_MAP = {
+  'WordPress':'wordpress',
+  'React':'react',
+  'Next.js':'nextjs',
+  'Nginx':'nginx',
+  'Apache':'apache',
+  'Laravel':'laravel',
+  'Django':'django',
+  'Tailwind CSS':'tailwind',
+  'Bootstrap':'bootstrap',
+  'jQuery':'jquery',
+  'Express':'express'
+};
+function mapTechToIcon(name){ if(!name) return null; return ICON_MAP[name] || null; }
+
+// Use CDN SVGs for icons; fallback to initials when unavailable
+const ICON_REMOTE_BASE = 'https://unpkg.com/tech-stack-icons@3.3.2/icons';
+
 singleForm.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const fd = new FormData(singleForm);
-  const domain = fd.get('domain');
+  const domain = (fd.get('domain')||'').trim();
+  if(!domain) return;
   const fast_full = fd.get('fast_full') ? 1 : 0;
-  document.getElementById('single-scan-result').textContent='Scanning...';
+  errorBox.style.display='none';
+  resultsBox.style.display='none';
+  categoryGroups.innerHTML=''; rawPre.textContent=''; metaLine.textContent='';
+  setLoading(true);
+  let data;
   try {
     const res = await fetch('/scan', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain, fast_full})});
-    const data = await res.json();
-    document.getElementById('single-scan-result').textContent = JSON.stringify(data,null,2);
+    data = await res.json();
+    if(!res.ok){ throw new Error(data.error||('HTTP '+res.status)); }
   } catch(err){
-    document.getElementById('single-scan-result').textContent='Error '+err.message;
+    errorBox.textContent = 'Error: '+err.message;
+    errorBox.style.display='block';
+    setLoading(false);
+    return;
   }
+  setLoading(false);
+  statusLine.textContent='Selesai';
+  // Meta summary
+  const techs = data.technologies || [];
+  const outdatedMeta = (data.audit && data.audit.outdated) ? data.audit.outdated : [];
+  const outdatedNames = new Set(outdatedMeta.map(o=> o.name));
+  metaLine.innerHTML = `<span>Domain: <strong>${data.domain}</strong></span>`+
+    `<span>Tech: ${techs.length}</span>`+
+    `<span>Durasi: ${(data.duration||0).toFixed? (data.duration).toFixed(2): data.duration}s</span>`+
+    (data.cached? '<span>Cached</span>':'');
+  if(techs.length){
+    // Group by first category
+    const groups = {};
+    techs.forEach(t=>{
+      const cat = (t.categories && t.categories[0]) || 'Other';
+      (groups[cat] = groups[cat] || []).push(t);
+    });
+    const ordered = Object.keys(groups).sort();
+    categoryGroups.innerHTML = ordered.map(cat=>{
+      const cards = groups[cat].map(t=> techCard(t, outdatedNames.has(t.name))).join('');
+  return `<div class="category-group"><h4>${cat}</h4><div class="tech-grid">${cards}</div></div>`;
+    }).join('');
+  } else {
+    categoryGroups.innerHTML = '<div class="small-note">(Tidak ada teknologi terdeteksi)</div>';
+  }
+  rawPre.textContent = JSON.stringify(data, null, 2);
+  resultsBox.style.display='block';
+  resultsBox.classList.add('fade-in');
 });
-// Bulk scan
+
+// Bulk handling (queue mode + validations + progress + table output)
 const bulkForm = document.getElementById('bulk-scan-form');
+const bulkBtn = document.getElementById('bulk-btn');
+const bulkCancel = document.getElementById('bulk-cancel');
+const bulkFile = document.getElementById('bulk-file');
+const fileInfo = document.getElementById('file-info');
+const bulkDownloadBottom = document.getElementById('bulk-download-bottom');
+const bulkError = document.getElementById('bulk-error');
+const bulkTableWrapper = document.getElementById('bulk-table-wrapper');
+const bulkTbody = document.getElementById('bulk-tbody');
+const bulkProgress = document.getElementById('bulk-progress');
+const bulkProgressText = document.getElementById('bulk-progress-text');
+const progressWrapper = document.querySelector('.progress-wrapper');
+const bulkProgressInd = document.getElementById('bulk-progress-ind');
+const bulkStats = document.getElementById('bulk-stats');
+const bulkErrorSummary = document.getElementById('bulk-error-summary');
+let lastBatchId = null;
+let queueAbort = false;
+let queueResults = [];
+
+const MAX_DOMAINS = 500; // soft limit
+const MAX_FILE_KB = 200;  // warn threshold
+
+function updateProgress(done,total){
+  const pct = total? Math.round((done/total)*100):0;
+  bulkProgress.style.width = pct+'%';
+  bulkProgressText.textContent = pct+'%';
+}
+function addRow(idx, domain){
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td style="padding:3px 6px;">${idx+1}</td>`+
+    `<td style="padding:3px 6px; font-weight:500;">${domain}</td>`+
+    `<td style="padding:3px 6px;" data-field="status">queued</td>`+
+    `<td style="padding:3px 6px;" data-field="engine">-</td>`+
+    `<td style="padding:3px 6px;" data-field="count">-</td>`+
+    `<td style="padding:3px 6px; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" data-field="techs"></td>`+
+    `<td style="padding:3px 6px; color:#f87171;" data-field="error"></td>`;
+  bulkTbody.appendChild(tr);
+  return tr;
+}
+function rowUpdate(tr, data){
+  const statusCell = tr.querySelector('[data-field=status]');
+  statusCell.textContent = data.status || 'ok';
+  statusCell.style.color = (data.status && data.status !== 'ok')? '#f87171':'#10b981';
+  tr.querySelector('[data-field=engine]').textContent = data.engine || '-';
+  const techs = data.technologies||[];
+  tr.querySelector('[data-field=count]').textContent = techs.length;
+  const techPreview = techs.slice(0,8).map(t=> t.name+(t.version? '('+t.version+')':'' )).join(', ');
+  const techCell = tr.querySelector('[data-field=techs]');
+  techCell.textContent = techPreview;
+  techCell.title = techs.map(t=> t.name+(t.version? ' '+t.version:'' )).join(', ');
+  if(data.error){ tr.querySelector('[data-field=error]').textContent = data.error; }
+}
+function buildCSV(results){
+  const header = ['domain','status','engine','tech_count','technologies','error'];
+  const lines = [header.join(',')];
+  results.forEach(r=>{
+    const techList = (r.technologies||[]).map(t=> t.name+(t.version? ' '+t.version:''));
+    lines.push([
+      r.domain,
+      r.status||'',
+      r.engine||'',
+      (r.technologies||[]).length,
+      '"'+techList.join('; ')+'"',
+      '"'+(r.error||'')+'"'
+    ].join(','));
+  });
+  return lines.join('\n');
+}
+
+bulkFile.addEventListener('change', async ()=>{
+  const f = bulkFile.files && bulkFile.files[0];
+  if(!f){ fileInfo.textContent=''; return; }
+  const kb = Math.round(f.size/1024);
+  fileInfo.textContent = `${f.name} (${kb} KB)` + (kb>MAX_FILE_KB? ' ⚠ besar, proses bisa lambat':'');
+  const text = await f.text();
+  const textarea = bulkForm.querySelector('textarea[name=domains]');
+  const existing = textarea.value.trim();
+  textarea.value = (existing? existing+'\n':'') + text.trim();
+});
+
 bulkForm.addEventListener('submit', async (e)=>{
   e.preventDefault();
+  bulkError.style.display='none';
+  queueAbort = false;
   const fd = new FormData(bulkForm);
-  const domains = (fd.get('domains')||'').split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  let domains = (fd.get('domains')||'').split(/\n+/).map(s=> s.trim()).filter(Boolean);
+  domains = Array.from(new Set(domains));
+  if(!domains.length){ bulkError.textContent='Tidak ada domain.'; bulkError.style.display='inline'; return; }
+  if(domains.length > MAX_DOMAINS){ bulkError.textContent=`Terlalu banyak domain (${domains.length}) > ${MAX_DOMAINS}. Kurangi dulu.`; bulkError.style.display='inline'; return; }
+  const sequential = fd.get('sequential') ? true : false;
   const fast_full = fd.get('fast_full') ? 1 : 0;
-  document.getElementById('bulk-scan-result').textContent='Bulk scanning...';
-  try {
-    const res = await fetch('/scan/bulk', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domains, fast_full})});
-    const data = await res.json();
-    document.getElementById('bulk-scan-result').textContent = JSON.stringify(data,null,2);
-  } catch(err){
-    document.getElementById('bulk-scan-result').textContent='Error '+err.message;
+  bulkBtn.disabled = true; bulkCancel.classList.add('is-hidden');
+  bulkDownloadBottom.classList.add('is-hidden');
+  bulkTableWrapper.style.display='block';
+  // Hide large track; we'll show progress inside the button instead
+  progressWrapper.style.display='none';
+  bulkTbody.innerHTML='';
+  updateProgress(0, domains.length);
+  bulkStats.textContent = `Queued: ${domains.length}`;
+  queueResults = [];
+  if(sequential){ bulkCancel.classList.remove('is-hidden'); }
+
+  if(sequential){
+    // Sequential queue loop
+    for(let i=0;i<domains.length;i++){
+      if(queueAbort){ break; }
+      const d = domains[i];
+      const tr = addRow(i, d);
+      tr.querySelector('[data-field=status]').textContent='scanning';
+      // Show progress inside the bulk button like single scan
+      if(!bulkBtn.disabled){
+        bulkBtn.disabled = true;
+        bulkBtn.classList.add('is-loading');
+        if(!bulkBtn.querySelector('.btn-progress')){
+          const bar=document.createElement('span');
+          bar.className='btn-progress';
+          Object.assign(bar.style,{position:'absolute',inset:'0',width:'0%',borderRadius:'inherit',zIndex:'0',transition:'width .25s ease'});
+          bulkBtn.style.position='relative';
+          bulkBtn.prepend(bar);
+          const fg=document.createElement('span');
+          fg.className='btn-fg';
+          Object.assign(fg.style,{position:'relative',zIndex:'1'});
+          fg.textContent='Scanning';
+          bulkBtn.appendChild(fg);
+        }
+      }
+      try {
+        const res = await fetch('/scan', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain:d, fast_full})});
+        const data = await res.json();
+        if(!res.ok){ data.status='error'; data.error = data.error || ('HTTP '+res.status); }
+        rowUpdate(tr, data);
+        queueResults.push({domain:d, ...data});
+      } catch(err){
+        rowUpdate(tr, {domain:d,status:'error', error: err.message, technologies:[]});
+        queueResults.push({domain:d,status:'error', error: err.message, technologies:[]});
+      }
+  updateProgress(i+1, domains.length);
+  const pct = Math.round(((i+1)/domains.length)*100);
+      // Update internal progress fill
+      const bar=bulkBtn.querySelector('.btn-progress');
+      if(bar){ bar.style.width = Math.round(((i+1)/domains.length)*100)+'%'; }
+  bulkStats.textContent = `Progress: ${i+1}/${domains.length} (${pct}%)`;
+    }
+    // Done
+  bulkBtn.disabled=false; bulkBtn.classList.remove('is-loading');
+  const bbar=bulkBtn.querySelector('.btn-progress'); if(bbar){ bbar.style.width='100%'; }
+  setTimeout(()=>{ const rm=bulkBtn.querySelector('.btn-progress'); if(rm) rm.remove(); const fg=bulkBtn.querySelector('.btn-fg'); if(fg){ fg.remove(); } },600);
+  } else {
+    // Parallel bulk endpoint
+    // Show indeterminate bar while waiting for server response
+    bulkProgress.style.width = '0%';
+    bulkProgressInd.style.display = 'block';
+    try {
+      const res = await fetch('/bulk', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domains, fast_full})});
+      const data = await res.json();
+      if(!res.ok){ throw new Error(data.error||('HTTP '+res.status)); }
+      const results = data.results || [];
+      // Switch off indeterminate, switch to determinate updates while rendering
+      bulkProgressInd.style.display = 'none';
+      // Prepare internal progress for parallel as render progresses
+      bulkBtn.disabled = true; bulkBtn.classList.add('is-loading');
+      if(!bulkBtn.querySelector('.btn-progress')){
+        const bar=document.createElement('span'); bar.className='btn-progress'; Object.assign(bar.style,{position:'absolute',inset:'0',width:'0%',borderRadius:'inherit',zIndex:'0',transition:'width .25s ease'});
+        bulkBtn.style.position='relative'; bulkBtn.prepend(bar);
+        const fg=document.createElement('span'); fg.className='btn-fg'; Object.assign(fg.style,{position:'relative',zIndex:'1'}); fg.textContent='Scanning'; bulkBtn.appendChild(fg);
+      }
+      results.forEach((r,idx)=>{
+        const tr = addRow(idx, r.domain || domains[idx]);
+        rowUpdate(tr, r||{});
+        queueResults.push({domain: r.domain || domains[idx], ...(r||{})});
+        updateProgress(idx+1, results.length);
+        const pct = Math.round(((idx+1)/results.length)*100);
+        const bar=bulkBtn.querySelector('.btn-progress'); if(bar){ bar.style.width = pct+'%'; }
+        const fg=bulkBtn.querySelector('.btn-fg'); if(fg){ fg.textContent = `Scanning ${pct}%`; }
+      });
+      // Done
+    bulkBtn.disabled=false; bulkBtn.classList.remove('is-loading');
+    const bbar=bulkBtn.querySelector('.btn-progress'); if(bbar){ bbar.style.width='100%'; }
+    setTimeout(()=>{ const rm=bulkBtn.querySelector('.btn-progress'); if(rm) rm.remove(); const fg=bulkBtn.querySelector('.btn-fg'); if(fg){ fg.remove(); } },600);
+      bulkStats.textContent = `Selesai: ${data.ok}/${data.count}`;
+    } catch(err){
+      bulkError.textContent = 'Bulk error: '+err.message; bulkError.style.display='inline';
+    }
   }
+  // Error summary after run
+  if(queueResults.length){
+    const buckets = {timeout:0,dns:0,ssl:0,connection:0,other:0};
+    queueResults.forEach(r=>{
+      if(!r || r.status==='ok') return;
+      const err = (r.error||'').toLowerCase();
+      if(/timeout|timed out|time out/.test(err)) buckets.timeout++;
+      else if(/dns|nodename/.test(err)) buckets.dns++;
+      else if(/ssl|cert/.test(err)) buckets.ssl++;
+      else if(/connection|refused|unreachable/.test(err)) buckets.connection++;
+      else buckets.other++;
+    });
+    bulkErrorSummary.style.display='block';
+    bulkErrorSummary.textContent = `Error Summary => timeout:${buckets.timeout} dns:${buckets.dns} ssl:${buckets.ssl} connection:${buckets.connection} other:${buckets.other}`;
+  }
+  bulkBtn.disabled=false; bulkCancel.classList.add('is-hidden');
+  if(queueResults.length){ bulkDownloadBottom.classList.remove('is-hidden'); }
 });
+
+bulkCancel.addEventListener('click', ()=>{ queueAbort=true; bulkCancel.disabled=true; });
+function doDownload(){
+  if(!queueResults.length) return;
+  const csv = buildCSV(queueResults);
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'bulk_results.csv'; document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+bulkDownloadBottom.addEventListener('click', doDownload);
 </script>
+<style>
+@keyframes indeterm { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%);} }
+</style>
 {% endblock %}

@@ -1,0 +1,51 @@
+{
+  "version": 460,
+  "updated_at": 1762196505.8994677,
+  "groups": {
+    "faculty": [
+      "feb.unair.ac.id",
+      "ff.unair.ac.id",
+      "fh.unair.ac.id",
+      "fib.unair.ac.id",
+      "fikkia.unair.ac.id",
+      "fisip.unair.ac.id",
+      "fk.unair.ac.id",
+      "fkg.unair.ac.id",
+      "fkh.unair.ac.id",
+      "fkm.unair.ac.id",
+      "fpk.unair.ac.id",
+      "fst.unair.ac.id",
+      "ftmm.unair.ac.id",
+      "ners.unair.ac.id",
+      "pasca.unair.ac.id",
+      "psikologi.unair.ac.id",
+      "vokasi.unair.ac.id"
+    ],
+    "directorate": [
+      "cybercampus.unair.ac.id",
+      "ditipp.unair.ac.id",
+      "ditkeu.unair.ac.id",
+      "dpkka.unair.ac.id",
+      "dsi.unair.ac.id",
+      "e-office.unair.ac.id",
+      "hebat.elearning.unair.ac.id",
+      "helpdesk.dsi.unair.ac.id",
+      "kb.dsi.unair.ac.id",
+      "kemahasiswaan.unair.ac.id",
+      "logkamtibling.unair.ac.id",
+      "mahasiswa.unair.ac.id",
+      "mahasiswa2.unair.ac.id",
+      "mbkm.unair.ac.id",
+      "pendidikan.unair.ac.id",
+      "sarpras.unair.ac.id",
+      "sdm.unair.ac.id",
+      "su.unair.ac.id",
+      "uacc.unair.ac.id",
+      "unair.ac.id",
+      "unairsatu.unair.ac.id",
+      "webmon.dsi.unair.ac.id"
+    ],
+    "work_unit": [],
+    "bem_ukm": []
+  }
+}

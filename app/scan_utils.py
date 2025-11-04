@@ -35,6 +35,26 @@ STATS: Dict[str, Any] = {
         'fast': deque(maxlen=200),
         'full': deque(maxlen=200),
         'fast_full': deque(maxlen=200)
+    },
+    'phases': {
+        'sniff_ms': 0,
+        'sniff_count': 0,
+        'engine_ms': 0,
+        'engine_count': 0,
+        'synthetic_ms': 0,
+        'synthetic_count': 0,
+        'version_audit_ms': 0,
+        'version_audit_count': 0
+    },
+    'totals': {
+        'scan_count': 0,
+        'total_overall_ms': 0
+    },
+    # Single-flight (duplicate in-flight suppression) metrics
+    'single_flight': {
+        'hits': 0,          # followers that avoided starting a duplicate scan
+        'wait_ms': 0,       # cumulative wait time of followers
+        'inflight': 0       # current number of active leader scans
     }
 }
 
@@ -45,6 +65,56 @@ _fail_map: Dict[str, dict] = {}
 # DNS negative cache & preflight
 _dns_neg_lock = threading.Lock()
 _dns_neg: Dict[str, float] = {}
+
+# --------------------------- SINGLE-FLIGHT GUARD ---------------------------
+_single_flight_lock = threading.Lock()
+_single_flight_map: Dict[str, dict] = {}
+
+def _single_flight_enter(cache_key: str) -> bool:
+    """Enter single-flight section for given cache_key.
+    Returns True if caller is the leader responsible for performing the scan.
+    If another leader is running, this call will wait until completion and return False.
+    Disabled when TECHSCAN_SINGLE_FLIGHT=0.
+    """
+    if os.environ.get('TECHSCAN_SINGLE_FLIGHT', '1') == '0':
+        return True
+    start_wait: float | None = None
+    with _single_flight_lock:
+        entry = _single_flight_map.get(cache_key)
+        if entry is None:
+            # Become leader
+            cond = threading.Condition(_single_flight_lock)
+            _single_flight_map[cache_key] = {'cond': cond, 'running': True}
+            with _stats_lock:
+                STATS['single_flight']['inflight'] += 1
+            return True
+        # Follower path: wait until leader completes
+        cond: threading.Condition = entry['cond']
+        start_wait = time.time()
+        while entry.get('running'):
+            cond.wait()
+        # Leader finished; record wait stats
+        if start_wait is not None:
+            waited = time.time() - start_wait
+            with _stats_lock:
+                STATS['single_flight']['hits'] += 1
+                STATS['single_flight']['wait_ms'] += int(waited * 1000)
+        return False
+
+def _single_flight_exit(cache_key: str):
+    if os.environ.get('TECHSCAN_SINGLE_FLIGHT', '1') == '0':
+        return
+    with _single_flight_lock:
+        entry = _single_flight_map.get(cache_key)
+        if not entry:
+            return
+        if entry.get('running'):
+            entry['running'] = False
+            cond: threading.Condition = entry['cond']
+            cond.notify_all()
+            _single_flight_map.pop(cache_key, None)
+            with _stats_lock:
+                STATS['single_flight']['inflight'] -= 1
 
 def _dns_negative(domain: str) -> bool:
     # Return True if domain is in negative cache and still valid
@@ -230,8 +300,17 @@ def validate_domain(raw: str) -> str:
 
 @lru_cache(maxsize=1)
 def load_categories(wappalyzer_path: str) -> Dict[int, str]:
-    categories_file = pathlib.Path(wappalyzer_path) / 'src' / 'categories.json'
-    with open(categories_file, 'r', encoding='utf-8') as f:
+    base = pathlib.Path(wappalyzer_path)
+    # Support both repo layout (src/categories.json) and npm package layout (categories.json at root)
+    candidates = [base / 'src' / 'categories.json', base / 'categories.json']
+    selected = None
+    for p in candidates:
+        if p.exists():
+            selected = p
+            break
+    if not selected:
+        raise FileNotFoundError(f'categories.json not found under {wappalyzer_path}')
+    with open(selected, 'r', encoding='utf-8') as f:
         raw = json.load(f)
     # file structure is array or object (in repo it's object mapping id-> {name:..})
     out = {}
@@ -276,6 +355,33 @@ def normalize_result(domain: str, raw: Dict[str, Any], categories_map: Dict[int,
         'categories': category_bucket,
         'raw': raw
     }
+
+
+def infer_tech_from_urls(urls: List[str]) -> List[Dict[str, Any]]:
+    """Lightweight inference from asset URLs (js/css/fonts) to provide hints when full JS execution isn't available.
+    Returns list of tech dicts: {'name':..., 'version': None, 'categories': [...], 'confidence': 10}
+    """
+    hints: List[Dict[str, Any]] = []
+    if not urls:
+        return hints
+    for u in urls:
+        try:
+            lu = (u or '').lower()
+        except Exception:
+            lu = ''
+        if 'jquery' in lu and not any(h.get('name')=='jQuery' for h in hints):
+            hints.append({'name': 'jQuery', 'version': None, 'categories': ['JavaScript libraries'], 'confidence': 10})
+        elif 'bootstrap' in lu and not any(h.get('name')=='Bootstrap' for h in hints):
+            hints.append({'name': 'Bootstrap', 'version': None, 'categories': ['UI frameworks'], 'confidence': 10})
+        elif ('vue' in lu or 'vue.runtime' in lu) and not any(h.get('name')=='Vue.js' for h in hints):
+            hints.append({'name': 'Vue.js', 'version': None, 'categories': ['JavaScript frameworks'], 'confidence': 10})
+        elif ('react' in lu or 'react-dom' in lu) and not any(h.get('name')=='React' for h in hints):
+            hints.append({'name': 'React', 'version': None, 'categories': ['JavaScript frameworks'], 'confidence': 10})
+        elif 'fontawesome' in lu and not any(h.get('name')=='Font Awesome' for h in hints):
+            hints.append({'name': 'Font Awesome', 'version': None, 'categories': ['Icon sets'], 'confidence': 8})
+        elif 'tailwind' in lu and not any(h.get('name')=='Tailwind CSS' for h in hints):
+            hints.append({'name': 'Tailwind CSS', 'version': None, 'categories': ['UI frameworks','CSS'], 'confidence': 8})
+    return hints
 
 _heuristics_lock = threading.Lock()
 _heuristics_patterns: list[tuple[re.Pattern, int]] = []
@@ -508,7 +614,74 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
         except Exception as ue:
             logging.getLogger('techscan.ultra').warning('ultra quick path failed domain=%s err=%s (fall back)', domain, ue)
     persist = os.environ.get('TECHSCAN_PERSIST_BROWSER','0') == '1'
+    # Python-local Wappalyzer-style detection (no browser) if enabled and not full mode
+    use_py_wapp = (os.environ.get('TECHSCAN_PY_WAPP','0') == '1') and not persist
     local_scanner = pathlib.Path(__file__).resolve().parent.parent / 'node_scanner' / ('scanner.js' if not persist else 'server.js')
+    if use_py_wapp and not full:
+        # Fast local detector; skip Node/Chromium entirely
+        logger = logging.getLogger('techscan.scan_domain')
+        op_start = time.time()
+        try:
+            from . import wapp_local
+            data = wapp_local.detect(domain, wappalyzer_path, timeout=min(timeout, 6))
+            op_end = time.time()
+            categories_map = load_categories(wappalyzer_path)
+            result = normalize_result(domain, data, categories_map)
+            # Synthetic header detection remains useful to add server/CDN hints
+            synthetic_allowed = (os.environ.get('TECHSCAN_SYNTHETIC_HEADERS', '1') == '1' and os.environ.get('TECHSCAN_DISABLE_SYNTHETIC','0') != '1')
+            synth_start = time.time()
+            if synthetic_allowed:
+                try:
+                    synth = synthetic_header_detection(domain, timeout=min(5, timeout))
+                    if synth:
+                        existing_names = {t['name'] for t in result['technologies']}
+                        added = False
+                        for tech in synth:
+                            if tech['name'] not in existing_names:
+                                result['technologies'].append(tech)
+                                for cat in tech.get('categories', []):
+                                    result['categories'].setdefault(cat, []).append({'name': tech['name'], 'version': tech.get('version')})
+                                added = True
+                        if added:
+                            logging.getLogger('techscan.synthetic').debug('added synthetic headers domain=%s items=%d', domain, len(synth))
+                            with _stats_lock:
+                                STATS['synthetic']['headers'] += 1
+                except Exception as se:
+                    logging.getLogger('techscan.synthetic').debug('synthetic header detection failed domain=%s err=%s', domain, se)
+            synth_end = time.time()
+            result['scan_mode'] = 'fast'
+            result['engine'] = 'wappalyzer-py-local'
+            result['timing'] = {
+                'overall_seconds': round((op_end - op_start), 3),
+                'engine_seconds': round((op_end - op_start), 3),
+                'overhead_seconds': 0.0
+            }
+            result['duration'] = round((op_end - op_start), 2)
+            result['started_at'] = op_start
+            result['finished_at'] = op_end
+            result.setdefault('phases', {})['engine_ms'] = int((op_end - op_start) * 1000)
+            result['phases']['synthetic_ms'] = int((synth_end - synth_start) * 1000) if synthetic_allowed else 0
+            logger.info('scan success domain=%s engine=%s duration=%.2fs', domain, result['engine'], (op_end - op_start))
+            _record_success(domain)
+            # Version audit
+            if os.environ.get('TECHSCAN_SKIP_VERSION_AUDIT','0') != '1' and os.environ.get('TECHSCAN_VERSION_AUDIT','1') == '1':
+                va_start = time.time()
+                try:
+                    version_audit.audit_versions(result)
+                except Exception as ae:
+                    logging.getLogger('techscan.audit').debug('audit fail py-local domain=%s err=%s', domain, ae)
+                finally:
+                    va_end = time.time()
+                    duration_ms = int((va_end - va_start)*1000)
+                    result.setdefault('phases', {})['version_audit_ms'] = duration_ms
+                    with _stats_lock:
+                        STATS['phases']['version_audit_ms'] += duration_ms
+                        STATS['phases']['version_audit_count'] += 1
+            return result
+        except Exception as e:
+            # Fall back to existing engines if py-local fails
+            logging.getLogger('techscan.scan_domain').warning('py-local detector failed domain=%s err=%s (fallback to existing path)', domain, e)
+
     if persist:
         # We'll route via persistent_client, but keep mode label
         mode = 'persist'
@@ -605,6 +778,7 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
             result = normalize_result(domain, data, categories_map)
             # Synthetic header-based detection (optional + allow disable)
             synthetic_allowed = (os.environ.get('TECHSCAN_SYNTHETIC_HEADERS', '1') == '1' and os.environ.get('TECHSCAN_DISABLE_SYNTHETIC','0') != '1')
+            synth_start = time.time()
             if synthetic_allowed:
                 try:
                     synth = synthetic_header_detection(domain, timeout=min(5, timeout))
@@ -624,6 +798,7 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
                                 STATS['synthetic']['headers'] += 1
                 except Exception as se:
                     logging.getLogger('techscan.synthetic').debug('synthetic header detection failed domain=%s err=%s', domain, se)
+            synth_end = time.time()
             result['scan_mode'] = 'full' if full else 'fast'
             result['engine'] = f'wappalyzer-{mode}'
             if attempt > 1:
@@ -643,6 +818,9 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
             result['duration'] = round(elapsed, 2)
             result['started_at'] = started_at
             result['finished_at'] = finished_at
+            # Add phases sub-structure (ms)
+            result.setdefault('phases', {})['engine_ms'] = int(engine_elapsed * 1000)
+            result['phases']['synthetic_ms'] = int((synth_end - synth_start) * 1000) if synthetic_allowed else 0
             logger.info('scan success domain=%s engine=%s duration=%.2fs attempts=%d', domain, result['engine'], elapsed, attempt)
             _record_success(domain)
             # stats: record duration
@@ -652,6 +830,14 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
                 bucket = STATS['durations'][mode_key]
                 bucket['count'] += 1
                 bucket['total'] += elapsed
+                # aggregate phase timings
+                STATS['phases']['engine_ms'] += int(engine_elapsed * 1000)
+                STATS['phases']['engine_count'] += 1
+                if synthetic_allowed:
+                    STATS['phases']['synthetic_ms'] += result['phases']['synthetic_ms']
+                    STATS['phases']['synthetic_count'] += 1
+                STATS['totals']['scan_count'] += 1
+                STATS['totals']['total_overall_ms'] += int(elapsed * 1000)
                 try:
                     STATS['recent_samples'][mode_key].append(elapsed)
                 except Exception:
@@ -984,31 +1170,48 @@ def get_cached_or_scan(domain: str, wappalyzer_path: str, timeout: int = 45, fre
             logging.getLogger('techscan.tiered').warning('heuristic pre-scan failed domain=%s err=%s', domain, he)
             heuristic_result = None
 
+    # Single-flight guard: only one leader performs scan_domain. Followers will wait then re-check cache.
+    is_leader = _single_flight_enter(cache_key)
     try:
-        result = scan_domain(domain, wappalyzer_path, timeout=timeout, retries=retries, full=full)
-    except Exception as e:
-        # If timeout or scan error and we have heuristic partial, return heuristic instead of total failure
-        if tiered_enabled and heuristic_result:
-            heuristic_result.setdefault('tiered', {})['fallback'] = True
-            if os.environ.get('TECHSCAN_SKIP_VERSION_AUDIT','0') != '1' and os.environ.get('TECHSCAN_VERSION_AUDIT','1') == '1':
-                try:
-                    version_audit.audit_versions(heuristic_result)
-                except Exception as ae:
-                    logging.getLogger('techscan.audit').debug('audit fail fallback domain=%s err=%s', domain, ae)
-            heuristic_result.setdefault('error', str(e))
-            heuristic_result.setdefault('error_class', _classify_error(e))
-            logging.getLogger('techscan.tiered').warning('scan failed using heuristic fallback domain=%s err=%s', domain, e)
+        # Followers (not leader) arrive here after leader finished; return cached result if available
+        if not is_leader:
             with _lock:
-                _cache[cache_key] = {'ts': now, 'data': heuristic_result, 'ttl': eff_ttl}
-                with _stats_lock:
-                    STATS['cache_entries'] = len(_cache)
-            try:
-                from . import db as _db
-                _db.save_scan(heuristic_result, from_cache=False, timeout_used=timeout)
-            except Exception:
-                pass
-            return heuristic_result
-        raise
+                item2 = _cache.get(cache_key)
+                if item2 and (time.time() - item2['ts'] < item2.get('ttl', CACHE_TTL)):
+                    return {**item2['data'], 'cached': True, 'single_flight_follower': True}
+            # Edge case: leader failed and no cache populated; proceed to attempt scan (promote self logically)
+            is_leader = True
+            # Update inflight metric since we are effectively becoming a new leader
+            with _stats_lock:
+                STATS['single_flight']['inflight'] += 1
+        try:
+            result = scan_domain(domain, wappalyzer_path, timeout=timeout, retries=retries, full=full)
+        except Exception as e:
+            # If timeout or scan error and we have heuristic partial, return heuristic instead of total failure
+            if tiered_enabled and heuristic_result:
+                heuristic_result.setdefault('tiered', {})['fallback'] = True
+                if os.environ.get('TECHSCAN_SKIP_VERSION_AUDIT','0') != '1' and os.environ.get('TECHSCAN_VERSION_AUDIT','1') == '1':
+                    try:
+                        version_audit.audit_versions(heuristic_result)
+                    except Exception as ae:
+                        logging.getLogger('techscan.audit').debug('audit fail fallback domain=%s err=%s', domain, ae)
+                heuristic_result.setdefault('error', str(e))
+                heuristic_result.setdefault('error_class', _classify_error(e))
+                logging.getLogger('techscan.tiered').warning('scan failed using heuristic fallback domain=%s err=%s', domain, e)
+                with _lock:
+                    _cache[cache_key] = {'ts': now, 'data': heuristic_result, 'ttl': eff_ttl}
+                    with _stats_lock:
+                        STATS['cache_entries'] = len(_cache)
+                try:
+                    from . import db as _db
+                    _db.save_scan(heuristic_result, from_cache=False, timeout_used=timeout)
+                except Exception:
+                    pass
+                return heuristic_result
+            raise
+    finally:
+        if is_leader:
+            _single_flight_exit(cache_key)
     # Merge heuristic partial if exists and not early-return
     if heuristic_result and not heuristic_result.get('tiered',{}).get('early_return'):
         try:
@@ -1033,10 +1236,18 @@ def get_cached_or_scan(domain: str, wappalyzer_path: str, timeout: int = 45, fre
             logging.getLogger('techscan.tiered').debug('merge heuristic failed domain=%s err=%s', domain, me)
     # Version audit on final full result (merged or pure)
     if os.environ.get('TECHSCAN_SKIP_VERSION_AUDIT','0') != '1' and os.environ.get('TECHSCAN_VERSION_AUDIT','1') == '1':
+        va_start = time.time()
         try:
             version_audit.audit_versions(result)
         except Exception as ae:
             logging.getLogger('techscan.audit').debug('audit fail full domain=%s err=%s', domain, ae)
+        finally:
+            va_end = time.time()
+            duration_ms = int((va_end - va_start)*1000)
+            result.setdefault('phases', {})['version_audit_ms'] = duration_ms
+            with _stats_lock:
+                STATS['phases']['version_audit_ms'] += duration_ms
+                STATS['phases']['version_audit_count'] += 1
     # Persist fresh scan
     try:
         from . import db as _db
@@ -1048,6 +1259,517 @@ def get_cached_or_scan(domain: str, wappalyzer_path: str, timeout: int = 45, fre
         with _stats_lock:
             STATS['cache_entries'] = len(_cache)
     return result
+
+
+def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Dict[str, Any]:
+    """Unified, adaptive engine:
+    1) Heuristic tier-0 quick probe (HTML GET + headers) for fast CMS/libraries/server hints.
+    2) Python-local Wappalyzer rules (no browser) on the same HTML/headers context for broader coverage.
+    3) Synthetic header detection (HEAD) for server/CDN/HSTS.
+    4) Targeted version enrichment (e.g., WP/Drupal/Joomla).
+    5) If still sparse, attempt a single micro Node fallback (strict short timeout, no adaptive retries).
+    6) If still below threshold and budget allows, attempt a short full Node fallback (no implicit retry; unblocks resources).
+
+    Returns normalized result with engine='unified' and detailed phases timing.
+    """
+    t0 = time.time()
+    domain = validate_domain(extract_host(domain))
+    phases: Dict[str, int] = {}
+    techs: List[Dict[str, Any]] = []
+    cats: Dict[str, List[Dict[str, Any]]] = {}
+    # 1) Heuristic quick
+    heur_res: Dict[str, Any] | None = None
+    try:
+        from . import heuristic_fast
+        hstart = time.time()
+        heur_res = heuristic_fast.run_heuristic(domain, budget_ms=min(budget_ms, 1800), allow_empty_early=True)
+        phases['heuristic_ms'] = int((time.time() - hstart)*1000)
+        techs.extend(heur_res.get('technologies') or [])
+        for cat, arr in (heur_res.get('categories') or {}).items():
+            bucket = cats.setdefault(cat, [])
+            for it in arr:
+                if not any(b['name']==it['name'] and b.get('version')==it.get('version') for b in bucket):
+                    bucket.append({'name': it['name'], 'version': it.get('version')})
+    except Exception as e:
+        logging.getLogger('techscan.unified').debug('heuristic failed domain=%s err=%s', domain, e)
+    # 2) Python-local Wappalyzer detection
+    py_local_ms = 0
+    try:
+        pstart = time.time()
+        from . import wapp_local
+        raw = wapp_local.detect(domain, wappalyzer_path, timeout=min(4.0, budget_ms/1000.0))
+        categories_map = load_categories(wappalyzer_path)
+        nres = normalize_result(domain, raw, categories_map)
+        py_local_ms = int((time.time() - pstart)*1000)
+        phases['py_local_ms'] = py_local_ms
+        # preserve extras for downstream evidence
+        if raw and isinstance(raw, dict):
+            nres.setdefault('raw', {})
+            try:
+                # Collect possible extras from a few common shapes used by detectors:
+                # - raw may expose extras at top level: raw['extras']
+                # - some detectors return nested shapes like raw['raw']['extras'] or raw['data']['extras']
+                extras_acc: dict = {}
+                # top-level extras
+                top = raw.get('extras')
+                if isinstance(top, dict):
+                    for k, v in top.items():
+                        extras_acc.setdefault(k, []).extend(v if isinstance(v, list) else [v])
+                # nested raw.extras
+                nested_raw = raw.get('raw')
+                if isinstance(nested_raw, dict):
+                    nr = nested_raw.get('extras')
+                    if isinstance(nr, dict):
+                        for k, v in nr.items():
+                            extras_acc.setdefault(k, []).extend(v if isinstance(v, list) else [v])
+                # nested data.extras
+                nested_data = raw.get('data')
+                if isinstance(nested_data, dict):
+                    nd = nested_data.get('extras')
+                    if isinstance(nd, dict):
+                        for k, v in nd.items():
+                            extras_acc.setdefault(k, []).extend(v if isinstance(v, list) else [v])
+                # If we found any extras, normalize to lists and store
+                if extras_acc:
+                    normalized = {}
+                    for k, v in extras_acc.items():
+                        # flatten None and non-list into a single-item list
+                        if v is None:
+                            normalized[k] = []
+                        else:
+                            # ensure strings are preserved as items
+                            normalized[k] = [item for item in v if item is not None]
+                    nres['raw']['extras'] = normalized
+            except Exception:
+                pass
+        # merge techs and categories
+        existing = {t['name'] for t in techs}
+        for t in nres.get('technologies') or []:
+            if t['name'] not in existing:
+                techs.append(t); existing.add(t['name'])
+        for cat, arr in (nres.get('categories') or {}).items():
+            bucket = cats.setdefault(cat, [])
+            for it in arr:
+                if not any(b['name']==it['name'] and b.get('version')==it.get('version') for b in bucket):
+                    bucket.append({'name': it['name'], 'version': it.get('version')})
+    except Exception as e:
+        logging.getLogger('techscan.unified').debug('py-local failed domain=%s err=%s', domain, e)
+    # 3) Synthetic headers
+    try:
+        sstart = time.time()
+        synth = synthetic_header_detection(domain, timeout=3)
+        if synth:
+            existing = {t['name'] for t in techs}
+            for t in synth:
+                if t['name'] not in existing:
+                    techs.append(t); existing.add(t['name'])
+                    for cat in t.get('categories') or []:
+                        bucket = cats.setdefault(cat, [])
+                        if not any(b['name']==t['name'] and b.get('version')==t.get('version') for b in bucket):
+                            bucket.append({'name': t['name'], 'version': t.get('version')})
+        phases['synthetic_ms'] = int((time.time() - sstart)*1000)
+    except Exception as e:
+        logging.getLogger('techscan.unified').debug('synthetic failed domain=%s err=%s', domain, e)
+    # 4) Targeted version enrichment
+    enriched = False
+    try:
+        fake_result = {'domain': domain, 'technologies': techs, 'categories': cats}
+        enriched = _targeted_version_enrichment(fake_result, timeout=2.0)
+        if enriched:
+            # sync back possibly updated categories
+            cats = fake_result.get('categories') or cats
+    except Exception as e:
+        logging.getLogger('techscan.unified').debug('enrich failed domain=%s err=%s', domain, e)
+    # 5) Micro Node fallback only if sparse
+    def count_signal(ts: List[Dict[str, Any]]) -> int:
+        return sum(1 for t in ts if t.get('name'))
+    # Threshold for triggering Node fallbacks
+    try:
+        unified_min_tech = int(os.environ.get('TECHSCAN_UNIFIED_MIN_TECH', '15'))
+    except ValueError:
+        unified_min_tech = 15
+    # Optional fast full timeout override in milliseconds (prefer this for short full fallback)
+    try:
+        fast_full_ms = int(os.environ.get('TECHSCAN_FAST_FULL_TIMEOUT_MS', '0') or '0')
+    except ValueError:
+        fast_full_ms = 0
+    micro_used = False
+    node_full_used = False
+    # Micro fallback is gated by TECHSCAN_ULTRA_FALLBACK_MICRO (default enabled)
+    if count_signal(techs) < unified_min_tech and os.environ.get('TECHSCAN_ULTRA_FALLBACK_MICRO', '1') == '1':
+        try:
+            # One-shot micro: short cap, no adaptive retry, and resource blocking on
+            micro_start = time.time()
+            # Derive timeout: allow a bit longer if not using persistent browser
+            try:
+                micro_to_env = int(os.environ.get('TECHSCAN_MICRO_TIMEOUT_S','0') or '0')
+            except ValueError:
+                micro_to_env = 0
+            persist = (os.environ.get('TECHSCAN_PERSIST_BROWSER','0') == '1')
+            # default 5s when persist, 8s when not persist (cold launch overhead)
+            micro_default = 5 if persist else 8
+            micro_timeout_s = micro_to_env if micro_to_env > 0 else micro_default
+            # Respect remaining budget
+            rem_ms = max(0, budget_ms - int((time.time() - t0) * 1000))
+            if rem_ms > 0:
+                micro_timeout_s = min(micro_timeout_s, max(3, int(rem_ms/1000)))
+            added_micro = 0
+            old_ultra = os.environ.get('TECHSCAN_ULTRA_QUICK'); os.environ['TECHSCAN_ULTRA_QUICK']='0'
+            old_adapt = os.environ.get('TECHSCAN_DISABLE_ADAPTIVE'); os.environ['TECHSCAN_DISABLE_ADAPTIVE']='1'
+            old_impl = os.environ.get('TECHSCAN_DISABLE_IMPLICIT_RETRY'); os.environ['TECHSCAN_DISABLE_IMPLICIT_RETRY']='1'
+            old_pyw = os.environ.get('TECHSCAN_PY_WAPP'); os.environ['TECHSCAN_PY_WAPP'] = '0'
+            try:
+                node = scan_domain(domain, wappalyzer_path, timeout=micro_timeout_s, retries=0, full=False)
+                existing = {t['name'] for t in techs}
+                for t in node.get('technologies') or []:
+                    if t['name'] not in existing:
+                        techs.append(t); existing.add(t['name']); added_micro += 1
+                for cat, arr in (node.get('categories') or {}).items():
+                    bucket = cats.setdefault(cat, [])
+                    for it in arr:
+                        if not any(b['name']==it['name'] and b.get('version')==it.get('version') for b in bucket):
+                            bucket.append({'name': it['name'], 'version': it.get('version')})
+            finally:
+                micro_end = time.time()
+                if old_ultra is not None: os.environ['TECHSCAN_ULTRA_QUICK']=old_ultra
+                else: os.environ.pop('TECHSCAN_ULTRA_QUICK', None)
+                if old_adapt is not None: os.environ['TECHSCAN_DISABLE_ADAPTIVE']=old_adapt
+                else: os.environ.pop('TECHSCAN_DISABLE_ADAPTIVE', None)
+                if old_impl is not None: os.environ['TECHSCAN_DISABLE_IMPLICIT_RETRY']=old_impl
+                else: os.environ.pop('TECHSCAN_DISABLE_IMPLICIT_RETRY', None)
+                if old_pyw is not None: os.environ['TECHSCAN_PY_WAPP']=old_pyw
+                else: os.environ.pop('TECHSCAN_PY_WAPP', None)
+            try:
+                phases['micro_ms'] = int((micro_end - micro_start) * 1000)
+            except Exception:
+                pass
+            if added_micro > 0:
+                micro_used = True
+        except Exception as e:
+            logging.getLogger('techscan.unified').debug('micro fallback failed domain=%s err=%s', domain, e)
+    # 6) Short full Node fallback if still below threshold and budget remains
+    if count_signal(techs) < unified_min_tech:
+        try:
+            remaining_ms = max(0, budget_ms - int((time.time() - t0) * 1000))
+            # Require at least 3s remaining to attempt a short full
+            if remaining_ms >= 3000:
+                full_start = time.time()
+                # Allow override via env; default max 9s
+                try:
+                    full_max_env = int(os.environ.get('TECHSCAN_SHORT_FULL_MAX_S','0') or '0')
+                except ValueError:
+                    full_max_env = 0
+                # base cap in seconds (env overrides allowed)
+                full_cap = full_max_env if full_max_env > 0 else 9
+                # If user provided a fast full timeout in ms, prefer that as cap (convert to seconds)
+                if fast_full_ms and fast_full_ms > 0:
+                    ff_s = max(1, int(fast_full_ms / 1000))
+                    full_cap = ff_s
+                full_timeout_s = max(3, min(full_cap, int(remaining_ms/1000)))
+                # Force Node full path: disable py-local and implicit retry
+                old_ultra = os.environ.get('TECHSCAN_ULTRA_QUICK'); os.environ['TECHSCAN_ULTRA_QUICK']='0'
+                old_impl = os.environ.get('TECHSCAN_DISABLE_IMPLICIT_RETRY'); os.environ['TECHSCAN_DISABLE_IMPLICIT_RETRY']='1'
+                old_pyw = os.environ.get('TECHSCAN_PY_WAPP'); os.environ['TECHSCAN_PY_WAPP'] = '0'
+                added_full = 0
+                try:
+                    node_full = scan_domain(domain, wappalyzer_path, timeout=full_timeout_s, retries=0, full=True)
+                    existing = {t['name'] for t in techs}
+                    for t in node_full.get('technologies') or []:
+                        if t['name'] not in existing:
+                            techs.append(t); existing.add(t['name']); added_full += 1
+                    for cat, arr in (node_full.get('categories') or {}).items():
+                        bucket = cats.setdefault(cat, [])
+                        for it in arr:
+                            if not any(b['name']==it['name'] and b.get('version')==it.get('version') for b in bucket):
+                                bucket.append({'name': it['name'], 'version': it.get('version')})
+                finally:
+                    full_end = time.time()
+                    if old_ultra is not None: os.environ['TECHSCAN_ULTRA_QUICK']=old_ultra
+                    else: os.environ.pop('TECHSCAN_ULTRA_QUICK', None)
+                    if old_impl is not None: os.environ['TECHSCAN_DISABLE_IMPLICIT_RETRY']=old_impl
+                    else: os.environ.pop('TECHSCAN_DISABLE_IMPLICIT_RETRY', None)
+                    if old_pyw is not None: os.environ['TECHSCAN_PY_WAPP']=old_pyw
+                    else: os.environ.pop('TECHSCAN_PY_WAPP', None)
+                try:
+                    phases['node_full_ms'] = int((full_end - full_start) * 1000)
+                except Exception:
+                    pass
+                if added_full > 0:
+                    node_full_used = True
+        except Exception as e:
+            logging.getLogger('techscan.unified').debug('node full fallback failed domain=%s err=%s', domain, e)
+    # Sanitize obviously wrong versions before finalizing (e.g., WordPress "1.0.0" or timestamp-like)
+    try:
+        def _looks_like_bad_wp(ver: str) -> bool:
+            v = ver.strip()
+            # Reject very short bogus like '1' or '1.0.0'
+            if v in ('1', '1.0', '1.0.0'):
+                return True
+            # Reject long digit sequences (likely timestamps)
+            if any(len(tok) >= 6 and tok.isdigit() for tok in re.split(r'[^0-9]', v)):
+                return True
+            # If purely digits and dots but major < 3, likely noise for modern sites
+            m = re.match(r'^(\d+)(?:\.\d+){0,2}$', v)
+            if m:
+                try:
+                    return int(m.group(1)) < 3
+                except Exception:
+                    return False
+            return False
+        for t in techs:
+            if (t.get('name') or '').lower() == 'wordpress' and t.get('version'):
+                if _looks_like_bad_wp(str(t.get('version'))):
+                    t['version'] = None
+    except Exception:
+        pass
+    # Post-fallback targeted enrichment (e.g., try /wp-json after Node added CMS)
+    try:
+        fake_final = {'domain': domain, 'technologies': techs, 'categories': cats}
+        changed2 = _targeted_version_enrichment(fake_final, timeout=2.0)
+        if changed2:
+            cats = fake_final.get('categories') or cats
+    except Exception as pe:
+        logging.getLogger('techscan.unified').debug('post-enrich failed domain=%s err=%s', domain, pe)
+    # Assemble unified result
+    elapsed = time.time() - t0
+    # Build categories from techs if empty
+    if not cats:
+        rec: Dict[str, List[Dict[str, Any]]] = {}
+        for t in techs:
+            for c in t.get('categories') or []:
+                bucket = rec.setdefault(c, [])
+                if not any(b['name']==t['name'] and b.get('version')==t.get('version') for b in bucket):
+                    bucket.append({'name': t['name'], 'version': t.get('version')})
+        cats = rec
+    out = {
+        'domain': domain,
+        'timestamp': int(time.time()),
+        'technologies': techs,
+        'categories': cats,
+        'engine': 'unified',
+        'scan_mode': 'fast',
+        'duration': round(elapsed, 2),
+        'phases': phases
+    }
+    # --- Deduplicate / normalize similar technology entries ---
+    try:
+        def _normalize_name(n: str) -> str:
+            if not n:
+                return ''
+            return re.sub(r'[^a-z0-9]+', ' ', n.lower()).strip()
+
+        def _should_merge(name_a: str, name_b: str) -> bool:
+            # Exact equality or substring relation should merge (e.g., 'apache' vs 'apache http server')
+            if not name_a or not name_b:
+                return False
+            if name_a == name_b:
+                return True
+            if name_a in name_b or name_b in name_a:
+                return True
+            # token overlap: simple Jaccard on tokens
+            sa = set(name_a.split())
+            sb = set(name_b.split())
+            if not sa or not sb:
+                return False
+            inter = sa.intersection(sb)
+            union = sa.union(sb)
+            if len(inter) >= 1 and (len(inter) / len(union)) >= 0.5:
+                return True
+            return False
+
+        merged_list: List[Dict[str, Any]] = []
+        for t in out.get('technologies', []) or []:
+            name = (t.get('name') or '').strip()
+            norm = _normalize_name(name)
+            placed = False
+            for u in merged_list:
+                uname = (u.get('name') or '').strip()
+                unorm = _normalize_name(uname)
+                if _should_merge(norm, unorm):
+                    # merge t into u
+                    # prefer version from either one (prefer non-empty)
+                    if not u.get('version') and t.get('version'):
+                        u['version'] = t.get('version')
+                    # prefer the name that has a version or longer descriptive name
+                    if (t.get('version') and not u.get('version')) or (len(name) > len(uname) and not u.get('version')):
+                        u['name'] = t.get('name')
+                    # confidence: take maximum
+                    try:
+                        u['confidence'] = max(int(u.get('confidence') or 0), int(t.get('confidence') or 0))
+                    except Exception:
+                        u['confidence'] = u.get('confidence') or t.get('confidence')
+                    # categories: union without duplicates
+                    u_cats = u.setdefault('categories', []) or []
+                    for c in (t.get('categories') or []):
+                        if c not in u_cats:
+                            u_cats.append(c)
+                    # evidence: union list of evidence dicts
+                    u_evd = u.setdefault('evidence', []) or []
+                    for ev in (t.get('evidence') or []):
+                        if ev not in u_evd:
+                            u_evd.append(ev)
+                    placed = True
+                    break
+            if not placed:
+                # copy to avoid mutating original structures
+                # ensure evidence list exists
+                newt = {**t}
+                if 'evidence' not in newt:
+                    newt['evidence'] = t.get('evidence') or []
+                merged_list.append(newt)
+        out['technologies'] = merged_list
+    except Exception as _ded_err:
+        logging.getLogger('techscan.unified').debug('dedupe pass failed domain=%s err=%s', domain, _ded_err)
+    # --- Canonicalize common aliases (keep aliases list) ---
+    try:
+        # mapping of normalized token -> canonical display name
+        canonical_map = {
+            'apache http server': 'Apache HTTP Server',
+            'apache': 'Apache HTTP Server',
+            'nginx': 'Nginx',
+            'cloudflare': 'Cloudflare',
+            'jquery': 'jQuery',
+            'bootstrap': 'Bootstrap',
+            'google analytics': 'Google Analytics',
+            'php': 'PHP'
+        }
+        canoned: List[Dict[str, Any]] = []
+        for t in out.get('technologies', []) or []:
+            name = (t.get('name') or '').strip()
+            norm = _normalize_name(name)
+            canon_name = None
+            for key, val in canonical_map.items():
+                if key in norm:
+                    canon_name = val
+                    break
+            if not canon_name:
+                # keep as-is
+                canoned.append(t)
+                continue
+            # Find existing canoned entry
+            found = None
+            for e in canoned:
+                if (e.get('name') or '') == canon_name:
+                    found = e; break
+            if found:
+                # merge into found, keep aliases
+                aliases = found.setdefault('aliases', [])
+                if name not in aliases and name != found.get('name'):
+                    aliases.append(name)
+                # prefer version
+                if not found.get('version') and t.get('version'):
+                    found['version'] = t.get('version')
+                # max confidence
+                try:
+                    found['confidence'] = max(int(found.get('confidence') or 0), int(t.get('confidence') or 0))
+                except Exception:
+                    found['confidence'] = found.get('confidence') or t.get('confidence')
+                # union categories
+                fcats = found.setdefault('categories', []) or []
+                for c in (t.get('categories') or []):
+                    if c not in fcats:
+                        fcats.append(c)
+                    # union evidence
+                    fevd = found.setdefault('evidence', []) or []
+                    for ev in (t.get('evidence') or []):
+                        if ev not in fevd:
+                            fevd.append(ev)
+            else:
+                # keep original 'name' but annotate canonical_name and aliases
+                new = {**t}
+                new.setdefault('aliases', [])
+                if canon_name and canon_name not in new['aliases'] and canon_name != name:
+                    new['aliases'].append(canon_name)
+                # record canonical_name for UI/consistency without changing primary 'name'
+                new['canonical_name'] = canon_name
+                # ensure evidence carried over
+                if 'evidence' not in new:
+                    new['evidence'] = t.get('evidence') or []
+                canoned.append(new)
+        out['technologies'] = canoned
+    except Exception:
+        pass
+    # Attach raw extras if available from py-local for version evidence
+    try:
+        if 'raw' not in out and 'raw' in locals().get('nres', {}):
+            out['raw'] = locals()['nres']['raw']
+    except Exception:
+        pass
+    # Mark which fallbacks were used for observability
+    if micro_used:
+        out.setdefault('tiered', {})['micro_used'] = True
+    if node_full_used:
+        out.setdefault('tiered', {})['node_full_used'] = True
+    # Apply static version evidences before final audit
+    try:
+        if os.environ.get('TECHSCAN_VERSION_EVIDENCE','1') == '1':
+            version_audit.apply_version_evidence(out)
+    except Exception:
+        pass
+    # --- Final safety-net enrichment merge ---
+    try:
+        all_urls: List[str] = []
+        # Collect extras from possible sources (out itself, and last py-local nres if present)
+        for candidate in (out, locals().get('nres', {})):
+            if not candidate or not isinstance(candidate, dict):
+                continue
+            raw = candidate.get('raw') or {}
+            if not isinstance(raw, dict):
+                continue
+            extras = raw.get('extras') or {}
+            if not isinstance(extras, dict):
+                continue
+            for key in ('network', 'scripts', 'links', 'urls'):
+                val = extras.get(key)
+                if isinstance(val, list):
+                    for u in val:
+                        try:
+                            if u:
+                                all_urls.append(u)
+                        except Exception:
+                            continue
+        if all_urls:
+            hints = infer_tech_from_urls(all_urls)
+            if hints:
+                # merge hints defensively into out without overwriting existing higher-confidence techs
+                existing_names = {t.get('name') for t in out.get('technologies', [])}
+                added = 0
+                for h in hints:
+                    if h.get('name') not in existing_names:
+                        out.setdefault('technologies', []).append(h)
+                        # categories: pick first category if available, else 'Uncategorized'
+                        for cat in (h.get('categories') or ['Uncategorized']):
+                            bucket = out.setdefault('categories', {})
+                            arr = bucket.setdefault(cat, [])
+                            if not any(b.get('name') == h.get('name') and b.get('version') == h.get('version') for b in arr):
+                                arr.append({'name': h.get('name'), 'version': h.get('version')})
+                        added += 1
+                logging.getLogger('techscan.unified').info('[enrich-merge] added %d tech hints (%s) urls=%d', added, ', '.join(h.get('name') for h in hints), len(all_urls))
+                # update enrichment stats snapshot
+                try:
+                    with _stats_lock:
+                        ent = STATS.setdefault('enrichment', {'hints_total': 0, 'scans': 0, 'merge_total': 0, 'last_avg_conf': 0.0, 'last_update': 0.0})
+                        ent['hints_total'] = int(ent.get('hints_total', 0) + len(hints))
+                        ent['merge_total'] = int(ent.get('merge_total', 0) + len(hints))
+                        ent['scans'] = int(ent.get('scans', 0) + 1)
+                        # compute avg confidence of last hints
+                        try:
+                            avg = float(sum((h.get('confidence') or 0) for h in hints) / max(1, len(hints)))
+                        except Exception:
+                            avg = 0.0
+                        ent['last_avg_conf'] = float(avg)
+                        ent['last_update'] = int(time.time())
+                except Exception:
+                    pass
+    except Exception as e:
+        logging.getLogger('techscan.unified').warning('[enrich-merge] failed domain=%s err=%s', domain, e)
+    # Final audit
+    if os.environ.get('TECHSCAN_SKIP_VERSION_AUDIT','0') != '1' and os.environ.get('TECHSCAN_VERSION_AUDIT','1') == '1':
+        try:
+            version_audit.audit_versions(out)
+        except Exception:
+            pass
+    return out
 
 def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, timeout: int = 45, fresh: bool = False, retries: int = 0, ttl: int | None = None, full: bool = False) -> List[Dict[str, Any]]:
     filtered = []
@@ -1457,6 +2179,77 @@ def _targeted_version_enrichment(result: Dict[str, Any], timeout: float = 2.5) -
             result['categories'] = cats
     return changed
 
+
+def infer_tech_from_urls(urls: List[str]) -> List[Dict[str, Any]]:
+    """Lightweight inference of common front-end libs from network resource URLs.
+    Returns list of technology dicts compatible with normalized entries.
+    """
+    out: List[Dict[str, Any]] = []
+    if not urls:
+        return out
+    for u in urls:
+        try:
+            s = (u or '')
+            sl = s.lower()
+        except Exception:
+            continue
+        # Detect jQuery with version if present in filename or path
+        try:
+            m = re.search(r'jquery(?:[\.-]|/)(?:jquery-)?(\d+\.\d+(?:\.\d+)?)', sl)
+            if m and not any(o['name'] == 'jQuery' for o in out):
+                out.append({'name': 'jQuery', 'version': m.group(1), 'categories': ['JavaScript libraries'], 'confidence': 20, 'evidence':[{'type':'url','value':s}]})
+                continue
+        except Exception:
+            pass
+        if 'jquery' in sl and not any(o['name'] == 'jQuery' for o in out):
+            out.append({'name': 'jQuery', 'version': None, 'categories': ['JavaScript libraries'], 'confidence': 15, 'evidence':[{'type':'url','value':s}]})
+            continue
+
+        # Detect Bootstrap, prefer version when present
+        try:
+            m = re.search(r'bootstrap(?:[\.-]|/)(?:bootstrap-)?(\d+\.\d+(?:\.\d+)?)', sl)
+            if m and not any(o['name'] == 'Bootstrap' for o in out):
+                out.append({'name': 'Bootstrap', 'version': m.group(1), 'categories': ['UI frameworks','CSS frameworks'], 'confidence': 18, 'evidence':[{'type':'url','value':s}]})
+                continue
+        except Exception:
+            pass
+        if 'bootstrap' in sl and not any(o['name'] == 'Bootstrap' for o in out):
+            out.append({'name': 'Bootstrap', 'version': None, 'categories': ['UI frameworks','CSS frameworks'], 'confidence': 15, 'evidence':[{'type':'url','value':s}]})
+            continue
+
+        # Popper.js detection
+        if 'popper' in sl and not any(o['name'] == 'Popper' for o in out):
+            out.append({'name': 'Popper', 'version': None, 'categories': ['Miscellaneous'], 'confidence': 12, 'evidence':[{'type':'url','value':s}]})
+            continue
+
+        # Google Analytics detection: GA4 uses gtag/js?id=G-..., UA uses analytics.js or ga.js
+        if 'gtag/js' in sl and 'id=g-' in sl and not any(o['name'] == 'Google Analytics' for o in out):
+            out.append({'name': 'Google Analytics', 'version': 'GA4', 'categories': ['Analytics'], 'confidence': 25, 'evidence':[{'type':'url','value':s}]})
+            continue
+        if ('analytics.js' in sl or 'ga.js' in sl or 'gtm.js' in sl) and not any(o['name'] == 'Google Analytics' for o in out):
+            # presence of gtm.js might be GTM; treat as Analytics with unknown version
+            out.append({'name': 'Google Analytics', 'version': None, 'categories': ['Analytics'], 'confidence': 18, 'evidence':[{'type':'url','value':s}]})
+            continue
+
+        # PHP detection - presence of .php in path or query
+        if re.search(r'\.php(\b|\?)', sl) and not any(o['name'] == 'PHP' for o in out):
+            out.append({'name': 'PHP', 'version': None, 'categories': ['Programming languages'], 'confidence': 25, 'evidence':[{'type':'url','value':s}]})
+            continue
+
+        # Frameworks / major libs
+        if 'vue' in sl and not any(o['name'] == 'Vue.js' for o in out):
+            out.append({'name': 'Vue.js', 'version': None, 'categories': ['JavaScript frameworks'], 'confidence': 15, 'evidence':[{'type':'url','value':s}]})
+            continue
+        if 'react' in sl and not any(o['name'] == 'React' for o in out):
+            out.append({'name': 'React', 'version': None, 'categories': ['JavaScript frameworks'], 'confidence': 15, 'evidence':[{'type':'url','value':s}]})
+            continue
+        if 'fontawesome' in sl and not any(o['name'] == 'Font Awesome' for o in out):
+            out.append({'name': 'Font Awesome', 'version': None, 'categories': ['Icon sets'], 'confidence': 12, 'evidence':[{'type':'url','value':s}]})
+            continue
+        if 'tailwind' in sl and not any(o['name'] == 'Tailwind CSS' for o in out):
+            out.append({'name': 'Tailwind CSS', 'version': None, 'categories': ['CSS frameworks'], 'confidence': 12, 'evidence':[{'type':'url','value':s}]})
+        return out
+
 def snapshot_cache(domains: List[str] | None = None) -> List[Dict[str, Any]]:
     """Return list of cached scan results (non-expired) optionally filtered by domains list.
     Each item mirrors original stored data plus 'cached': True flag.
@@ -1561,7 +2354,8 @@ def get_stats() -> Dict[str, Any]:
                 }
             },
             'synthetic': STATS['synthetic'],
-            'errors': STATS.get('errors', {})
+            'errors': STATS.get('errors', {}),
+            'single_flight': STATS.get('single_flight', {})
         }
 
 def synthetic_header_detection(domain: str, timeout: int = 5) -> List[Dict[str, Any]]:
@@ -1592,13 +2386,22 @@ def synthetic_header_detection(domain: str, timeout: int = 5) -> List[Dict[str, 
                     ver = m.group(2)
                     lname = name.lower()
                     if lname == 'nginx':
-                        out.append({'name': 'Nginx', 'version': ver, 'categories': ['Web servers','Reverse proxies'], 'confidence': 40})
+                        out.append({'name': 'Nginx', 'version': ver, 'categories': ['Web servers','Reverse proxies'], 'confidence': 40, 'evidence':[{'type':'header','name':'server','value':server}]})
                     elif lname in ('apache','httpd'):
-                        out.append({'name': 'Apache', 'version': ver, 'categories': ['Web servers'], 'confidence': 40})
+                        out.append({'name': 'Apache', 'version': ver, 'categories': ['Web servers'], 'confidence': 40, 'evidence':[{'type':'header','name':'server','value':server}]})
                     elif lname == 'cloudflare':
-                        out.append({'name': 'Cloudflare', 'version': ver, 'categories': ['Reverse proxies','CDN'], 'confidence': 30})
+                        out.append({'name': 'Cloudflare', 'version': ver, 'categories': ['Reverse proxies','CDN'], 'confidence': 30, 'evidence':[{'type':'header','name':'server','value':server}]})
             if 'strict-transport-security' in headers:
-                out.append({'name': 'HSTS', 'version': None, 'categories': ['Security'], 'confidence': 30})
+                out.append({'name': 'HSTS', 'version': None, 'categories': ['Security'], 'confidence': 30, 'evidence':[{'type':'header','name':'strict-transport-security','value':headers.get('strict-transport-security')}]})
+            # X-Powered-By header often indicates PHP
+            xpb = headers.get('x-powered-by')
+            if xpb:
+                try:
+                    xb = xpb.lower()
+                    if 'php' in xb and not any(o['name']=='PHP' for o in out):
+                        out.append({'name': 'PHP', 'version': None, 'categories': ['Programming languages'], 'confidence': 40, 'evidence':[{'type':'header','name':'x-powered-by','value':xpb}]})
+                except Exception:
+                    pass
             conn.close()
             tried.append(scheme)
         except Exception:
@@ -1630,10 +2433,18 @@ def quick_single_scan(domain: str, wappalyzer_path: str, budget_ms: int | None =
     except ValueError:
         budget_ms = QUICK_DEFAULT_BUDGET_MS
     allow_empty = os.environ.get('TECHSCAN_TIERED_ALLOW_EMPTY','0') == '1'
+    q_start = time.time()
     hres = heuristic_fast.run_heuristic(domain, budget_ms=budget_ms, allow_empty_early=allow_empty)
+    core_done = time.time()
     if logging.getLogger().isEnabledFor(logging.DEBUG):
         logging.getLogger('techscan.quick').debug('quick start domain=%s heuristic_tech=%d categories=%d budget_ms=%s', domain, len(hres.get('technologies') or []), len(hres.get('categories') or {}), budget_ms)
     hres.setdefault('tiered', {})['quick'] = True
+    # Rekam durasi heuristic keseluruhan (ms) agar fallback fast_full bisa pakai sebagai fallback_ms
+    phases_ref = hres.setdefault('phases', {})
+    try:
+        phases_ref['heuristic_core_ms'] = int((core_done - q_start) * 1000)
+    except Exception:
+        phases_ref['heuristic_core_ms'] = phases_ref.get('heuristic_core_ms', 0)
     hres['engine'] = 'heuristic-quick'
     hres['scan_mode'] = 'fast'
     # Version audit if enabled
@@ -1646,10 +2457,13 @@ def quick_single_scan(domain: str, wappalyzer_path: str, budget_ms: int | None =
     cache_key = f"fast:{domain}"
     now = time.time()
     # Lightweight HTML sniff: if no technologies OR categories empty (to enrich)
+    sniff_start = None
+    sniff_end = None
     if (not hres.get('technologies')) or not hres.get('categories'):
         if logging.getLogger().isEnabledFor(logging.DEBUG):
             logging.getLogger('techscan.quick').debug('sniff decision domain=%s trigger_sniff technologies=%d categories_empty=%s', domain, len(hres.get('technologies') or []), not bool(hres.get('categories')))
         try:
+            sniff_start = time.time()
             sniff = _sniff_html(domain)
             techs_found = sniff.get('techs', [])
             if techs_found:
@@ -1683,12 +2497,17 @@ def quick_single_scan(domain: str, wappalyzer_path: str, budget_ms: int | None =
                     tier = hres.setdefault('tiered', {})
                     tier['html_sniff_cached'] = True
                     tier['html_sniff_cache_age'] = sniff['meta'].get('cache_age')
+            sniff_end = time.time()
         except Exception as _sn_err:
             logging.getLogger('techscan.sniff').debug('sniff error domain=%s err=%s', domain, _sn_err)
+            sniff_end = time.time()
+    micro_start = None
+    micro_end = None
     if not hres.get('technologies') and os.environ.get('TECHSCAN_ULTRA_FALLBACK_MICRO','0') == '1':
         tier_meta = hres.setdefault('tiered', {})
         tier_meta['micro_planned'] = True
         try:
+            micro_start = time.time()
             micro_timeout_env = os.environ.get('TECHSCAN_MICRO_TIMEOUT_S','2')
             try:
                 micro_timeout = int(micro_timeout_env)
@@ -1750,10 +2569,24 @@ def quick_single_scan(domain: str, wappalyzer_path: str, budget_ms: int | None =
                 tier_meta['micro_attempted'] = True
                 tier_meta['micro_added'] = 0
                 logging.getLogger('techscan.micro').info('micro fallback empty domain=%s', domain)
+            micro_end = time.time()
         except Exception as mf_err:
             tier_meta['micro_attempted'] = True
             tier_meta['micro_error'] = str(mf_err)
             logging.getLogger('techscan.micro').warning('micro fallback failed domain=%s err=%s', domain, mf_err)
+            micro_end = time.time()
+    # Finalize timing breakdown
+    try:
+        if sniff_start and sniff_end:
+            phases_ref['sniff_ms'] = int((sniff_end - sniff_start) * 1000)
+        if micro_start and micro_end:
+            phases_ref['micro_ms'] = int((micro_end - micro_start) * 1000)
+        total = phases_ref.get('heuristic_core_ms', 0) + phases_ref.get('sniff_ms', 0) + phases_ref.get('micro_ms', 0)
+        phases_ref['heuristic_total_ms'] = total
+        # backward compatible alias
+        phases_ref['heuristic_ms'] = phases_ref.get('heuristic_total_ms')
+    except Exception:
+        pass
     # If we have technologies but categories still empty (e.g., added only via sniff), synthesize categories now
     if hres.get('technologies'):
         cats_current = hres.get('categories') or {}
@@ -1893,9 +2726,10 @@ def deep_scan(domain: str, wappalyzer_path: str) -> Dict[str, Any]:
     quick_elapsed = time.time() - start_all
     # Phase 2: constrained full scan
     try:
-        deep_full_timeout = float(os.environ.get('TECHSCAN_DEEP_FULL_TIMEOUT_S','6'))
+        # Increase default constrained full timeout to 12s to reduce premature partial fallbacks
+        deep_full_timeout = float(os.environ.get('TECHSCAN_DEEP_FULL_TIMEOUT_S','12'))
     except ValueError:
-        deep_full_timeout = 6.0
+        deep_full_timeout = 12.0
     # Prepare environment toggles to enforce single shot, no adaptive, no ultra shortcut
     old_ultra = os.environ.get('TECHSCAN_ULTRA_QUICK')
     old_adapt = os.environ.get('TECHSCAN_DISABLE_ADAPTIVE')
@@ -2022,6 +2856,7 @@ def fast_full_scan(domain: str, wappalyzer_path: str) -> Dict[str, Any]:
       scan_mode = 'fast_full'
     """
     start_all = time.time()
+    started_at = start_all
     # Resolve timeout budget
     try:
         budget_ms = int(os.environ.get('TECHSCAN_FAST_FULL_TIMEOUT_MS', '5000'))
@@ -2046,17 +2881,26 @@ def fast_full_scan(domain: str, wappalyzer_path: str) -> Dict[str, Any]:
         full_start = time.time()
         # Single attempt full scan
         result = scan_domain(domain, wappalyzer_path, timeout=timeout_s, retries=0, full=True)
-        full_elapsed = int((time.time() - full_start) * 1000)
+        full_done = time.time()
+        full_elapsed = int((full_done - full_start) * 1000)
         result['engine'] = 'fast-full'
         result['scan_mode'] = 'fast_full'
+        # Phases: full_attempt_ms (engine+processing), fallback_ms (0 if none)
         result['phases'] = {
-            'full_ms': full_elapsed,
+            'full_ms': full_elapsed,              # legacy kept for compatibility
+            'full_attempt_ms': full_elapsed,
+            'fallback_ms': 0,
             'timeout_ms': budget_ms,
             'partial': False
         }
+        result['started_at'] = started_at
+        result['finished_at'] = full_done
+        result['duration'] = round(full_done - started_at, 3)
     except Exception as fe:  # Timeout or other error -> fallback heuristic
         error = str(fe)
         logging.getLogger('techscan.fast_full').warning('fast_full primary scan failed domain=%s err=%s (fallback heuristic)', domain, fe)
+        # Tandai waktu akhir attempt full sebelum fallback heuristic dimulai
+        fail_end = time.time()
         # Fallback heuristic quick scan (best effort, never raise)
         try:
             quick_res = quick_single_scan(domain, wappalyzer_path, defer_full=False)
@@ -2071,13 +2915,27 @@ def fast_full_scan(domain: str, wappalyzer_path: str) -> Dict[str, Any]:
             }
         quick_res['engine'] = 'fast-full-partial'
         quick_res['scan_mode'] = 'fast_full'
-        elapsed_ms = int((time.time() - start_all) * 1000)
+        fallback_done = time.time()
+        # Heuristic result may include phases.heuristic_ms; treat that as fallback_ms
+        heuristic_ms = 0
+        try:
+            heuristic_ms = int(quick_res.get('phases', {}).get('heuristic_ms') or 0)
+        except Exception:
+            heuristic_ms = 0
+        # full_attempt_ms = waktu attempt full sampai error (fail_end - start_all)
+        full_attempt_ms = int((fail_end - start_all) * 1000)
+        # fallback_ms = heuristic_ms (durasi heuristic aktual)
         quick_res['phases'] = {
-            'full_ms': elapsed_ms,  # total time spent attempting full before fallback
+            'full_ms': full_attempt_ms,   # legacy alias
+            'full_attempt_ms': full_attempt_ms,
+            'fallback_ms': heuristic_ms,
             'timeout_ms': budget_ms,
             'partial': True,
             'error': error
         }
+        quick_res['started_at'] = started_at
+        quick_res['finished_at'] = fallback_done
+        quick_res['duration'] = round(fallback_done - started_at, 3)
         result = quick_res
     finally:
         # Restore env

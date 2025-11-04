@@ -17,6 +17,50 @@ Minimal service untuk mendeteksi techstack & versi dari satu atau banyak domain 
 - Endpoint health check `/health` dan info versi `/version`
 - Persistent Wappalyzer worker (mode daemon) untuk eliminasi overhead spawn per scan (`TECHSCAN_PERSIST_BROWSER=1`)
 - Endpoint metrics `/metrics` (cache stats, phase aggregates, persistent worker stats, single-flight dedupe)
+# Unified Engine (Adaptive)
+
+Engine default menggabungkan beberapa tahap untuk akurasi dan performa:
+
+- Heuristik tier-0 (HTML + headers cepat)
+- Deteksi Wappalyzer lokal via Python (tanpa browser) jika diaktifkan
+- Deteksi sintetis dari header (server, CDN, security)
+- Enrichment versi terarah (best-effort)
+- Fallback Node/Puppeteer otomatis jika hasil terlalu sedikit
+
+Kontrol via ENV:
+
+- TECHSCAN_UNIFIED_MIN_TECH: ambang minimum jumlah teknologi sebelum fallback Node dijalankan (default 15). Set 1 untuk memaksa test.
+- Micro fallback: Node cepat dengan blocking resource (≈5s). Waktu terekam di phases.micro_ms.
+- Short full fallback: Node full singkat (3–9s tergantung sisa budget). Waktu terekam di phases.node_full_ms.
+
+Observability pada hasil:
+
+- tiered.micro_used=True saat micro fallback jalan
+- tiered.node_full_used=True saat short full fallback jalan
+
+Tips verifikasi: set TECHSCAN_UNIFIED_MIN_TECH=1 dan TECHSCAN_PY_WAPP=0 untuk memastikan fallback Node dipakai; cek phases.micro_ms/node_full_ms.
+## Unified Engine Tuning (Environment Variables)
+
+You can tune the unified engine behavior using environment variables. These are safe to adjust in staging to trade accuracy vs latency.
+
+| Variable | Default | Description |
+|---|---:|---|
+| TECHSCAN_UNIFIED_MIN_TECH | 15 | Minimum detected tech count before triggering Node fallback (lower => more fallbacks) |
+| TECHSCAN_DEEP_FULL_TIMEOUT_S | 25 | Timeout in seconds for deep full Node scans |
+| TECHSCAN_FAST_FULL_TIMEOUT_MS | 15000 | Timeout in milliseconds for short Node fallback used by unified engine |
+| TECHSCAN_ULTRA_FALLBACK_MICRO | 1 | Whether to run micro Node fallback when unified results are sparse (1 = enabled) |
+
+Quick test tip: set `TECHSCAN_UNIFIED_MIN_TECH=1` and `TECHSCAN_PY_WAPP=0` to force Node fallback and observe phases in the scan output.
+
+# Persistent Headless Mode
+
+Aktifkan daemon Chromium sekali pakai ulang untuk mengurangi overhead spawn:
+
+- Set TECHSCAN_PERSIST_BROWSER=1 (app akan berkomunikasi dengan node_scanner/server.js melalui persistent_client).
+- Variabel terkait: TECHSCAN_PERSIST_TIMEOUT (detik), TECHSCAN_NODE_TIMEOUT_MS (ms, maxWait Wappalyzer), TECHSCAN_BLOCK_RESOURCES (1/0).
+
+Pastikan WAPPALYZER_PATH menunjuk ke folder yang berisi categories.json dan definisi technologies (struktur repo atau paket npm). Jalankan npm install di folder node_scanner bila dependensi Puppeteer/Wappalyzer belum terpasang.
+
 
 ## Requirements
 
@@ -42,6 +86,48 @@ python run.py
 ```
 
 Server default di port 5000.
+
+## Redis (optional) and readiness endpoint
+
+For production deployments you may provide a Redis URL for Flask-Limiter and other small operational uses via the `TECHSCAN_REDIS_URL` environment variable (format e.g. `redis://127.0.0.1:6379/0`).
+
+When `TECHSCAN_REDIS_URL` is configured the app exposes a lightweight admin endpoint for ops: `GET /admin/redis_health` which returns `{'ok': true, 'ping': 'PONG'}` when Redis is reachable. If the env var is not set the endpoint will return a 400 with an explanatory message.
+
+If you don't use Redis in development, leave `TECHSCAN_REDIS_URL` unset and the limiter falls back to an in-memory store.
+
+## 📊 Monitoring & Metrics
+
+The application exposes Prometheus-style metrics at `/metrics/prometheus`.
+
+### Core Metrics
+| Metric | Type | Description |
+|---------|------|-------------|
+| `db_pool_in_use` | gauge | Number of DB connections currently in use |
+| `db_pool_available` | gauge | Number of idle DB connections |
+| `db_pool_max_size` | gauge | Maximum size of the DB pool |
+| `techscan_enrichment_merge_total` | counter | Number of enrichment merges performed |
+| `techscan_enrichment_hints_total` | counter | Number of inferred tech hints collected |
+| `techscan_enrichment_avg_confidence` | gauge | Average confidence of enrichment hints |
+| `techscan_enrichment_last_update_timestamp_seconds` | gauge | Epoch time of last enrichment update |
+
+To view metrics:
+```bash
+curl http://localhost:5000/metrics/prometheus
+```
+
+Add this endpoint to your Prometheus scrape config.
+
+Optional: Instance label
+
+If you run multiple scanner instances it can be useful to add an instance label. Example (in `app/routes/system.py`):
+
+```python
+instance = os.getenv("TECHSCAN_INSTANCE", "default")
+metrics.append(
+  f'techscan_enrichment_merge_total{{instance="{instance}"}} {merge_total}'
+)
+```
+
 
 ## Integrasi Database (PostgreSQL)
 
@@ -193,6 +279,73 @@ ORDER BY COUNT(*) DESC;
 | TECHSCAN_DISABLE_DB | Matikan persistence | 0 |
 
 Ke depan: rencana tambah diff perubahan teknologi & export historis.
+
+### Database Connection Pooling & Observability
+
+TechScan sekarang mendukung connection pooling menggunakan `psycopg_pool` (psycopg3). Jika `psycopg_pool` terpasang dan `TECHSCAN_DB_POOL_SIZE` diset, aplikasi akan membuat pool koneksi yang aman untuk mengurangi overhead koneksi ke Postgres.
+
+Environment variables:
+
+- `TECHSCAN_DB_POOL_SIZE`: jumlah maksimum koneksi dalam pool (default: 10)
+- `TECHSCAN_DB_POOL_TIMEOUT`: (opsional) detik sebelum pengambilan koneksi time out (default: library default)
+- `TECHSCAN_DB_POOL_MONITOR`: set `1` untuk mengaktifkan background thread ringan yang merekam penggunaan pool dan me-log peringatan bila pool penuh.
+
+Jika `psycopg_pool` tidak tersedia, aplikasi jatuh ke mode koneksi singkat (create/connect per use) untuk mencegah kebocoran koneksi jangka panjang.
+
+Install contoh:
+
+```pwsh
+pip install "psycopg[binary]" psycopg_pool
+```
+
+Observability:
+
+- Endpoint admin: `GET /admin/db_pool` — menampilkan ringkasan statistik pool JSON yang bisa dipakai oleh Grafana/Prometheus probe atau manual check. Contoh respons:
+
+```json
+{ "status": "ok", "pool": { "max_size": 10, "num_connections": 7, "available": 3, "in_use": 7, "timestamp": 1690000000.123 } }
+```
+
+- Aktifkan monitor ringan (optional): `TECHSCAN_DB_POOL_MONITOR=1` akan memulai thread yang memanggil `pool_stats()` setiap interval (default 10s) dan akan me-log peringatan ketika pool penuh. Untuk mengubah interval set `TECHSCAN_DB_POOL_MONITOR_INTERVAL` (detik).
+
+Operational recommendation (scale-up):
+
+- Untuk deployment multi-worker (Gunicorn/Uvicorn multi-process), tiap worker memiliki pool sendiri. Untuk mengurangi total koneksi ke Postgres gunakan pgBouncer (transaction pooling) di depan Postgres.
+
+Contoh konfigurasi aman:
+
+postgresql.conf:
+
+```
+max_connections = 200
+```
+
+pgbouncer.ini (example):
+
+```
+[databases]
+techscan = host=127.0.0.1 port=5432 dbname=techscan
+
+[pgbouncer]
+listen_addr = 0.0.0.0
+listen_port = 6432
+auth_type = md5
+auth_file = /etc/pgbouncer/userlist.txt
+pool_mode = transaction
+default_pool_size = 20
+max_client_conn = 500
+```
+
+Alerting snippet (example): tambahkan job background sederhana atau integrasikan ke monitoring:
+
+```python
+stats = pool_stats()
+if stats.get('in_use') is not None and stats['in_use'] >= stats.get('max_size', 0):
+  logging.getLogger('techscan.db').warning('DB pool at full capacity (%d/%d)', stats['in_use'], stats.get('max_size'))
+  # send to alerting channel (Telegram, Slack, etc.)
+```
+
+Kesimpulan: Pooling + fallback + monitoring/logging membuat aplikasi lebih tahan terhadap beban tinggi. Untuk produksi gunakan `psycopg_pool` + pgBouncer bila ada banyak worker.
 
 ### Catatan Bulk Persistence
 
@@ -693,6 +846,112 @@ Tambahan (jika belum tercantum di tabel Variabel Environment Ringkas):
 | TECHSCAN_ULTRA_FALLBACK_MICRO | Micro fallback jika ultra kosong |
 
 Pastikan tidak ada duplikasi definisi; jika tabel environment utama nanti digabung, hapus baris ganda.
+
+## UI Theming & Glass Design System
+
+Sejak refactor terbaru, UI memakai sistem token CSS terpadu untuk mendukung dua tema (Dark "Deep Space" & Light "Morning Starlight") serta gaya "Glass" (translucent frosted panels). Ini mengurangi hardcoded color, memudahkan tuning aksesibilitas, dan memungkinkan transisi tema halus.
+
+### Prinsip
+- Semua warna dasar dideklarasikan sebagai CSS custom properties (`--ts-*` dan `--glass-*`).
+- Elemen interaktif (input, tombol, badge diff, suggestion dropdown) tidak lagi memakai warna inline; cukup gunakan kelas util atau token.
+- Glass surfaces memanfaatkan layering: base rgba, gradient overlay, radial highlight pseudo-element, inner stroke (mask), blur + saturate filter.
+- Fallback disediakan untuk browser tanpa `backdrop-filter`.
+
+### Token Inti (Ringkas)
+| Kategori | Token Contoh | Deskripsi |
+|----------|--------------|----------|
+| Palet | `--ts-bg`, `--ts-panel`, `--ts-text`, `--ts-text-dim`, `--ts-accent`, `--ts-accent-alt` | Warna dasar & teks |
+| Status | `--ts-success`, `--ts-danger`, `--ts-warning`, `--ts-danger-soft` | Aksen status & varian lembut |
+| Form | `--ts-input-bg`, `--ts-input-border` | Latar & border input |
+| Badge/Highlight | `--ts-badge-group-bg`, `--ts-badge-group-text`, `--ts-highlight-bg` | Latar badge grup & highlight row |
+| Glass Surf | `--glass-surf-1`, `--glass-surf-2` + `*-grad` | Layer dasar panel translusen |
+| Glass Decor | `--glass-radial-1`, `--glass-radial-2`, `--glass-inner-stroke` | Efek highlight & inner stroke |
+| Glass FX | `--glass-blur`, `--glass-sat`, `--glass-shadow-1/2`, `--glass-ring`, `--glass-radius` | Blur, saturasi, bayangan |
+| Transisi | `--ts-theme-transition` | Properti transisi tema global |
+
+Dark mode token berada di blok `:root`; light mode override di `body.light { ... }`.
+
+### Kelas Util Glass
+```
+.glass-surface           // Panel default (surf-1)
+.glass-surface--intense  // Varian lebih solid (surf-2)
+```
+Tambahkan pembungkus konten (form, toolbar, tabel) dengan kelas di atas. Radial highlight & inner stroke otomatis.
+
+### Diff Badges
+Badge perubahan teknologi (added/removed/changed) menggunakan gradient translucent + blur agar konsisten di kedua tema. Light mode memiliki override khusus (lihat `techscan.css`).
+
+### Transisi Tema Halus
+Aktifkan transisi dengan menambahkan kelas `theme-transition` pada `<body>` sekali (misal saat mount halaman) lalu toggle kelas `light` saat ganti tema.
+
+Snippet minimal (masukkan di `base.html` sebelum penutup `</body>`):
+```html
+<script>
+  (function(){
+    const body = document.body;
+    body.classList.add('theme-transition');
+    const saved = localStorage.getItem('ts-theme');
+    if(saved==='light') body.classList.add('light');
+    document.getElementById('theme-toggle')?.addEventListener('click', ()=>{
+      body.classList.toggle('light');
+      localStorage.setItem('ts-theme', body.classList.contains('light') ? 'light':'dark');
+    });
+  })();
+</script>
+```
+Sediakan tombol misal:
+```html
+<button id="theme-toggle" class="theme-toggle" type="button">Toggle Theme</button>
+```
+
+### Audit Kontras (Aksesibilitas)
+Script `scripts/contrast_audit.py` memeriksa rasio WCAG antar pasangan foreground/background kunci. Jalankan:
+```pwsh
+python scripts/contrast_audit.py
+```
+Exit code 1 jika ada rasio gagal. Anda bisa integrasikan ke CI pipeline (GitHub Actions, dsb.) untuk menjaga aksesibilitas.
+
+Contoh output (ringkas):
+```
+[DARK]
+ - ts-text/ts-bg: 14.13 (target 4.5) PASS
+ ...
+[LIGHT]
+ - ts-text/ts-bg: 13.13 (target 4.5) PASS
+```
+
+Jika ada kegagalan, sesuaikan token terkait (misal tingkatkan kontras `--ts-text-dim` atau kurangi opacity glass layer) lalu jalankan ulang.
+
+### Pedoman Desain Tambahan
+- Hindari penggunaan literal hex/rgba baru di template; gunakan token atau tambahkan token baru bila benar-benar perlu.
+- Simpan konsistensi ruang (padding panel) agar glass layering terasa seragam.
+- Periksa fokus keyboard: pastikan outline tetap terlihat dalam kedua tema (override dengan token jika perlu di masa depan).
+
+### Ekstensi Masa Depan
+- Token `--ts-info`, `--ts-neutral` untuk status tambahan.
+- Mode high-contrast opsional (menaikkan rasio >7:1, mematikan efek dekoratif). Skema bisa menggunakan env flag atau toggle UI.
+- Prefers-reduced-transparency: fallback panel solid bila user OS mengaktifkan preferensi tersebut (media query `@media (prefers-reduced-transparency: reduce)`).
+
+Dengan dokumentasi ini, kontributor baru dapat menambahkan komponen UI tanpa menambah variasi warna tak terkontrol atau menurunkan aksesibilitas.
+
+### High Contrast Mode
+
+Mode opsional untuk pengguna dengan kebutuhan aksesibilitas lebih tinggi atau lingkungan display rendah kualitas. Aktifkan via tombol HC (High Contrast) di navbar atau set manual di console:
+
+```js
+localStorage.setItem('ts-contrast','1'); location.reload();
+```
+
+Karakteristik:
+- Mengurangi transparansi panel (opacity naik) → tekstur lebih solid.
+- Menghilangkan radial dekoratif untuk mengurangi distraksi visual.
+- Meningkatkan kontras `--ts-text-dim` (dark) atau menurunkannya sedikit (light) untuk menjaga jarak tetapi tetap terbaca.
+- Memperkuat outline fokus (`:focus-visible`) agar navigasi keyboard lebih jelas.
+
+Kombinasi: dapat dipakai bersamaan dengan tema light (`body.light.high-contrast`). Preferensi disimpan di `localStorage` (`ts-contrast`).
+
+Roadmap potensial: dukungan media query `prefers-contrast: more` (ketika standar lebih luas) untuk auto‑enable tanpa interaksi user.
+
 
 ## Runtime Stats (Admin) – Fast-Full Metrics
 

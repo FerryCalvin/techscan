@@ -1,3 +1,4 @@
+
 from flask import Blueprint, request, jsonify, current_app
 import os, logging, json, time
 from ..scan_utils import flush_cache, load_heuristic_patterns, get_stats
@@ -33,6 +34,38 @@ def cache_flush():
                                             'subset' if domains else 'all', res['removed'], res['remaining'])
     return jsonify({'status': 'ok', **res})
 
+@admin_bp.route('/log_level', methods=['GET','POST'])
+def log_level():
+    """Get or update active root/application log level at runtime.
+
+    GET  /admin/log_level -> { level: CURRENT }
+    POST /admin/log_level {"level": "DEBUG"} (accepts DEBUG, INFO, WARNING, ERROR, CRITICAL)
+    Optional header: X-Admin-Token if TECHSCAN_ADMIN_TOKEN set.
+    Also updates env var TECHSCAN_LOG_LEVEL for downstream spawned processes.
+    """
+    current = logging.getLogger().getEffectiveLevel()
+    if request.method == 'GET':
+        return jsonify({'status':'ok','level': logging.getLevelName(current)})
+    data = request.get_json(silent=True) or {}
+    lvl = str(data.get('level') or '').upper().strip()
+    mapping = {
+        'DEBUG': logging.DEBUG,
+        'INFO': logging.INFO,
+        'WARNING': logging.WARNING,
+        'WARN': logging.WARNING,
+        'ERROR': logging.ERROR,
+        'CRITICAL': logging.CRITICAL
+    }
+    if lvl not in mapping:
+        return jsonify({'error': 'level must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL'}), 400
+    logging.getLogger().setLevel(mapping[lvl])
+    # Also ensure our namespace loggers inherit / update
+    for name in ['techscan','techscan.scan','techscan.fast_full','techscan.scan_domain','techscan.admin']:
+        logging.getLogger(name).setLevel(mapping[lvl])
+    os.environ['TECHSCAN_LOG_LEVEL'] = lvl
+    logging.getLogger('techscan.admin').info('log level changed runtime level=%s', lvl)
+    return jsonify({'status':'ok','level': lvl})
+
 @admin_bp.route('/heuristics/reload', methods=['POST'])
 def heuristics_reload():
     load_heuristic_patterns()  # will read default path or env
@@ -53,6 +86,22 @@ def stats_view():
         pass
     return jsonify({'status': 'ok', 'stats': stats})
 
+@admin_bp.route('/phases', methods=['GET'])
+def phases_view():
+    """Return recent per-phase timings to help diagnose where time is spent.
+    Query: limit (default 50)
+    Response includes recent items and average per-phase summary.
+    """
+    try:
+        limit = int(request.args.get('limit') or 50)
+    except ValueError:
+        limit = 50
+    try:
+        data = scan_utils.phases_recent(limit=limit)
+        return jsonify({'status': 'ok', **data})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @admin_bp.route('/db_stats', methods=['GET'])
 def db_stats_view():
     """Return aggregate database statistics (scans total, domains tracked, top tech, etc.).
@@ -61,6 +110,21 @@ def db_stats_view():
     try:
         res = dbmod.db_stats()
         return jsonify({'status': 'ok', 'db_stats': res})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/db_pool', methods=['GET'])
+def db_pool_view():
+    """Return lightweight DB pool stats for monitoring.
+
+    This endpoint surfaces pool metrics useful for Grafana probes or
+    manual checks (max_size, num_connections, available, in_use, timestamp).
+    Requires same admin auth as other admin endpoints.
+    """
+    try:
+        stats = dbmod.pool_stats()
+        return jsonify({'status': 'ok', 'pool': stats})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -336,6 +400,26 @@ def version_dataset_update():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+
+@admin_bp.route('/redis_health', methods=['GET'])
+def redis_health():
+    """Ping configured Redis instance used by Flask-Limiter (TECHSCAN_REDIS_URL).
+    Returns {ok: true, ping: 'PONG'} or error with 500 if unavailable.
+    """
+    url = os.environ.get('TECHSCAN_REDIS_URL')
+    if not url:
+        return jsonify({'ok': False, 'error': 'TECHSCAN_REDIS_URL not set'}), 400
+    try:
+        # Import here to avoid hard-dependency when not used
+        from redis import from_url
+        r = from_url(url)
+        pong = r.ping()
+        return jsonify({'ok': True, 'ping': pong})
+    except Exception as e:
+        logging.getLogger('techscan.admin').warning('redis_health failed url=%s err=%s', url, e)
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
 @admin_bp.route('/quarantine/state', methods=['GET'])
 def quarantine_state():
     """List active quarantined domains (best-effort, internal state)."""
@@ -470,3 +554,57 @@ def db_check():
         return jsonify({'status': 'ok' if diag.get('ok') else 'fail', 'diagnostics': diag}), status
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@admin_bp.route('/health', methods=['GET'])
+def health_summary():
+    """Aggregate health snapshot for admin dashboard.
+    Returns:
+      - node_scanner_alive, heap_used_mb (if ping ok)
+      - db_connected and brief stats
+      - cache_items and uptime
+    """
+    # Uptime from system blueprint state if available
+    try:
+        import time
+        uptime = time.time() - scan_utils._START_TIME  # type: ignore[attr-defined]
+    except Exception:
+        uptime = None
+    # Node persistent daemon
+    node = {'available': False}
+    try:
+        from .. import persistent_client as pc
+        resp = pc.ping()
+        node = {
+            'available': True,
+            'heap_used_mb': resp.get('heapUsedMB'),
+            'pid': resp.get('pid'),
+            'uptime_s': resp.get('uptimeSec') or resp.get('uptime')
+        }
+    except Exception as e:
+        node = {'available': False, 'error': str(e)}
+    # DB diagnostics (light)
+    try:
+        diag = dbmod.get_db_diagnostics()
+        db_info = {
+            'connected': bool(diag.get('ok')),
+            'disabled': bool(diag.get('disabled')),
+            'latency_ms': diag.get('latency_ms'),
+            'scans_count': diag.get('scans_count'),
+            'domain_techs_count': diag.get('domain_techs_count')
+        }
+    except Exception as e:
+        db_info = {'connected': False, 'error': str(e)}
+    # Cache items
+    try:
+        with scan_utils._lock:  # type: ignore[attr-defined]
+            cache_items = len(scan_utils._cache)  # type: ignore[attr-defined]
+    except Exception:
+        cache_items = None
+    out = {
+        'status': 'ok' if node.get('available') or db_info.get('connected') else 'degraded',
+        'node_scanner': node,
+        'database': db_info,
+        'cache_items': cache_items,
+        'uptime_seconds': round(uptime,2) if uptime else None
+    }
+    return jsonify(out)

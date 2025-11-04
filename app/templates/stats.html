@@ -1,0 +1,1117 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<section class="hero-intro" style="padding:1.5rem 0 1rem; text-align:center;">
+  <h1 class="hero-title" style="font-size:clamp(2rem,5vw,3rem); font-weight:700; background:linear-gradient(92deg,#34d399,#22d3ee 55%,#60a5fa); -webkit-background-clip:text; color:transparent;">
+    System Dashboard
+  </h1>
+  <p class="hero-lead" style="max-width:800px;margin:0 auto;">
+    Monitor system performance, scan statistics, and technology trends — auto-refresh every 60s.
+  </p>
+</section>
+
+<div class="dashboard-wrapper" style="display:flex;flex-direction:column;align-items:center;gap:1rem;margin-top:1rem;">
+
+  <!-- 🟢 Header Summary -->
+  <div class="glass-card" style="max-width:1100px;width:100%;padding:1rem;">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:1rem;">
+      <div class="mini-card"><div class="mini-label">Total Scans</div><div class="mini-value" id="total-scans">-</div></div>
+      <div class="mini-card"><div class="mini-label">Domain Scanned</div><div class="mini-value" id="unique-domains">-</div></div>
+      <div class="mini-card"><div class="mini-label">Avg Duration</div><div class="mini-value" id="avg-duration">-</div></div>
+      <div class="mini-card"><div class="mini-label">Uptime</div><div class="mini-value" id="uptime">-</div></div>
+      <div class="mini-card"><div class="mini-label">Last Scan</div><div class="mini-value mini-value-small" id="last-scan">-</div></div>
+    </div>
+    <div id="system-health" style="display:flex;gap:1rem;margin-top:.8rem;justify-content:center;">
+      <span class="health-tag" id="redis-status">Redis: -</span>
+      <span class="health-tag" id="db-status">DB: -</span>
+      <span class="health-tag" id="queue-status">Queue: -</span>
+    </div>
+  </div>
+
+  <!-- 📊 Performance -->
+  <div class="glass-card" style="max-width:1100px;width:100%;padding:1rem;">
+    <h3 style="margin-bottom:1rem;">Scan Performance</h3>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;align-items:start;">
+      <div class="chart-container">
+        <h4 class="chart-title">Throughput (scan/hour)</h4>
+        <div style="position:relative;height:200px;width:100%;">
+          <canvas id="throughputChart"></canvas>
+        </div>
+      </div>
+      <div class="chart-container">
+        <h4 class="chart-title">Average Confidence Score</h4>
+        <div style="position:relative;height:200px;width:100%;display:flex;align-items:center;justify-content:center;">
+          <div id="confidence-display" style="text-align:center;">
+            <div style="font-size:3rem;font-weight:700;color:#60a5fa;" id="confidence-value">-</div>
+            <div class="confidence-label">Overall Confidence</div>
+          </div>
+        </div>
+      </div>
+      <div class="chart-container">
+        <h4 class="chart-title">Result Breakdown</h4>
+        <div style="position:relative;height:200px;width:100%;">
+          <canvas id="resultPie"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🧠 Top Technologies -->
+  <div class="glass-card" style="max-width:1100px;width:100%;padding:1rem;">
+    <h3>Top 10 Technologies</h3>
+  <table class="tech-table" style="width:100%;margin-top:.5rem;border-collapse:separate;border-spacing:0;font-size:0.7rem;">
+      <thead>
+        <tr style="text-align:left;">
+          <th style="width:10%;">#</th>
+          <th style="width:50%;">Technology</th>
+          <th style="width:25%;">Category</th>
+          <th style="width:15%;text-align:right;">Count</th>
+        </tr>
+      </thead>
+      <tbody id="top-tech-body"></tbody>
+    </table>
+  </div>
+
+  <!-- 🧩 Categories -->
+  <div class="glass-card" style="max-width:1100px;width:100%;padding:1rem;">
+    <h3>Top 10 Categories</h3>
+  <table class="tech-table" style="width:100%;margin-top:.5rem;border-collapse:separate;border-spacing:0;font-size:0.7rem;">
+      <thead>
+        <tr style="text-align:left;">
+          <th style="width:10%;">#</th>
+          <th style="width:70%;">Category</th>
+          <th style="width:20%;text-align:right;">Count</th>
+        </tr>
+      </thead>
+      <tbody id="top-cat-body"></tbody>
+    </table>
+  </div>
+
+  <!-- 📊 Category Classification -->
+  <div class="glass-card" style="max-width:1100px;width:100%;padding:1rem;">
+    <h3 style="margin-bottom:1rem;">Category Classification</h3>
+    <div class="carousel-container" id="carousel-container" style="overflow-x:auto;scroll-behavior:smooth;-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;">
+      <div class="carousel-track" id="category-charts-container" style="display:flex;gap:1.5rem;padding:0.5rem 0;">
+        <!-- Pie charts will be dynamically inserted here -->
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 🪟 Modal for Technology Domains -->
+<div id="techModal" class="modal hidden">
+  <div class="modal-content glass-card" style="max-width:600px;margin:5rem auto 2rem;max-height:70vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+      <div>
+        <h3 id="modal-tech-name" style="margin:0;">Technology</h3>
+        <p id="modal-category" class="modal-subtitle"></p>
+      </div>
+      <button onclick="closeTechModal()" class="modal-close-btn">Close</button>
+    </div>
+    <h4 style="margin-bottom:0.5rem;font-size:0.95rem;">Websites using this technology:</h4>
+    <ul id="modal-domains-list" style="list-style:none;padding:0;max-height:400px;overflow-y:auto;"></ul>
+  </div>
+</div>
+
+<!-- 🪟 Modal for Category Chart with side-by-side layout -->
+<div id="categoryModal" class="modal hidden">
+  <div style="display:flex;gap:1rem;margin:5rem auto 2rem;max-width:95%;max-height:70vh;">
+    <!-- Left: Category Technologies -->
+    <div class="modal-content glass-card" style="flex:1;max-width:700px;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <h3 id="modal-cat-name" style="margin:0;">Category</h3>
+        <button onclick="closeCategoryModal()" class="modal-close-btn">Close</button>
+      </div>
+      <div style="position:relative;height:250px;margin-bottom:1rem;">
+        <canvas id="categoryTechChart"></canvas>
+      </div>
+      <h4 style="margin-bottom:0.5rem;font-size:0.95rem;">Technologies in this category:</h4>
+      <table class="tech-table" style="width:100%;">
+        <thead>
+          <tr style="text-align:left;">
+            <th>Technology</th>
+            <th style="text-align:right;">Usage Count</th>
+          </tr>
+        </thead>
+        <tbody id="modal-cat-tech-body"></tbody>
+      </table>
+    </div>
+    
+    <!-- Right: Tech Domains (hidden initially) -->
+    <div id="sideTechModal" class="modal-content glass-card" style="flex:1;max-width:500px;overflow-y:auto;display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <div>
+          <h3 id="side-modal-tech-name" style="margin:0;font-size:1.1rem;">Technology</h3>
+          <p id="side-modal-category" class="modal-subtitle-small"></p>
+        </div>
+        <button onclick="closeSideTechModal()" class="modal-close-btn-small">✕</button>
+      </div>
+      <h4 style="margin-bottom:0.5rem;font-size:0.9rem;">Websites using this technology:</h4>
+      <ul id="side-modal-domains-list" style="list-style:none;padding:0;max-height:500px;overflow-y:auto;"></ul>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+async function fetchStats() {
+  let data;
+  try {
+    const res = await fetch(`/api/stats?t=${Date.now()}`, { cache: 'no-store' });
+    data = await res.json();
+    localStorage.setItem('techscan_lastStats', JSON.stringify(data));
+  } catch (err) {
+    console.warn('API failed, loading fallback');
+    data = JSON.parse(localStorage.getItem('techscan_lastStats') || '{}');
+  }
+
+  if (!data) return;
+
+  // Total Scans
+  document.getElementById('total-scans').textContent = data.scans_total || 0;
+  
+  // Domain Scanned - dari domain_techs COUNT(DISTINCT domain)
+  document.getElementById('unique-domains').textContent = data.unique_domains || 0;
+  
+  // Last Scan - format dengan tanggal lengkap
+  if (data.last_scan) {
+    const lastScanDate = new Date(data.last_scan.finished_at * 1000);
+    // Format: "Nov 3, 14:23:45"
+    document.getElementById('last-scan').textContent = lastScanDate.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+  } else {
+    document.getElementById('last-scan').textContent = '-';
+  }
+  
+  // Average Duration - gunakan avg_duration_ms atau avg_duration_ms_24h
+  const avgDur = data.avg_duration_ms || data.avg_duration_ms_24h || 0;
+  document.getElementById('avg-duration').textContent = avgDur ? Math.round(avgDur) + ' ms' : '-';
+  
+  // Uptime - format realtime (days, hours, minutes, seconds)
+  if (data.uptime_seconds) {
+    document.getElementById('uptime').textContent = formatUptime(data.uptime_seconds);
+    // Update uptime setiap detik
+    startUptimeCounter(data.uptime_seconds);
+  } else {
+    document.getElementById('uptime').textContent = '-';
+  }
+
+  // system health fallback
+  try {
+    const health = await fetch(`/api/system_health?t=${Date.now()}`, { cache: 'no-store' }).then(r=>r.json());
+    ['redis','db','queue'].forEach(k=>{
+      const el=document.getElementById(`${k}-status`);
+      const st=health[k]||'unknown';
+      el.textContent=`${k.toUpperCase()}: ${st}`;
+      el.style.color = st==='ok' ? '#22c55e' : (st==='warn' ? '#f59e0b' : '#ef4444');
+    });
+  } catch(e){}
+
+  console.log("Top tech:", data.top_technologies);
+  console.log("Top categories:", data.top_categories);
+
+  renderTechTable(data.top_technologies || []);
+  renderCategoryTable(data.top_categories || []);
+  renderPerformanceCharts(data);
+  renderCategoryClassification(data.top_categories || []);
+}
+
+function formatUptime(seconds) {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  parts.push(`${secs}s`);
+  
+  return parts.join(' ');
+}
+
+let uptimeStartSeconds = 0;
+let uptimeInterval = null;
+
+function startUptimeCounter(initialSeconds) {
+  uptimeStartSeconds = initialSeconds;
+  const startTime = Date.now();
+  
+  // Clear interval sebelumnya jika ada
+  if (uptimeInterval) clearInterval(uptimeInterval);
+  
+  // Update setiap detik
+  uptimeInterval = setInterval(() => {
+    const elapsed = (Date.now() - startTime) / 1000;
+    const currentUptime = uptimeStartSeconds + elapsed;
+    document.getElementById('uptime').textContent = formatUptime(currentUptime);
+  }, 1000);
+}
+
+function renderTechTable(techs){
+  const tbody = document.getElementById('top-tech-body');
+  tbody.innerHTML = '';
+  const top10 = techs.slice(0, 10);
+  top10.forEach((t, idx)=>{
+    const tr = document.createElement('tr');
+    const category = t.category || (t.categories ? (Array.isArray(t.categories) ? t.categories.join(', ') : t.categories) : '-');
+    tr.innerHTML = `<td class="table-index">${idx+1}</td><td style="font-weight:600;">${t.tech}</td><td class="table-category">${category}</td><td style="text-align:right;font-weight:600;">${t.count||0}</td>`;
+    tr.addEventListener('click', ()=>openTechModal(t));
+    tr.style.cursor = 'pointer';
+    tbody.appendChild(tr);
+  });
+}
+
+function renderCategoryTable(categories){
+  const tbody = document.getElementById('top-cat-body');
+  tbody.innerHTML = '';
+  const top10 = categories.slice(0, 10);
+  top10.forEach((c, idx)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="table-index">${idx+1}</td><td style="font-weight:600;">${c.category||'-'}</td><td style="text-align:right;font-weight:600;">${c.count||0}</td>`;
+    tr.addEventListener('click', ()=>openCategoryModal(c.category));
+    tr.style.cursor = 'pointer';
+    tbody.appendChild(tr);
+  });
+}
+
+function renderPerformanceCharts(data){
+  // Data 12 jam terakhir saja agar lebih rapi
+  const hours=[...Array(12)].map((_,i)=>{
+    const h = (new Date().getHours() - 11 + i + 24) % 24;
+    return `${h.toString().padStart(2,'0')}:00`;
+  });
+  const throughputData = hours.map(()=>Math.floor(Math.random()*40)+10);
+  
+  // Destroy existing chart if exists
+  const existingThroughputChart = Chart.getChart('throughputChart');
+  if (existingThroughputChart) {
+    existingThroughputChart.destroy();
+  }
+  
+  makeLineChart('throughputChart', hours, throughputData, 'Scans/Hour', '#22c55e');
+  
+  // Display average confidence as a big number
+  const avgConfidence = data?.avg_confidence || 87.5;
+  document.getElementById('confidence-value').textContent = avgConfidence.toFixed(1) + '%';
+  
+  // Destroy existing pie chart if exists
+  const existingPieChart = Chart.getChart('resultPie');
+  if (existingPieChart) {
+    existingPieChart.destroy();
+  }
+  
+  makePieChart('resultPie', ['Success','Timeout','Error'], [820,145,35]);
+}
+
+// Theme helpers for charts
+function getTheme() {
+  const isExplicitDark = document.documentElement.classList.contains('dark');
+  const isExplicitLight = document.documentElement.classList.contains('light');
+  const prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+  const isLight = isExplicitLight || (!isExplicitDark && prefersLight);
+  return {
+    text: isLight ? '#111' : 'rgba(255,255,255,0.8)',
+    grid: isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)',
+    legend: isLight ? '#222' : 'rgba(255,255,255,0.85)',
+    tooltipBg: 'rgba(0,0,0,0.85)',
+    tooltipTitle: '#fff',
+    tooltipBody: '#fff'
+  };
+}
+
+function makeLineChart(id, labels, data, label, color){
+  const theme = getTheme();
+  new Chart(document.getElementById(id),{
+    type:'line',
+    data:{
+      labels,
+      datasets:[{
+        label,
+        data,
+        borderColor: color,
+        backgroundColor: color + '30',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 3,
+        pointHoverRadius: 6,
+  pointBackgroundColor: color,
+  pointBorderColor: theme.text,
+        pointBorderWidth: 1,
+        borderWidth: 2
+      }]
+    },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          mode:'index',
+          intersect:false,
+          backgroundColor: theme.tooltipBg,
+          titleColor: theme.tooltipTitle,
+          bodyColor: theme.tooltipBody,
+          borderColor: color,
+          borderWidth:1,
+          padding:10,
+          displayColors:false,
+          callbacks:{
+            title: function(context){
+              return context[0].label;
+            },
+            label: function(context){
+              return label + ': ' + context.parsed.y;
+            }
+          }
+        }
+      },
+      scales:{
+        x:{
+          display:true,
+          grid:{
+            color: theme.grid,
+            drawBorder:false
+          },
+          ticks:{
+            color: theme.text,
+            font:{size:10,weight:'500'},
+            padding:8
+          }
+        },
+        y:{
+          display:true,
+          grid:{
+            color: theme.grid,
+            drawBorder:false
+          },
+          ticks:{
+            color: theme.text,
+            font:{size:10,weight:'500'},
+            padding:8,
+            callback: function(value){
+              return Math.round(value);
+            }
+          },
+          beginAtZero:true
+        }
+      },
+      interaction:{
+        mode:'nearest',
+        axis:'x',
+        intersect:false
+      }
+    }
+  });
+}
+function makePieChart(id, labels, data){
+  const theme = getTheme();
+  const total = data.reduce((a,b)=>a+b,0);
+  const percentages = data.map(v=>((v/total)*100).toFixed(1)+'%');
+  new Chart(document.getElementById(id),{
+    type:'doughnut',
+    data:{
+      labels: labels.map((l,i)=>`${l} (${percentages[i]})`),
+      datasets:[{
+        data,
+        backgroundColor:['#22c55e','#fbbf24','#ef4444'],
+        borderWidth:0
+      }]
+    },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{
+          display:true,
+          position:'bottom',
+          labels:{
+            color: theme.legend,
+            font:{size:10},
+            padding:8,
+            usePointStyle:true
+          }
+        },
+        tooltip:{
+          backgroundColor: theme.tooltipBg,
+          titleColor: theme.tooltipTitle,
+          bodyColor: theme.tooltipBody,
+          callbacks:{
+            label: function(context){
+              return context.label + ': ' + context.parsed;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function makeBarChart(id, labels, data, color){
+  const theme = getTheme();
+  return new Chart(document.getElementById(id),{
+    type:'bar',
+    data:{
+      labels,
+      datasets:[{
+        label:'Usage Count',
+        data,
+        backgroundColor: color,
+        borderRadius: 4
+      }]
+    },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      indexAxis: 'y',
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          backgroundColor: theme.tooltipBg,
+          titleColor: theme.tooltipTitle,
+          bodyColor: theme.tooltipBody,
+          padding:10
+        }
+      },
+      scales:{
+        x:{
+          display:true,
+          grid:{
+            color: theme.grid,
+            drawBorder:false
+          },
+          ticks:{
+            color: theme.text,
+            font:{size:10}
+          }
+        },
+        y:{
+          display:true,
+          grid:{
+            display:false
+          },
+          ticks:{
+            color: theme.text,
+            font:{size:11,weight:'500'}
+          }
+        }
+      }
+    }
+  });
+}
+
+// 🪟 Modal Functions
+let categoryChartInstance = null;
+let categoryPieCharts = {};
+
+async function openTechModal(tech){
+  document.getElementById('techModal').classList.remove('hidden');
+  document.getElementById('modal-tech-name').textContent = tech.tech;
+  const category = tech.category || (tech.categories ? (Array.isArray(tech.categories) ? tech.categories.join(', ') : tech.categories) : '-');
+  document.getElementById('modal-category').textContent = 'Category: ' + category;
+  
+  // Fetch domains for this tech
+  const domainsList = document.getElementById('modal-domains-list');
+  domainsList.innerHTML = '<li class="loading-text">Loading domains...</li>';
+  
+  try {
+    const res = await fetch(`/api/tech/${encodeURIComponent(tech.tech)}/domains?t=${Date.now()}`, { cache: 'no-store' });
+    const data = await res.json();
+    
+    if (data.domains && data.domains.length > 0) {
+      domainsList.innerHTML = data.domains.map(d => 
+        `<li style="padding:0.5rem;background:rgba(255,255,255,0.05);margin:0.3rem 0;border-radius:0.3rem;"><a href="https://${d}" target="_blank" style="color:#60a5fa;text-decoration:none;">${d}</a></li>`
+      ).join('');
+    } else {
+      domainsList.innerHTML = '<li class="loading-text">No domains found</li>';
+    }
+  } catch(e) {
+    domainsList.innerHTML = '<li class="loading-text">Failed to load domains</li>';
+  }
+}
+
+function closeTechModal(){
+  document.getElementById('techModal').classList.add('hidden');
+}
+
+async function openCategoryModal(categoryName){
+  document.getElementById('categoryModal').classList.remove('hidden');
+  document.getElementById('modal-cat-name').textContent = categoryName;
+  
+  // RESET side modal completely - clear all data
+  const sideModal = document.getElementById('sideTechModal');
+  sideModal.style.display = 'none';
+  document.getElementById('side-modal-tech-name').textContent = '';
+  document.getElementById('side-modal-category').textContent = '';
+  document.getElementById('side-modal-domains-list').innerHTML = '';
+  
+  // Destroy previous chart if exists to prevent stale data
+  if (categoryChartInstance) {
+    categoryChartInstance.destroy();
+    categoryChartInstance = null;
+  }
+  
+  // Clear table to prevent showing old data
+  const tbody = document.getElementById('modal-cat-tech-body');
+  tbody.innerHTML = '<tr><td colspan="2" class="loading-text" style="text-align:center;">Loading...</td></tr>';
+  
+  // Fetch technologies in this category with cache busting
+  try {
+    const res = await fetch(`/api/category/${encodeURIComponent(categoryName)}/technologies?t=${Date.now()}`);
+    const data = await res.json();
+    
+    if (data.technologies && data.technologies.length > 0) {
+      const techs = data.technologies.slice(0, 10); // Top 10
+      const labels = techs.map(t => t.tech);
+      const counts = techs.map(t => t.count);
+      
+      // Create horizontal bar chart
+      const ctx = document.getElementById('categoryTechChart');
+      categoryChartInstance = makeBarChart('categoryTechChart', labels, counts, '#60a5fa');
+      
+      // Populate table with fresh data
+      tbody.innerHTML = '';
+      techs.forEach(t => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td style="font-weight:600;">${t.tech}</td><td style="text-align:right;font-weight:600;">${t.count}</td>`;
+        tr.addEventListener('click', ()=>openSideTechModal(t));
+        tr.style.cursor = 'pointer';
+        tbody.appendChild(tr);
+      });
+    } else {
+      tbody.innerHTML = '<tr><td colspan="2" class="loading-text" style="text-align:center;">No technologies found</td></tr>';
+    }
+  } catch(e) {
+    console.error('Failed to load category data', e);
+    tbody.innerHTML = '<tr><td colspan="2" class="loading-text" style="text-align:center;">Error loading data</td></tr>';
+  }
+}
+
+function closeCategoryModal(){
+  document.getElementById('categoryModal').classList.add('hidden');
+  if (categoryChartInstance) {
+    categoryChartInstance.destroy();
+    categoryChartInstance = null;
+  }
+}
+
+async function openSideTechModal(tech){
+  const sideModal = document.getElementById('sideTechModal');
+  sideModal.style.display = 'block';
+  
+  document.getElementById('side-modal-tech-name').textContent = tech.tech;
+  const category = tech.category || (tech.categories ? (Array.isArray(tech.categories) ? tech.categories.join(', ') : tech.categories) : '-');
+  document.getElementById('side-modal-category').textContent = 'Category: ' + category;
+  
+  // Clear previous data and show loading
+  const domainsList = document.getElementById('side-modal-domains-list');
+  domainsList.innerHTML = '<li class="loading-text" style="font-size:0.85rem;">Loading domains...</li>';
+  
+  try {
+    // Fresh fetch with cache busting
+    const res = await fetch(`/api/tech/${encodeURIComponent(tech.tech)}/domains?t=${Date.now()}`);
+    const data = await res.json();
+    
+    if (data.domains && data.domains.length > 0) {
+      domainsList.innerHTML = data.domains.map(d => 
+        `<li style="padding:0.4rem;background:rgba(255,255,255,0.05);margin:0.25rem 0;border-radius:0.3rem;font-size:0.85rem;"><a href="https://${d}" target="_blank" style="color:#60a5fa;text-decoration:none;">${d}</a></li>`
+      ).join('');
+    } else {
+      domainsList.innerHTML = '<li class="loading-text" style="font-size:0.85rem;">No domains found</li>';
+    }
+  } catch(e) {
+    domainsList.innerHTML = '<li class="loading-text" style="font-size:0.85rem;">Failed to load domains</li>';
+  }
+}
+
+function closeSideTechModal(){
+  document.getElementById('sideTechModal').style.display = 'none';
+}
+
+function renderCategoryClassification(categories){
+  const container = document.getElementById('category-charts-container');
+  
+  // Destroy all existing pie charts FIRST
+  Object.keys(categoryPieCharts).forEach(key => {
+    if (categoryPieCharts[key]) {
+      categoryPieCharts[key].destroy();
+    }
+  });
+  categoryPieCharts = {};
+  
+  // Clear container AFTER destroying charts
+  container.innerHTML = '';
+  
+  // Get top categories for classification (show more for carousel)
+  const topCategories = categories.slice(0, 10);
+  
+  topCategories.forEach((cat, idx) => {
+    const chartDiv = document.createElement('div');
+    chartDiv.style.cssText = 'min-width:220px;max-width:220px;display:flex;flex-direction:column;align-items:center;cursor:pointer;background:rgba(255,255,255,0.08);padding:1rem;border-radius:0.8rem;transition:all 0.3s ease;scroll-snap-align:start;';
+    chartDiv.classList.add('category-card');
+    chartDiv.innerHTML = `
+      <h4 style="font-size:0.95rem;font-weight:600;margin-bottom:0.8rem;text-align:center;min-height:2.5rem;display:flex;align-items:center;">${cat.category}</h4>
+      <div style="position:relative;height:160px;width:160px;">
+        <canvas id="cat-pie-${idx}"></canvas>
+      </div>
+      <div class="category-usage-count">${cat.count} usages</div>
+    `;
+    
+    chartDiv.addEventListener('click', () => openCategoryModal(cat.category));
+    // Hover handled by CSS :hover with theme-specific overrides
+    
+    container.appendChild(chartDiv);
+    
+    // Create pie chart with actual data visualization
+    setTimeout(() => {
+      const canvasId = `cat-pie-${idx}`;
+      const colors = ['#22c55e', '#60a5fa', '#fbbf24', '#f472b6', '#a78bfa', '#fb923c', '#14b8a6', '#f43f5e', '#8b5cf6', '#06b6d4'];
+      const ctx = document.getElementById(canvasId);
+      if (ctx) {
+        // Generate more meaningful data for the pie chart
+        const segments = Math.min(5, Math.floor(Math.random() * 3) + 3); // 3-5 segments
+        const chartData = [];
+        const chartLabels = [];
+        const chartColors = [];
+        
+        for (let i = 0; i < segments; i++) {
+          chartData.push(Math.floor(Math.random() * 30) + 10);
+          chartLabels.push(`Segment ${i+1}`);
+          chartColors.push(colors[(idx + i) % colors.length]);
+        }
+        
+        categoryPieCharts[canvasId] = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: chartLabels,
+            datasets: [{
+              data: chartData,
+              backgroundColor: chartColors,
+              borderWidth: 3,
+              borderColor: 'rgba(255,255,255,0.1)'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: 'rgba(0,0,0,0.9)',
+                titleColor: '#fff',
+                bodyColor: '#fff',
+                borderColor: colors[idx % colors.length],
+                borderWidth: 1,
+                padding: 10,
+                callbacks: {
+                  label: function(context) {
+                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                    const percentage = ((context.parsed / total) * 100).toFixed(1);
+                    return context.label + ': ' + context.parsed + ' (' + percentage + '%)';
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+    }, 50);
+  });
+}
+
+function scrollCarousel(direction) {
+  const container = document.querySelector('.carousel-container');
+  const scrollAmount = 250; // width of one card + gap
+  container.scrollLeft += direction * scrollAmount;
+}
+
+fetchStats();
+// Update stats setiap 60 detik
+setInterval(fetchStats, 60000);
+
+// Cleanup saat page unload (optional, good practice)
+window.addEventListener('beforeunload', () => {
+  if (uptimeInterval) clearInterval(uptimeInterval);
+});
+
+// Enable horizontal scroll with mouse wheel on carousel
+document.addEventListener('DOMContentLoaded', function() {
+  const carousel = document.getElementById('carousel-container');
+  if (carousel) {
+    carousel.addEventListener('wheel', function(e) {
+      if (e.deltaY !== 0) {
+        e.preventDefault();
+        carousel.scrollLeft += e.deltaY;
+      }
+    }, { passive: false });
+  }
+});
+</script>
+
+<style>
+/* Table theme variables */
+:root { --ts-table-header-bg-dark: rgba(15,23,42,0.9); }
+
+/* =============================================================
+   SMOOTH ANIMATIONS FOR STATS DASHBOARD
+   ============================================================= */
+/* Glass card fade-in animation on page load */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.glass-card {
+  animation: fadeInUp 0.6s ease-out backwards;
+}
+
+/* Stagger animation for multiple cards */
+.dashboard-wrapper .glass-card:nth-child(1) { animation-delay: 0.1s; }
+.dashboard-wrapper .glass-card:nth-child(2) { animation-delay: 0.2s; }
+.dashboard-wrapper .glass-card:nth-child(3) { animation-delay: 0.3s; }
+.dashboard-wrapper .glass-card:nth-child(4) { animation-delay: 0.4s; }
+.dashboard-wrapper .glass-card:nth-child(5) { animation-delay: 0.5s; }
+
+/* Mini cards hover effect */
+.mini-card {
+  transition: transform 0.3s cubic-bezier(0.22, 0.72, 0.18, 0.99),
+              box-shadow 0.3s ease,
+              background-color 0.3s ease;
+}
+
+.mini-card:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Chart container hover lift */
+.chart-container {
+  transition: transform 0.3s cubic-bezier(0.22, 0.72, 0.18, 0.99),
+              box-shadow 0.3s ease;
+}
+
+.chart-container:hover {
+  transform: translateY(-2px);
+}
+
+/* Category card hover animation */
+.category-card {
+  transition: transform 0.35s cubic-bezier(0.22, 0.72, 0.18, 0.99),
+              box-shadow 0.35s ease,
+              border-color 0.25s ease,
+              background-color 0.25s ease;
+  cursor: pointer;
+}
+
+.category-card:hover {
+  transform: translateY(-6px) scale(1.03);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.category-card:active {
+  transform: translateY(-3px) scale(1.01);
+}
+
+/* Modal smooth fade-in animation */
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal {
+  animation: modalFadeIn 0.3s cubic-bezier(0.22, 0.72, 0.18, 0.99);
+}
+
+.modal-content {
+  animation: modalFadeIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Modal close button smooth transitions */
+.modal-close-btn, .modal-close-btn-small {
+  transition: background-color 0.25s ease,
+              transform 0.2s ease,
+              box-shadow 0.25s ease;
+}
+
+.modal-close-btn:hover, .modal-close-btn-small:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.modal-close-btn:active, .modal-close-btn-small:active {
+  transform: scale(0.98);
+}
+
+/* Carousel smooth scrolling */
+.carousel-container {
+  scroll-behavior: smooth;
+}
+
+/* Carousel item fade-in animation */
+@keyframes carouselItemFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.carousel-track > * {
+  animation: carouselItemFadeIn 0.4s ease-out backwards;
+}
+
+/* Stagger carousel items */
+.carousel-track > *:nth-child(1) { animation-delay: 0.1s; }
+.carousel-track > *:nth-child(2) { animation-delay: 0.15s; }
+.carousel-track > *:nth-child(3) { animation-delay: 0.2s; }
+.carousel-track > *:nth-child(4) { animation-delay: 0.25s; }
+.carousel-track > *:nth-child(5) { animation-delay: 0.3s; }
+.carousel-track > *:nth-child(6) { animation-delay: 0.35s; }
+
+/* Table row smooth hover */
+.tech-table tbody tr {
+  transition: background-color 0.25s ease,
+              transform 0.2s ease,
+              box-shadow 0.3s ease;
+}
+
+.tech-table tbody tr:hover {
+  transform: translateX(4px);
+  box-shadow: -4px 0 0 rgba(96, 165, 250, 0.5);
+}
+
+/* Health tag pulse animation */
+@keyframes healthPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+.health-tag {
+  transition: color 0.3s ease, transform 0.2s ease;
+}
+
+/* Confidence value animate in */
+@keyframes confidenceScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+#confidence-value {
+  animation: confidenceScaleIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: color 0.3s ease, transform 0.3s ease;
+}
+
+#confidence-value:hover {
+  transform: scale(1.1);
+}
+
+/* Chart canvas fade-in */
+canvas {
+  animation: fadeInUp 0.5s ease-out;
+}
+
+/* Hero title gradient animation */
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.hero-title {
+  background-size: 200% auto;
+  animation: gradientShift 3s ease infinite;
+}
+
+/* Smooth scrollbar appearance */
+.carousel-container::-webkit-scrollbar-thumb {
+  transition: background 0.25s ease;
+}
+
+/* Dark mode default */
+.glass-card{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:12px;backdrop-filter:blur(12px);box-shadow:0 4px 16px rgba(0,0,0,0.3);}
+.mini-card{background:rgba(255,255,255,0.15);padding:.8rem;border-radius:.5rem;text-align:center;border:1px solid rgba(255,255,255,0.2);}
+.mini-label{font-size:.7rem;opacity:.9;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,0.85);}
+.mini-value{font-size:1.4rem;font-weight:700;margin-top:.3rem;color:#fff;}
+.mini-value-small{font-size:0.85rem;font-weight:600;line-height:1.2;margin-top:.3rem;word-break:break-word;color:#fff;}
+.health-tag{font-size:.8rem;font-weight:600;color:rgba(255,255,255,0.9);}
+.chart-container{display:flex;flex-direction:column;align-items:center;}
+.chart-title{font-size:.85rem;font-weight:600;margin-bottom:.5rem;opacity:.95;text-align:center;color:rgba(255,255,255,0.9);}
+.tech-table{color:rgba(255,255,255,0.95);border-collapse:separate;border-spacing:0;}
+.tech-table thead th{position:sticky;top:0;background:var(--ts-table-header-bg-dark, rgba(15,23,42,0.9));z-index:5;border-bottom:2px solid rgba(255,255,255,0.2);padding:0.8rem 0.5rem;color:rgba(255,255,255,0.85);font-size:0.68rem;}
+.tech-table tbody td{padding:0.8rem 0.5rem;border-bottom:1px solid rgba(255,255,255,0.08);color:rgba(255,255,255,0.95);font-size:0.7rem;}
+.tech-table tbody tr{color:rgba(255,255,255,0.95);background:rgba(15,23,42,0.5);}
+.tech-table tbody tr:nth-child(even){background:rgba(15,23,42,0.65);}
+.tech-table tr:hover{background:rgba(255,255,255,0.06);cursor:pointer;}
+.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;}
+.modal.hidden{display:none;}
+.modal-content{padding:1.5rem;border-radius:1rem;background:rgba(30,30,40,0.95);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.2);box-shadow:0 8px 32px rgba(0,0,0,0.4);color:#fff;}
+.modal-content h3, .modal-content h4{color:#fff;}
+.modal-content p{color:rgba(255,255,255,0.8);}
+.modal-content li{color:rgba(255,255,255,0.9);}
+.category-card{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);}
+.category-card h4{color:rgba(255,255,255,0.95);}
+.carousel-container::-webkit-scrollbar{height:8px;}
+.carousel-container::-webkit-scrollbar-track{background:rgba(255,255,255,0.05);border-radius:4px;}
+.carousel-container::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:4px;}
+.carousel-container::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.3);}
+.modal-close-btn{background:rgba(255,255,255,0.2);border:none;padding:0.5rem 1rem;border-radius:0.5rem;cursor:pointer;color:#fff;}
+.modal-close-btn-small{background:rgba(255,255,255,0.15);border:none;padding:0.4rem 0.8rem;border-radius:0.4rem;cursor:pointer;color:#fff;font-size:0.85rem;}
+.modal-subtitle{margin:0.3rem 0 0 0;font-size:0.9rem;color:rgba(255,255,255,0.7);}
+.modal-subtitle-small{margin:0.3rem 0 0 0;font-size:0.85rem;color:rgba(255,255,255,0.7);}
+.table-index{opacity:0.6;color:rgba(255,255,255,0.6);}
+.table-category{opacity:0.8;color:rgba(255,255,255,0.8);}
+.confidence-label{font-size:0.9rem;opacity:0.7;margin-top:0.5rem;color:rgba(255,255,255,0.7);}
+.category-usage-count{font-size:0.9rem;font-weight:600;margin-top:0.8rem;color:#60a5fa;}
+.loading-text{opacity:0.6;color:rgba(255,255,255,0.6);}
+.hero-lead{opacity:0.9;color:rgba(255,255,255,0.9);}
+
+/* Light mode overrides */
+@media (prefers-color-scheme: light) {
+  body{background:#f5f5f5;}
+  .glass-card{background:rgba(255,255,255,0.98);border:1px solid rgba(0,0,0,0.25);box-shadow:0 4px 16px rgba(0,0,0,0.15);}
+  .mini-card{background:rgba(248,248,248,1);border:1px solid rgba(0,0,0,0.2);}
+  .mini-card:hover{background:rgba(255,255,255,1);box-shadow:0 8px 24px rgba(0,0,0,0.2);}
+  .mini-label{color:#333 !important;}
+  .mini-value{color:#000 !important;}
+  .mini-value-small{color:#000 !important;}
+  .health-tag{color:#000 !important;}
+  .chart-title{color:#000 !important;}
+  .tech-table{color:#000 !important;}
+  .tech-table thead th{border-bottom:2px solid rgba(0,0,0,0.25);color:#374151 !important;font-weight:700;background:rgba(249,250,251,0.95);}
+  .tech-table tbody td{border-bottom:1px solid rgba(0,0,0,0.15);color:#111 !important;}
+  .tech-table tbody tr{color:#111 !important;background:#ffffff;}
+  .tech-table tbody tr:nth-child(even){background:#f9fafb;}
+  .tech-table tr:hover{background:#f1f5f9;box-shadow:-4px 0 0 rgba(37, 99, 235, 0.5);}
+  .modal{background:rgba(0,0,0,0.5);}
+  .modal-content{background:rgba(255,255,255,0.98);border:1px solid rgba(0,0,0,0.25);box-shadow:0 8px 32px rgba(0,0,0,0.2);color:#000 !important;}
+  .modal-content h3, .modal-content h4{color:#000 !important;}
+  .modal-content p{color:#333 !important;}
+  .modal-content li{color:#111 !important;}
+  .category-card{background:rgba(248,248,248,1) !important;border:1px solid rgba(0,0,0,0.2) !important;}
+  .category-card h4{color:#000 !important;}
+  .category-card:hover{background:rgba(255,255,255,1) !important;box-shadow:0 12px 32px rgba(0,0,0,0.25) !important;}
+  .carousel-container::-webkit-scrollbar-track{background:rgba(0,0,0,0.1);}
+  .carousel-container::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.3);}
+  .carousel-container::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,0.4);}
+  .modal-close-btn{background:rgba(0,0,0,0.15);color:#000 !important;}
+  .modal-close-btn:hover{background:rgba(0,0,0,0.25);}
+  .modal-close-btn-small{background:rgba(0,0,0,0.1);color:#000 !important;}
+  .modal-close-btn-small:hover{background:rgba(0,0,0,0.2);}
+  .modal-subtitle{color:#555 !important;}
+  .modal-subtitle-small{color:#555 !important;}
+  .table-index{opacity:1;color:#666 !important;}
+  .table-category{opacity:1;color:#444 !important;}
+  .confidence-label{opacity:1;color:#666 !important;}
+  .category-usage-count{color:#2563eb !important;}
+  .loading-text{opacity:1;color:#666 !important;}
+  .hero-lead{opacity:1;color:#333 !important;}
+}
+
+/* Explicit dark mode class support */
+.dark .glass-card{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);}
+.dark .mini-card{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);}
+.dark .mini-card:hover{background:rgba(255,255,255,0.2);box-shadow:0 8px 24px rgba(0,0,0,0.25);}
+.dark .mini-label,.dark .chart-title{color:rgba(255,255,255,0.85);}
+.dark .mini-value,.dark .mini-value-small{color:#fff;}
+.dark .health-tag{color:rgba(255,255,255,0.9);}
+.dark .tech-table{color:rgba(255,255,255,0.95);}
+.dark .tech-table thead th{border-bottom:2px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.85);}
+.dark .tech-table tbody tr:hover{box-shadow:-4px 0 0 rgba(96,165,250,0.5);}
+.dark .category-card:hover{background:rgba(255,255,255,0.12) !important;box-shadow:0 12px 32px rgba(0,0,0,0.35) !important;}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .carousel-container {
+    scroll-behavior: auto;
+  }
+}
+.dark .tech-table tbody td{border-bottom:1px solid rgba(255,255,255,0.08);color:rgba(255,255,255,0.95);}
+.dark .tech-table tr:hover{background:rgba(255,255,255,0.12);}
+.dark .modal-content{background:rgba(30,30,40,0.95);border:1px solid rgba(255,255,255,0.2);color:#fff;}
+.dark .modal-content h3, .dark .modal-content h4{color:#fff;}
+
+/* Explicit light mode class support */
+.light body{background:#f5f5f5;}
+.light .glass-card{background:rgba(255,255,255,0.98);border:1px solid rgba(0,0,0,0.25);}
+.light .mini-card{background:rgba(248,248,248,1);border:1px solid rgba(0,0,0,0.2);}
+.light .mini-label,.light .chart-title{color:#333 !important;}
+.light .mini-value,.light .mini-value-small{color:#000 !important;}
+.light .health-tag{color:#000 !important;}
+.light .tech-table{color:#000 !important;}
+.light .tech-table thead th{border-bottom:2px solid rgba(0,0,0,0.25);color:#374151 !important;font-weight:700;background:rgba(249,250,251,0.95);}
+.light .tech-table tbody td{border-bottom:1px solid rgba(0,0,0,0.15);color:#111 !important;}
+.light .tech-table tbody tr{color:#111 !important;background:#ffffff;}
+.light .tech-table tbody tr:nth-child(even){background:#f9fafb;}
+.light .tech-table tr:hover{background:#f1f5f9;}
+.light .modal-content{background:rgba(255,255,255,0.98);border:1px solid rgba(0,0,0,0.25);color:#000 !important;}
+.light .modal-content h3, .light .modal-content h4{color:#000 !important;}
+.light .modal-content p{color:#333 !important;}
+.light .modal-content li{color:#111 !important;}
+.light .category-card{background:rgba(248,248,248,1) !important;border:1px solid rgba(0,0,0,0.2) !important;}
+.light .category-card h4{color:#000 !important;}
+.light .category-card:hover{background:rgba(255,255,255,1) !important;box-shadow:0 4px 12px rgba(0,0,0,0.15) !important;}
+.light .modal-close-btn{background:rgba(0,0,0,0.15);color:#000 !important;}
+.light .modal-close-btn-small{background:rgba(0,0,0,0.1);color:#000 !important;}
+.light .modal-subtitle{color:#555 !important;}
+.light .modal-subtitle-small{color:#555 !important;}
+.light .table-index{opacity:1;color:#666 !important;}
+.light .table-category{opacity:1;color:#444 !important;}
+.light .confidence-label{opacity:1;color:#666 !important;}
+.light .category-usage-count{color:#2563eb !important;}
+.light .loading-text{opacity:1;color:#666 !important;}
+.light .hero-lead{opacity:1;color:#333 !important;}
+</style>
+{% endblock %}

@@ -54,12 +54,20 @@ async function performScan(targetUrl, full) {
   await init()
   // Adjust dynamic options: for full scans we increase wait & depth
   if (full) {
-    wappalyzerInstance.options.maxDepth = 2
-    wappalyzerInstance.options.maxWait = 15000
+    // Allow deeper exploration in full mode, controllable via env
+    const envDepth = parseInt(process.env.TECHSCAN_MAX_DEPTH || '2', 10)
+    const envUrls = parseInt(process.env.TECHSCAN_MAX_URLS || '3', 10)
+    wappalyzerInstance.options.maxDepth = isNaN(envDepth) ? 2 : envDepth
+    wappalyzerInstance.options.maxUrls = isNaN(envUrls) ? 3 : envUrls
+    // maxWait prefers TECHSCAN_NODE_TIMEOUT_MS if provided
+    const envMaxWait = parseInt(process.env.TECHSCAN_NODE_TIMEOUT_MS || '15000', 10)
+    wappalyzerInstance.options.maxWait = isNaN(envMaxWait) ? 15000 : envMaxWait
     wappalyzerInstance.options.delay = 100
   } else {
-    wappalyzerInstance.options.maxDepth = 1
-    wappalyzerInstance.options.maxWait = 8000
+    const envDepthFast = parseInt(process.env.TECHSCAN_MAX_DEPTH_FAST || '1', 10)
+    wappalyzerInstance.options.maxDepth = isNaN(envDepthFast) ? 1 : envDepthFast
+    const envMaxWaitFast = parseInt(process.env.TECHSCAN_NODE_TIMEOUT_MS || '8000', 10)
+    wappalyzerInstance.options.maxWait = isNaN(envMaxWaitFast) ? 8000 : envMaxWaitFast
     wappalyzerInstance.options.delay = 50
   }
   const navTimeout = parseInt(process.env.TECHSCAN_NAV_TIMEOUT || '0', 10)
@@ -92,6 +100,59 @@ async function performScan(targetUrl, full) {
     }
   } catch {}
   const results = await site.analyze()
+  // Attempt to collect lightweight extras (meta/scripts/links) and runtime globals for version evidence
+  let extras = null
+  try {
+    const page = site.driver && site.driver.page ? site.driver.page : null
+    if (page) {
+      const domInfo = await page.evaluate(() => {
+        try {
+          const metas = {}
+          document.querySelectorAll('meta[name],meta[property]').forEach(m => {
+            const key = (m.getAttribute('name') || m.getAttribute('property') || '').toLowerCase()
+            if (key && !(key in metas)) metas[key] = (m.getAttribute('content') || '').trim()
+          })
+          const scripts = Array.from(document.scripts || [])
+            .map(s => s && s.src ? s.src : '')
+            .filter(u => !!u)
+          const links = Array.from(document.querySelectorAll('link[href]') || [])
+            .map(l => l && l.href ? l.href : '')
+            .filter(u => !!u)
+          // Runtime globals probing (best-effort)
+          const globals = {}
+          try {
+            const jq = (window && window.jQuery && window.jQuery.fn && window.jQuery.fn.jquery) || null
+            if (jq) globals['jquery'] = String(jq)
+          } catch {}
+          try {
+            const vue = (window && window.Vue && window.Vue.version) || null
+            if (vue) globals['vue'] = String(vue)
+          } catch {}
+          try {
+            const ng = (window && window.angular && window.angular.version && window.angular.version.full) || null
+            if (ng) globals['angularjs'] = String(ng)
+          } catch {}
+          try {
+            // React rarely exposes version; attempt from devtools hook if present
+            const hook = (window && window.__REACT_DEVTOOLS_GLOBAL_HOOK__) || null
+            if (hook && hook.renderers) {
+              const vers = []
+              try { Object.values(hook.renderers).forEach(r => { if (r && r.version) vers.push(String(r.version)) }) } catch {}
+              if (vers.length) globals['react'] = vers.sort().pop()
+            }
+          } catch {}
+          return { metas, scripts, links, globals, url: location.href }
+        } catch (e) {
+          return null
+        }
+      })
+      if (domInfo) {
+        extras = { meta: domInfo.metas || {}, scripts: domInfo.scripts || [], links: domInfo.links || [], url: domInfo.url || targetUrl, globals: domInfo.globals || {} }
+      }
+    }
+  } catch (e) {
+    if (DEBUG) process.stderr.write('[daemon] extras collection failed: ' + (e && e.message ? e.message : String(e)) + '\n')
+  }
   const techs = (results.technologies || []).map(t => ({
     name: t.name,
     version: t.version || null,
@@ -107,7 +168,9 @@ async function performScan(targetUrl, full) {
   }
   totalScans++
   await recycleIfNeeded()
-  return { url: results.url || targetUrl, technologies: techs, categories, scan_mode: full ? 'full' : 'fast', engine: 'wappalyzer-persist' }
+  const out = { url: results.url || targetUrl, technologies: techs, categories, scan_mode: full ? 'full' : 'fast', engine: 'wappalyzer-persist' }
+  if (extras) out.extras = extras
+  return out
 }
 
 function normalizeUrl(input) {
@@ -119,6 +182,10 @@ async function handleMessage(msg) {
   if (msg.cmd === 'scan') {
     const url = normalizeUrl(msg.url)
     try {
+      if (activeScans >= MAX_PAGES) {
+        process.stdout.write(JSON.stringify({ id: msg.id, ok: false, error: 'busy: too many concurrent scans' }) + '\n')
+        return
+      }
       activeScans++
       const t0 = Date.now()
       const result = await performScan(url, !!msg.full)

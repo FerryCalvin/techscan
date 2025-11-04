@@ -1,18 +1,244 @@
 {% extends 'base.html' %}
 {% block content %}
-<h2>Website List</h2>
-<div class="grid cols-2">
-  <article>
-    <input id="filter" placeholder="Cari domain..." />
+<div class="page-centered glass-card compact" style="margin-bottom:1.2rem;">
+  <style>
+  /* Pagination refined (tokenized for theme) */
+  #paging-bar{display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-top:.9rem;font-size:0.6rem;}
+  .pg-box{display:flex;align-items:center;gap:.5rem;background:var(--ts-input-bg);border:1px solid var(--ts-input-border);padding:6px 10px;border-radius:10px;height:38px;transition:all 0.25s ease;}
+  .pg-box select{background:var(--ts-input-bg);border:1px solid var(--ts-input-border);color:var(--ts-text);font-size:0.6rem;padding:3px 6px;border-radius:6px;height:26px;line-height:1;transition:all 0.2s ease;}
+  .pg-nav{display:flex;align-items:center;gap:.4rem;}
+  .pg-btn{font-size:.55rem;padding:3px 10px;min-width:36px;height:26px;line-height:1;display:inline-flex;align-items:center;justify-content:center;transition:all 0.25s cubic-bezier(0.22, 0.72, 0.18, 0.99);}
+  .pg-info{min-width:120px;text-align:center;font-size:0.6rem;}
+  .pg-btn[disabled]{opacity:.4;cursor:not-allowed;}
+  .pg-btn:not([disabled]){border-color:var(--glass-border-strong);}
+  .pg-btn:not([disabled]):hover{background:rgba(255,255,255,0.06);transform:translateY(-1px);box-shadow:0 2px 6px rgba(0,0,0,0.15);}
+  .pg-btn:not([disabled]):active{transform:translateY(0);box-shadow:0 1px 3px rgba(0,0,0,0.1);}
+  td .actions .del-btn svg{transform:translateY(-2px);} /* lifted a bit more for visual centering */
+  tbody.page-fade{animation:pageFade .35s cubic-bezier(0.22, 0.72, 0.18, 0.99);}
+  @keyframes pageFade{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+  @media (max-width:680px){
+    #paging-bar{gap:.6rem;}
+    .pg-box{height:auto;padding:6px 8px;}
+    .pg-info{min-width:100px;}
+  }
+    .page-centered{max-width:1200px;margin:0 auto;}
+    .page-centered h2.page-title{margin-top:0; margin-bottom:.9rem; display:block; text-align:center;}
+    .controls-row{display:flex;align-items:flex-end;gap:1rem;justify-content:space-between;flex-wrap:wrap;margin-bottom:.35rem;}
+    .search-col{flex:1 1 520px;min-width:320px;display:flex;flex-direction:column;gap:.25rem;}
+  .control-std{height:32px;box-sizing:border-box;border:1px solid var(--ts-input-border);background:var(--ts-input-bg);font-size:0.65rem;line-height:1.0;padding:0 .65rem;display:inline-flex;align-items:center;transition:all 0.25s ease;}
+  .search-col input{width:100%;font-size:0.65rem;padding:0 .65rem;line-height:1.0;height:32px;box-sizing:border-box;border:1px solid var(--ts-input-border);background:var(--ts-input-bg);transition:all 0.25s ease;}
+  .search-col input:focus{outline:2px solid var(--ts-accent);outline-offset:2px;transform:scale(1.01);}
+  .search-col input::placeholder{font-size:0.65rem;opacity:.7;}
+  .right-col{display:flex;align-items:flex-end;gap:.65rem;position:relative;}
+  .right-col .manage-groups-col{display:flex;flex-direction:column;gap:.25rem;}
+  .right-col .group-filter-col{display:flex;flex-direction:column;gap:.25rem;line-height:1.05;}
+  #group-filter{font-size:0.65rem;padding:0 .55rem;height:32px;line-height:32px;box-sizing:border-box;border:1px solid var(--ts-input-border);background:var(--ts-input-bg);display:inline-flex;align-items:center;transition:all 0.25s ease;}
+  #group-filter:focus{outline:2px solid var(--ts-accent);outline-offset:2px;}
+  /* Unified control vertical rhythm */
+  .search-col label, .group-filter-col label, .manage-groups-col label{display:block;margin:0 0 .25rem;line-height:1.1;}
+  #manage-groups-open{padding:0;line-height:1;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;width:34px;height:32px;margin-top:0;margin-bottom:1rem;align-self:flex-end;background:var(--ts-input-bg);border:1px solid var(--ts-input-border);transition:all 0.25s cubic-bezier(0.22, 0.72, 0.18, 0.99);} 
+  #manage-groups-open svg{width:16px;height:16px;stroke:#d7dde2;stroke-width:1.4;transform:translateY(0px);transition:all 0.25s ease;} 
+  .sr-only{position:absolute !important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}
+  #manage-groups-open:hover{background:rgba(255,255,255,0.06);border-color:var(--glass-border-strong);transform:translateY(-2px);box-shadow:0 4px 8px rgba(0,0,0,0.2);}
+  #manage-groups-open:active{transform:translateY(0);box-shadow:0 2px 4px rgba(0,0,0,0.15);}
+  #manage-groups-open:focus{outline:2px solid var(--ts-accent);outline-offset:2px;}
+  #manage-groups-open.open{background:rgba(255,255,255,0.08);border-color:var(--glass-border-strong);}
+  #manage-groups-open:after{content:'';}
+    .grp-popover{position:absolute;top:100%;right:0;margin-top:6px;min-width:260px;background:var(--glass-surf-2);border:1px solid var(--glass-border-strong);border-radius:12px;padding:.7rem .75rem .8rem;box-shadow:var(--glass-shadow-1), var(--glass-shadow-2);z-index:30;font-size:0.65rem;backdrop-filter:blur(calc(var(--glass-blur)*.6)) saturate(var(--glass-sat));-webkit-backdrop-filter:blur(calc(var(--glass-blur)*.6)) saturate(var(--glass-sat));}
+      .grp-popover:before{content:'';position:absolute;top:-6px;right:14px;width:10px;height:10px;background:var(--glass-surf-2);border-left:1px solid var(--glass-border-strong);border-top:1px solid var(--glass-border-strong);transform:rotate(45deg);}    
+    .grp-popover h6{margin:.1rem 0 .4rem;font-size:0.65rem;letter-spacing:.5px;text-transform:uppercase;opacity:.8;}
+  .grp-popover.horizontal{display:flex;flex-direction:row;gap:1rem;min-width:560px;max-width:800px;}
+    .grp-popover .grp-controls{flex:0 0 220px;display:flex;flex-direction:column;gap:.55rem;}
+    .grp-popover .gp-add{display:flex;gap:.4rem;}
+  .grp-popover .gp-add input{flex:1 1 auto;font-size:0.6rem;padding:.36rem .5rem;height:32px;box-sizing:border-box;}
+  .grp-popover .gp-add button{font-size:0.55rem;padding:2px 6px;height:32px;}
+  /* Group list: fixed max height and internal scroll only. Touch-friendly and with light custom scrollbars. */
+  .grp-popover{max-height:calc(100vh - 120px);overflow:visible;} /* ensure popover doesn't exceed viewport, list will scroll */
+  .grp-popover #group-list{flex:1 1 320px;max-height:260px;overflow:auto;border-left:1px solid var(--glass-border-strong);padding-left:.6rem;margin-left:.4rem;padding-top:.15rem;padding-bottom:.15rem;border-radius:6px;}
+  .grp-popover #group-list{ -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: rgba(120,130,140,0.32) transparent; }
+  .grp-popover #group-list::-webkit-scrollbar{width:10px;height:10px}
+  .grp-popover #group-list::-webkit-scrollbar-thumb{background:rgba(120,130,140,0.28);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+  body.light .grp-popover #group-list::-webkit-scrollbar-thumb{background:rgba(80,90,100,0.16)}
+  .grp-popover #group-list .x-del{font-size:.5rem;padding:2px 5px;}
+  .grp-popover .empty{opacity:.5;}
+  /* Popover animation - enhanced smooth transitions */
+  .grp-popover{opacity:0;transform:translateY(-8px) scale(0.95);transition:opacity 0.25s cubic-bezier(0.22, 0.72, 0.18, 0.99), transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);}
+  .grp-popover.show{opacity:1;transform:translateY(0) scale(1);}
+  /* stronger elevation when moved to body (avoid being visually hidden by glass panel) */
+  .grp-popover{pointer-events:auto;}
+  .grp-popover[style*="position: absolute"]{box-shadow:0 18px 50px -12px rgba(10,20,40,0.7), 0 6px 20px -12px rgba(30,60,100,0.35);} 
+  /* Toast notifications - enhanced slide-in animation */
+  #toast-stack{position:fixed;bottom:14px;right:14px;display:flex;flex-direction:column;gap:.55rem;z-index:120;}
+  .toast{background:var(--glass-surf-2);border:1px solid var(--glass-border-strong);padding:.55rem .75rem;border-radius:16px;font-size:0.6rem;line-height:1.15;display:flex;align-items:center;gap:.65rem;box-shadow:var(--glass-shadow-1), var(--glass-shadow-2);max-width:260px;backdrop-filter:blur(calc(var(--glass-blur)*.5)) saturate(var(--glass-sat));-webkit-backdrop-filter:blur(calc(var(--glass-blur)*.5)) saturate(var(--glass-sat));animation:toastSlideIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);transition:all 0.25s ease;}
+  @keyframes toastSlideIn{from{opacity:0;transform:translateX(100%) translateY(20px) scale(0.8);}to{opacity:1;transform:translateX(0) translateY(0) scale(1);}}
+  .toast:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,0.35);}
+  .toast.ok{border-color:var(--ts-success);}
+  .toast.err{border-color:var(--ts-danger);}
+  .toast .close{background:none;border:none;color:#88939d;cursor:pointer;font-size:.75rem;padding:0 4px;transition:all 0.2s ease;}
+  .toast .close:hover{color:#fff;transform:scale(1.2);}
+  /* Diff badges improved with smooth transitions */
+  .badge.diff-added{background:linear-gradient(145deg,hsla(145,55%,28%,0.55),hsla(145,55%,22%,0.35));color:#8dff8d;border:1px solid hsla(145,70%,45%,0.55);backdrop-filter:blur(6px) saturate(160%);-webkit-backdrop-filter:blur(6px) saturate(160%);transition:all 0.25s ease;}
+  .badge.diff-added:hover{transform:scale(1.08);box-shadow:0 2px 8px hsla(145,70%,45%,0.4);}
+  .badge.diff-removed{background:linear-gradient(145deg,hsla(350,60%,30%,0.55),hsla(350,60%,22%,0.35));color:#ff9e9e;border:1px solid hsla(350,70%,55%,0.55);backdrop-filter:blur(6px) saturate(160%);-webkit-backdrop-filter:blur(6px) saturate(160%);transition:all 0.25s ease;}
+  .badge.diff-removed:hover{transform:scale(1.08);box-shadow:0 2px 8px hsla(350,70%,55%,0.4);}
+  .badge.diff-changed{background:linear-gradient(145deg,hsla(35,80%,34%,0.55),hsla(35,80%,26%,0.35));color:#ffc777;border:1px solid hsla(35,85%,55%,0.55);backdrop-filter:blur(6px) saturate(160%);-webkit-backdrop-filter:blur(6px) saturate(160%);transition:all 0.25s ease;}
+  .badge.diff-changed:hover{transform:scale(1.08);box-shadow:0 2px 8px hsla(35,85%,55%,0.4);}
+  td .badge{margin-right:2px;}
+  /* Action buttons unified alignment with smooth transitions */
+  td .assign-btn, td .actions .del-btn{height:26px;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0 6px;transition:all 0.25s cubic-bezier(0.22, 0.72, 0.18, 0.99);}
+  td .assign-btn:hover, td .actions .del-btn:hover{transform:translateY(-2px);box-shadow:0 4px 8px rgba(0,0,0,0.2);}
+  td .assign-btn:active, td .actions .del-btn:active{transform:translateY(0);box-shadow:0 2px 4px rgba(0,0,0,0.15);}
+  td .actions{display:flex;align-items:center;}
+  mark.hl{background:var(--ts-highlight-bg);color:#fff;padding:0 2px;border-radius:3px;transition:all 0.2s ease;}
+  mark.hl:hover{background:var(--ts-accent);color:#fff;}
+    /* Sticky header + sorting with smooth transitions */
+    :root { --ts-table-header-bg-dark: rgba(15,23,42,0.9); }
+    /* Allow stronger dark header for improved contrast */
+    #domains-table thead th{position:sticky;top:0;background:var(--ts-table-header-bg-dark);z-index:5;font-size:0.68rem;transition:all 0.25s ease;}
+    #domains-table thead th.sortable{cursor:pointer;user-select:none;transition:background-color 0.25s ease;}
+    #domains-table thead th.sortable:hover{background:rgba(255,255,255,0.08);}
+    #domains-table thead th.sortable:after{content:'\25B4';opacity:0;font-size:.55rem;margin-left:4px;transition:opacity 0.25s ease, transform 0.25s ease;}
+    #domains-table thead th.sortable.sorted-asc:after{content:'\25B4';opacity:.85;transform:translateY(-1px);}
+    #domains-table thead th.sortable.sorted-desc:after{content:'\25BE';opacity:.85;transform:translateY(1px);}
+    /* Enhanced table row hover animation */
+    #domains-table tbody tr{transition:all 0.25s ease;}
+    #domains-table tbody tr:hover{transform:translateX(4px);box-shadow:-4px 0 0 rgba(96,165,250,0.5);background:rgba(255,255,255,0.08);}
+    .table-shadow{box-shadow:0 6px 8px -6px rgba(0,0,0,.55);} 
+    .summary-line{min-height:1.1em;margin-bottom:.6rem;display:flex;justify-content:flex-start;}
+    .summary-line small{font-size:0.65rem;opacity:.85;}
+    @media (max-width:760px){
+      .controls-row{flex-direction:column;align-items:stretch;}
+      .right-col{align-self:stretch;justify-content:space-between;}
+      #manage-groups-open{margin-top:0;}
+      .search-col{flex:1 1 auto;}
+    }
+  </style>
+  <style>
+  /* Light mode overrides (phase 1) */
+  body.light #domains-table thead th{ background: var(--ts-table-header-bg-light); color:#374151; border-bottom:1px solid var(--ts-table-border-light); }
+  body.light #domains-table thead th.sortable:hover{background:rgba(0,0,0,0.05);}
+  body.light #domains-table tbody tr{ background:#ffffff; }
+  body.light #domains-table tbody tr:nth-child(even){ background: var(--ts-table-row-alt-light); }
+  body.light #domains-table tbody tr:hover{ background: var(--ts-table-row-hover-light);box-shadow:-4px 0 0 rgba(37,99,235,0.5); }
+  body.light #domains-table thead th.sortable:after{ color:#6b7280; }
+  body.light #domains-table thead th.sortable.sorted-asc:after, body.light #domains-table thead th.sortable.sorted-desc:after{ color:#374151; }
+  body.light .pg-box{ background:#ffffff; border:1px solid #e2e8f0; }
+  body.light .pg-btn{ background:#ffffff; border:1px solid #d1d5db; }
+  body.light .pg-btn:not([disabled]):hover{ background:#f1f5f9;box-shadow:0 2px 6px rgba(0,0,0,0.1); }
+  body.light #manage-groups-open{ background:#ffffff; border:1px solid #d1d5db; }
+  body.light #manage-groups-open:hover{ background:#f3f4f6; border-color:#cbd5e1;box-shadow:0 4px 8px rgba(0,0,0,0.15); }
+  body.light .grp-popover{ background:#ffffff; border:1px solid #e2e8f0; box-shadow:0 6px 20px -6px rgba(0,0,0,0.15); }
+  body.light .grp-popover:before{ background:#ffffff; border-color:#e2e8f0; }
+  body.light .toast{ background:#ffffff; border:1px solid #e5e7eb; }
+  body.light .toast:hover{box-shadow:0 8px 24px rgba(0,0,0,0.2);}
+  body.light .toast.ok{ border-color:#4ade80; }
+  body.light .toast.err{ border-color:#fca5a5; }
+  body.light .badge.diff-added{ background:#e6f9ed; color:#047857; }
+  body.light .badge.diff-added:hover{box-shadow:0 2px 8px rgba(4,120,87,0.3);}
+  body.light .badge.diff-removed{ background:#fde8e8; color:#b91c1c; }
+  body.light .badge.diff-removed:hover{box-shadow:0 2px 8px rgba(185,28,28,0.3);}
+  body.light .badge.diff-changed{ background:#fff4e5; color:#b45309; }
+  body.light .badge.diff-changed:hover{box-shadow:0 2px 8px rgba(180,83,9,0.3);}
+  body.light #multi-toolbar{ background:rgba(255,255,255,0.92); border-color:#dce3eb; box-shadow:0 4px 14px -4px rgba(0,0,0,0.15); }
+  body.light #multi-toolbar button{ background:#ffffff; border:1px solid #d1d5db; }
+  body.light #multi-toolbar button:hover{ background:#f3f4f6; }
+  body.light mark.hl{ background:#e0e7ff; color:#1e3a8a; }
+  body.light mark.hl:hover{background:#c7d2fe;color:#1e3a8a;}
+  </style>
+  <h2 class="page-title">Website List</h2>
+  <div class="controls-row">
+    <div class="search-col">
+      <label for="filter" class="small">Domain Search</label>
+      <input id="filter" placeholder="Ketik untuk filter..." />
+    </div>
+    <div class="right-col">
+      <div class="group-filter-col">
+        <label for="group-filter" class="small">Filter Grup</label>
+        <select id="group-filter" class="control-std">
+          <option value="all">Semua</option>
+          <option value="ungrouped">Tanpa Grup</option>
+        </select>
+      </div>
+      <div class="manage-groups-col">
+        <label class="sr-only">Kelola Grup</label>
+        <button id="manage-groups-open" class="secondary" aria-haspopup="true" aria-expanded="false" title="Kelola Grup">
+          <!-- hamburger icon -->
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <div id="group-popover" class="grp-popover" style="display:none;">
+          <h6>Manage Groups</h6>
+          <div style="display:flex;gap:1rem;align-items:flex-start;">
+            <div class="grp-controls">
+              <div style="display:flex;gap:.4rem;align-items:center;">
+                <input id="group-search" placeholder="cari..." style="flex:1 1 auto;font-size:.55rem;padding:.3rem .45rem;height:28px;" />
+                <!-- clear button reserved if needed -->
+              </div>
+              <div class="gp-add" style="display:flex;gap:.4rem;margin-top:.5rem;">
+                <input id="new-group" placeholder="nama_grup" style="font-size:.55rem;flex:1 1 auto;" />
+                <button id="add-group" class="secondary" style="height:28px;" title="Tambah Grup">Tambah</button>
+              </div>
+              <div style="margin-top:.5rem;display:flex;justify-content:flex-end;">
+                <button id="export-all-groups" class="secondary outline" style="font-size:.75rem;padding:6px 8px;">Export Semua</button>
+              </div>
+            </div>
+            <div id="group-list" class="small" style="flex:1 1 320px;max-height:260px;overflow:auto;border-left:1px solid var(--glass-border-strong);padding-left:.6rem;margin-left:.4rem;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="summary-line">
     <small id="summary" class="mono"></small>
-  </article>
-  <article style="text-align:right">
-    <button id="reload-groups" class="secondary">Reload Groups</button>
-  </article>
+  </div>
 </div>
-<div class="group-grid" id="group-sections">
-  <!-- Sections injected here -->
+<div class="page-centered glass-card compact" style="margin-bottom:1.2rem;">
+<div id="bulk-table-wrapper" style="width:100%;">
+<table id="domains-table" class="table-glass" style="width:100%; font-size:0.7rem; border-collapse:separate; border-spacing:0;">
+  <thead>
+    <tr>
+      <th style="width:34px; top:0;">#</th>
+      <th style="width:26px; top:0;"><input type="checkbox" id="select-all" /></th>
+      <th class="sortable" data-sort="domain" style="width:220px; top:0;">Domain</th>
+      <th>Grup</th>
+      <th class="sortable" data-sort="tech" style="top:0;">Tech</th>
+      <th class="sortable" data-sort="last_scan" style="top:0;">Last Scan</th>
+      <th>Mode</th>
+      <th>Diff</th>
+      <th>Aksi</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+  </table>
+  </div>
+<div id="multi-toolbar" style="display:none; position:sticky; bottom:0; background:var(--glass-surf-2); backdrop-filter: blur(calc(var(--glass-blur)*.4)) saturate(var(--glass-sat)); -webkit-backdrop-filter: blur(calc(var(--glass-blur)*.4)) saturate(var(--glass-sat)); padding:.55rem .6rem; border:1px solid var(--glass-border-strong); border-radius:14px; margin-top:.85rem; display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; z-index:20;">
+  <span class="small" id="sel-count">0 dipilih</span>
+  <select id="multi-group-select" style="min-width:140px;"></select>
+  <button id="multi-assign" class="secondary" disabled>Assign Terpilih</button>
+  <button id="multi-rescan" class="secondary outline" disabled>Re-Scan Terpilih</button>
+  <button id="multi-delete" class="secondary outline" disabled>Delete Terpilih</button>
+  <button id="multi-clear" class="secondary outline">Bersihkan Pilihan</button>
+  <span class="small mono" id="multi-status" style="opacity:.8;"></span>
 </div>
+<div id="paging-bar" class="small" style="margin-top:1.1rem;">
+  <div class="pg-box">
+    <label for="page-size" style="margin:0;opacity:.75;">Tampil</label>
+    <select style="margin-top:1rem;" id="page-size">
+      <option value="10">10</option>
+      <option value="20" selected>20</option>
+      <option value="50">50</option>
+      <option value="100">100</option>
+    </select>
+  </div>
+  <div class="pg-box pg-nav">
+    <button id="page-first" class="secondary outline pg-btn" disabled>&laquo;</button>
+    <button id="page-prev" class="secondary outline pg-btn" disabled>&lt;</button>
+    <span id="page-info" class="pg-info">Page 1/1</span>
+    <button id="page-next" class="secondary outline pg-btn" disabled>&gt;</button>
+    <button id="page-last" class="secondary outline pg-btn" disabled>&raquo;</button>
+  </div>
+</div>
+</div>
+<div id="toast-stack" aria-live="polite"></div>
 <dialog id="detail-dialog">
   <article style="max-width:880px; position:relative;">
     <header style="display:flex; align-items:center; gap:.75rem;">
@@ -45,12 +271,612 @@
     </section>
   </article>
 </dialog>
+<dialog id="assign-dialog">
+  <article style="max-width:400px;">
+    <header><h5 style="margin:0;">Assign Grup</h5></header>
+    <p class="small mono" id="assign-domain"></p>
+    <select id="assign-select"></select>
+    <footer style="margin-top:1rem; display:flex; gap:.5rem; justify-content:flex-end;">
+      <button id="assign-cancel" class="secondary">Batal</button>
+      <button id="assign-save" class="contrast">Simpan</button>
+    </footer>
+  </article>
+</dialog>
+<!-- removed modal groups-dialog; replaced by inline popover -->
 {% endblock %}
 {% block scripts %}
 <script>
-const sectionsDiv = document.getElementById('group-sections');
+// Data store
+let allDomains = []; // {domain, last_scan_ts, last_mode, tech_count, diff_added, diff_removed, diff_changed, groups:Set}
+let groupsMeta = {}; // group -> [domains]
+const inflightScans = new Map(); // domain -> {ctrl, started_at}
+const tbody = document.querySelector('#domains-table tbody');
 const filterInput = document.getElementById('filter');
 const summaryEl = document.getElementById('summary');
+const onlyUngroupedChk = null; // removed checkbox
+let groupFilterSel = document.getElementById('group-filter');
+const manageGroupsBtn = document.getElementById('manage-groups-open');
+const groupsPopover = document.getElementById('group-popover');
+const selectAllChk = document.getElementById('select-all');
+const multiToolbar = document.getElementById('multi-toolbar');
+const selCountEl = document.getElementById('sel-count');
+const multiGroupSelect = document.getElementById('multi-group-select');
+const multiAssignBtn = document.getElementById('multi-assign');
+const multiRescanBtn = document.getElementById('multi-rescan');
+const multiDeleteBtn = document.getElementById('multi-delete');
+const multiClearBtn = document.getElementById('multi-clear');
+const multiStatus = document.getElementById('multi-status');
+let selectedDomains = new Set();
+// Pagination state
+let pageSize = 20;
+let currentPage = 1;
+const groupListDiv = document.getElementById('group-list');
+const assignDlg = document.getElementById('assign-dialog');
+const assignDomainEl = document.getElementById('assign-domain');
+const assignSelect = document.getElementById('assign-select');
+let assignTarget = null;
+let sortState = { key: null, dir: 1 }; // dir: 1 asc, -1 desc
+let groupSearchTerm = '';
+const groupSearchInput = document.getElementById('group-search');
+const groupSearchClear = document.getElementById('group-search-clear');
+const toastStack = document.getElementById('toast-stack');
+
+// If the `group-filter` control is missing (template markup changed), create a hidden fallback
+if(!groupFilterSel){
+  try{
+    const fallback = document.createElement('select');
+    fallback.id = 'group-filter';
+    fallback.style.display = 'none';
+    fallback.innerHTML = "<option value='all'>Semua</option><option value='ungrouped'>Tanpa Grup</option>";
+    // Try to append to the right-col if present, otherwise to controls-row, otherwise to body
+    const rightCol = document.querySelector('.controls-row .right-col');
+    const controlsRow = document.querySelector('.controls-row');
+    if(rightCol) rightCol.appendChild(fallback);
+    else if(controlsRow) controlsRow.appendChild(fallback);
+    else document.body.appendChild(fallback);
+    groupFilterSel = fallback;
+  }catch(_){ /** ignore fallback failures */ }
+}
+
+function toast(msg, type='ok', ttl=3500){
+  if(!toastStack) return;
+  const el = document.createElement('div');
+  el.className = 'toast '+type;
+  el.innerHTML = `<span style="flex:1 1 auto;">${msg}</span><button class='close' aria-label='close'>&times;</button>`;
+  toastStack.appendChild(el);
+  const remove = ()=>{ if(!el.isConnected) return; el.style.transition='opacity .18s ease, transform .18s ease'; el.style.opacity='0'; el.style.transform='translateY(6px)'; setTimeout(()=> el.remove(), 190); };
+  el.querySelector('.close').addEventListener('click', remove);
+  setTimeout(remove, ttl);
+}
+
+function fmtTime(ts){ return ts ? new Date(ts*1000).toLocaleString() : 'never'; }
+
+async function loadAll(){
+  tbody.innerHTML = '<tr><td colspan="9" class="small">Loading...</td></tr>';
+  try {
+    const data = await apiFetch('/api/domains');
+    buildFlat(data);
+    summaryEl.textContent = `Total ${data.summary.total_domains} | Scanned ${data.summary.scanned} | Unscanned ${data.summary.unscanned}`;
+    renderTable();
+    loadGroupsMeta();
+  } catch(e){
+    tbody.innerHTML = `<tr><td colspan='7' class='small'>Error ${e.message}</td></tr>`;
+  }
+}
+
+function buildFlat(payload){
+  const domainMap = new Map();
+  // groups
+  (payload.groups||[]).forEach(g=>{
+    g.domains.forEach(d=>{
+      let rec = domainMap.get(d.domain);
+      if(!rec){
+        rec = { ...d, groups: new Set() };
+        domainMap.set(d.domain, rec);
+      }
+      rec.groups.add(g.key);
+    });
+  });
+  // ungrouped
+  (payload.ungrouped||[]).forEach(d=>{
+    if(!domainMap.has(d.domain)) domainMap.set(d.domain, { ...d, groups: new Set() });
+  });
+  allDomains = Array.from(domainMap.values()).sort((a,b)=> (a.domain < b.domain? -1:1));
+}
+
+async function loadGroupsMeta(){
+  try { const meta = await apiFetch('/api/domain_groups'); groupsMeta = meta.groups || {}; renderGroupList(); }
+  catch(e){ groupListDiv.textContent = 'Gagal load grup: '+e.message; }
+  refreshMultiGroupOptions();
+}
+
+function renderGroupList(){
+  const entries = Object.entries(groupsMeta).sort((a,b)=> a[0].localeCompare(b[0]));
+  const filtered = groupSearchTerm ? entries.filter(([g])=> g.toLowerCase().includes(groupSearchTerm)) : entries;
+  if(!filtered.length){ groupListDiv.innerHTML = '<em class="small empty" >(tidak ada grup)</em>'; return; }
+  groupListDiv.innerHTML = filtered.map(([g,arr])=>{
+    const count = arr.length;
+    return `<div class='grp-row' style='display:flex; align-items:center; gap:.35rem; margin-bottom:.3rem;'>
+      <span class='grp-name' data-group='${g}' style='flex:1 1 auto; word-break:break-all; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:.35rem;'>
+        <span style='flex:1 1 auto;'>${g}</span>
+        <span class='badge grp-count-badge'>${count}</span>
+      </span>
+      <button class='secondary outline export' data-group='${g}' title='Export CSV' style='font-size:.5rem;padding:2px 5px;'>↧</button>
+      <button class='secondary outline x-del' data-group='${g}' title='Hapus'>×</button>
+    </div>`;
+  }).join('');
+  groupListDiv.querySelectorAll('.x-del').forEach(btn=> btn.addEventListener('click', ()=> deleteGroup(btn.dataset.group)));
+  groupListDiv.querySelectorAll('.export').forEach(btn=> btn.addEventListener('click', ()=> exportGroupCSV(btn.dataset.group)));
+  groupListDiv.querySelectorAll('.grp-name').forEach(span=> span.addEventListener('dblclick', ()=> startRename(span.dataset.group, span)));
+}
+
+function renderTable(){
+  const term = (filterInput?.value||'').toLowerCase();
+  const onlyUng = false; // replaced by groupFilterSel option 'ungrouped'
+  const gf = (groupFilterSel?.value) ? groupFilterSel.value : 'all';
+  let rows = allDomains.filter(d=> {
+    if(term && !d.domain.toLowerCase().includes(term)) return false;
+    if(gf === 'ungrouped' && d.groups && d.groups.size) return false;
+    if(gf !== 'all' && gf !== 'ungrouped') {
+      // show only domains that have this group
+      if(!d.groups || !d.groups.has(gf)) return false;
+    }
+    return true;
+  });
+  // sort
+  if(sortState.key){
+    const k = sortState.key;
+    const dir = sortState.dir;
+    rows.sort((a,b)=>{
+      if(k==='domain') return a.domain.localeCompare(b.domain)*dir;
+      if(k==='tech') return ((a.tech_count||0)-(b.tech_count||0))*dir;
+      if(k==='last_scan') return ((a.last_scan_ts||0)-(b.last_scan_ts||0))*dir;
+      return 0;
+    });
+  }
+  const total = rows.length;
+  if(!total){
+    tbody.innerHTML = '<tr><td colspan="9" class="small">(tidak ada hasil)</td></tr>';
+    updatePaging(total);
+    return;
+  }
+  // Adjust currentPage if overflow
+  const totalPages = Math.ceil(total / pageSize) || 1;
+  if(currentPage > totalPages) currentPage = 1;
+  const start = (currentPage-1)*pageSize;
+  const slice = rows.slice(start, start+pageSize);
+  tbody.innerHTML = slice.map((r,i)=> rowHTML(r, start+i)).join('');
+  // Set header checkbox state for current page
+  if(selectAllChk){
+    const allSelected = slice.every(d=> selectedDomains.has(d.domain));
+    selectAllChk.checked = allSelected && slice.length>0;
+  }
+  updatePaging(total);
+  tbody.querySelectorAll('tr.row-detail').forEach(tr=>{
+    tr.addEventListener('click', (ev)=>{
+      if(ev.target.closest('.grp-badge')) return;
+      if(ev.target.closest('.actions')) return;
+      if(ev.target.closest('input.row-select')) return;
+      showDetail(tr.dataset.domain);
+    });
+    const addBtn = tr.querySelector('.assign-btn');
+    addBtn && addBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openAssign(tr.dataset.domain); });
+    tr.querySelectorAll('.grp-badge .rm').forEach(b=> b.addEventListener('click', (e)=>{ e.stopPropagation(); removeFromGroup(tr.dataset.domain, b.dataset.group); }));
+    const delBtn = tr.querySelector('.del-btn');
+    delBtn && delBtn.addEventListener('click', (e)=>{ e.stopPropagation(); deleteDomain(tr.dataset.domain, delBtn); });
+  });
+  tbody.querySelectorAll('input.row-select').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      const domain = cb.dataset.domain;
+      if(cb.checked) selectedDomains.add(domain); else selectedDomains.delete(domain);
+      updateMultiToolbar();
+    });
+  });
+  updateMultiToolbar();
+}
+
+function rowHTML(r, idx){
+  const groups = Array.from(r.groups||[]).sort();
+  const groupBadges = groups.map(g=> `<span class='grp-badge' title='${g}'>${g}<button class='rm' data-group='${g}' title='Hapus dari grup'>&times;</button></span>`).join(' ');
+  const last = fmtTime(r.last_scan_ts);
+  const diff = (r.diff_added||0)||(r.diff_removed||0)||(r.diff_changed||0)? `<span class='badge diff-added'>+${r.diff_added||0}</span><span class='badge diff-removed'>-${r.diff_removed||0}</span><span class='badge diff-changed'>±${r.diff_changed||0}</span>` : '';
+  const checked = selectedDomains.has(r.domain) ? 'checked' : '';
+  // highlight search term
+  let domainLabel = r.domain;
+  const term = (filterInput?.value||'').trim().toLowerCase();
+  if(term){
+    const lower = domainLabel.toLowerCase();
+    const idx = lower.indexOf(term);
+    if(idx !== -1){
+      domainLabel = domainLabel.substring(0,idx) + '<mark class="hl">' + domainLabel.substring(idx, idx+term.length) + '</mark>' + domainLabel.substring(idx+term.length);
+    }
+  }
+  return `<tr class='row-detail' data-domain='${r.domain}' style='cursor:pointer;'>
+    <td class='mono' style='text-align:right;opacity:.7;'>${idx+1}</td>
+    <td><input type='checkbox' class='row-select' data-domain='${r.domain}' ${checked} /></td>
+    <td class='mono' style='word-break:break-all;'>${domainLabel}</td>
+    <td>${groupBadges || '<span class="small" style="opacity:.5">(none)</span>'}</td>
+    <td>${r.tech_count||0}</td>
+    <td>${last}</td>
+    <td>${r.last_mode||''}</td>
+    <td>${diff}</td>
+  <td class='actions'><button class='secondary outline assign-btn' style='font-size:.55rem;padding:4px 12px;gap:2px;'>Assign</button> <button class='secondary outline del-btn' data-domain='${r.domain}' style='font-size:.55rem;padding:4px 12px;margin-left:4px;gap:2px;' title='Hapus domain'>
+      <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+    </button></td>
+  </tr>`;
+}
+
+filterInput && filterInput.addEventListener('input', ()=> renderTable());
+groupFilterSel && groupFilterSel.addEventListener('change', ()=> renderTable());
+selectAllChk && selectAllChk.addEventListener('change', ()=>{
+  if(selectAllChk.checked){
+    tbody.querySelectorAll('tr.row-detail').forEach(tr=> selectedDomains.add(tr.dataset.domain)); // only current page
+  } else {
+    tbody.querySelectorAll('tr.row-detail').forEach(tr=> selectedDomains.delete(tr.dataset.domain));
+  }
+  renderTable();
+});
+multiClearBtn && multiClearBtn.addEventListener('click', ()=>{ selectedDomains.clear(); if(selectAllChk) selectAllChk.checked=false; renderTable(); });
+multiAssignBtn && multiAssignBtn.addEventListener('click', batchAssignSelected);
+multiRescanBtn && multiRescanBtn.addEventListener('click', batchRescanSelected);
+multiDeleteBtn && multiDeleteBtn.addEventListener('click', batchDeleteSelected);
+// Pagination controls
+const pageSizeSel = document.getElementById('page-size');
+const pagePrevBtn = document.getElementById('page-prev');
+const pageNextBtn = document.getElementById('page-next');
+const pageFirstBtn = document.getElementById('page-first');
+const pageLastBtn = document.getElementById('page-last');
+const pageInfoSpan = document.getElementById('page-info');
+
+// Load persisted page size
+try {
+  const storedSz = localStorage.getItem('ts_page_size');
+  if(storedSz && pageSizeSel && [...pageSizeSel.options].some(o=> o.value===storedSz)){
+    pageSizeSel.value = storedSz;
+    pageSize = parseInt(storedSz,10) || pageSize;
+  }
+}catch(_){/* ignore */}
+
+pageSizeSel && pageSizeSel.addEventListener('change', ()=>{
+  pageSize = parseInt(pageSizeSel.value,10) || 20;
+  try { localStorage.setItem('ts_page_size', String(pageSize)); } catch(_){ }
+  currentPage = 1;
+  renderTable();
+});
+pagePrevBtn && pagePrevBtn.addEventListener('click', ()=>{ if(currentPage>1){ currentPage--; renderTable(); }});
+pageNextBtn && pageNextBtn.addEventListener('click', ()=>{ currentPage++; renderTable(); });
+pageFirstBtn && pageFirstBtn.addEventListener('click', ()=>{ if(currentPage!==1){ currentPage=1; renderTable(); }});
+pageLastBtn && pageLastBtn.addEventListener('click', ()=>{ const totalRows = getCurrentFilteredCount(); const tp = Math.max(1, Math.ceil(totalRows/pageSize)); if(currentPage!==tp){ currentPage=tp; renderTable(); }});
+
+function getCurrentFilteredCount(){
+  const term = (filterInput?.value||'').toLowerCase();
+  const gf = (groupFilterSel?.value) ? groupFilterSel.value : 'all';
+  return allDomains.filter(d=>{
+    if(term && !d.domain.toLowerCase().includes(term)) return false;
+    if(gf==='ungrouped' && d.groups && d.groups.size) return false;
+    if(gf!=='all' && gf!=='ungrouped' && (!d.groups || !d.groups.has(gf))) return false;
+    return true;
+  }).length;
+}
+
+function updatePaging(total){
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if(currentPage>totalPages) currentPage = totalPages;
+  if(pageInfoSpan) pageInfoSpan.textContent = `Page ${total? currentPage:0}/${totalPages}`;
+  if(pagePrevBtn) pagePrevBtn.disabled = currentPage<=1;
+  if(pageNextBtn) pageNextBtn.disabled = currentPage>=totalPages;
+  if(pageFirstBtn) pageFirstBtn.disabled = currentPage<=1;
+  if(pageLastBtn) pageLastBtn.disabled = currentPage>=totalPages;
+  // Update summary with range
+  if(summaryEl){
+    const start = total? ( (currentPage-1)*pageSize + 1 ) : 0;
+    const end = total? Math.min(currentPage*pageSize, total) : 0;
+    // Keep existing summary prefix (already set in loadAll) then append range
+    const base = summaryEl.textContent.split(' | Range: ')[0];
+    summaryEl.textContent = base + ` | Range: ${start}-${end} dari ${total}`;
+  }
+  // trigger fade animation
+  if(tbody){
+    tbody.classList.remove('page-fade');
+    void tbody.offsetWidth; // reflow
+    tbody.classList.add('page-fade');
+  }
+}
+
+async function deleteDomain(domain, btn){
+  if(!confirm('Hapus domain '+domain+'?')) return;
+  // No backend DELETE endpoint specified; attempt admin sniff_cache flush as fallback
+  // Try POST /sniff_cache with domains list if exists
+  const original = btn.textContent; btn.textContent='...'; btn.disabled=true;
+  try {
+    // Attempt to clear from cache/store so it disappears on reload. If future dedicated endpoint exists, replace here.
+    await fetch('/sniff_cache', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domains:[domain], flush:false})});
+  } catch(e){ /* ignore errors for now */ }
+  // Optimistic remove from UI list
+  allDomains = allDomains.filter(d=> d.domain!==domain);
+  selectedDomains.delete(domain);
+  renderTable();
+  toast('Domain dihapus','ok');
+  // TODO: add real DELETE endpoint for permanent removal if needed.
+  btn.textContent=original;
+}
+
+// Sorting event
+document.querySelectorAll('#domains-table thead th.sortable').forEach(th=>{
+  th.addEventListener('click', ()=>{
+    const key = th.dataset.sort;
+    if(sortState.key === key){ sortState.dir = -sortState.dir; }
+    else { sortState.key = key; sortState.dir = 1; }
+    document.querySelectorAll('#domains-table thead th.sortable').forEach(h=> h.classList.remove('sorted-asc','sorted-desc'));
+    th.classList.add(sortState.dir===1 ? 'sorted-asc':'sorted-desc');
+    renderTable();
+  });
+});
+
+// Sticky header shadow
+const tableEl = document.getElementById('domains-table');
+tableEl && tableEl.parentElement.addEventListener('scroll', ()=>{
+  const sc = tableEl.parentElement.scrollTop;
+  tableEl.classList.toggle('table-shadow', sc>4);
+});
+
+// Group search handlers
+if(groupSearchInput){
+  groupSearchInput.addEventListener('input', ()=>{ groupSearchTerm = (groupSearchInput.value||'').trim().toLowerCase(); renderGroupList(); });
+}
+if(groupSearchClear){
+  groupSearchClear.addEventListener('click', ()=>{ groupSearchTerm=''; if(groupSearchInput) groupSearchInput.value=''; renderGroupList(); });
+}
+
+// Inline rename
+function startRename(oldName, spanEl){
+  if(!spanEl) return; // guard
+  const pure = oldName;
+  const input = document.createElement('input');
+  input.type='text';
+  input.value=pure;
+  input.style.width='100%';
+  input.style.fontSize='0.65rem';
+  spanEl.replaceWith(input);
+  input.focus();
+  input.select();
+  let done=false;
+  const finish = async (commit)=>{
+    if(done) return; done=true;
+    const val = (input.value||'').trim();
+    if(!commit || !val || val===pure){ renderGroupList(); return; }
+    try {
+      await jsonReq(`/api/domain_groups/${encodeURIComponent(pure)}/rename`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({new: val})});
+      toast('Rename: '+pure+' -> '+val,'ok');
+      await loadGroupsMeta();
+      await loadAll();
+    } catch(e){ toast('Gagal rename: '+e.message,'err'); }
+  };
+  input.addEventListener('keydown', (e)=>{
+    if(e.key==='Escape'){ e.preventDefault(); finish(false); }
+    else if(e.key==='Enter'){ e.preventDefault(); finish(true); }
+  });
+  input.addEventListener('blur', ()=> finish(true));
+}
+
+// Export group domains to CSV
+function exportGroupCSV(group){
+  const list = groupsMeta[group] || [];
+  if(!list.length){ toast('Grup kosong','err'); return; }
+  const map = new Map(allDomains.map(d=> [d.domain, d]));
+  const header = 'domain,tech_count,last_scan_ts,last_scan_iso\n';
+  const rows = list.map(d=>{
+    const rec = map.get(d) || {};
+    const ts = rec.last_scan_ts || '';
+    const iso = ts ? new Date(ts*1000).toISOString() : '';
+    return `${d},${rec.tech_count||0},${ts},${iso}`;
+  });
+  const blob = new Blob([header + rows.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download = 'group_'+group+'.csv'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 1500);
+  toast('Export '+group,'ok');
+}
+
+function exportAllGroups(){
+  const keys = Object.keys(groupsMeta||{}).sort();
+  if(!keys.length){ toast('Tidak ada grup','err'); return; }
+  let exported=0; keys.forEach((g,i)=> setTimeout(()=>{ try{ exportGroupCSV(g); exported++; if(exported===keys.length) toast('Export semua selesai','ok'); }catch(e){} }, i*160));
+}
+document.getElementById('export-all-groups')?.addEventListener('click', exportAllGroups);
+
+function updateMultiToolbar(){
+  const count = selectedDomains.size;
+  selCountEl.textContent = count + ' dipilih';
+  multiToolbar.style.display = count ? 'flex' : 'none';
+  multiAssignBtn.disabled = !count || !multiGroupSelect.value;
+  if(multiRescanBtn) multiRescanBtn.disabled = !count;
+  if(multiDeleteBtn) multiDeleteBtn.disabled = !count;
+}
+
+function refreshMultiGroupOptions(){
+  const opts = Object.keys(groupsMeta || {}).sort();
+  multiGroupSelect.innerHTML = '<option value="">-- pilih grup --</option>' + opts.map(o=> {
+    const c = (groupsMeta[o]||[]).length; return `<option value='${o}'>${o} (${c})</option>`;
+  }).join('');
+  // group filter options
+  if(groupFilterSel){
+    const cur = groupFilterSel.value;
+    groupFilterSel.innerHTML = `<option value='all'>Semua</option><option value='ungrouped'>Tanpa Grup</option>` + opts.map(o=> {
+      const c = (groupsMeta[o]||[]).length; return `<option value='${o}'>${o} (${c})</option>`;
+    }).join('');
+    if(cur && [...groupFilterSel.options].some(o=> o.value===cur)) groupFilterSel.value = cur; else groupFilterSel.value='all';
+  }
+  if(!multiGroupSelect.onchange) multiGroupSelect.addEventListener('change', updateMultiToolbar);
+  updateMultiToolbar();
+}
+
+// Generic helper for JSON fetch with detailed error surfacing
+async function jsonReq(url, opts={}){
+  const timeoutMs = opts.timeoutMs || 8000;
+  const ctrl = new AbortController();
+  const to = setTimeout(()=> ctrl.abort(), timeoutMs);
+  const resp = await fetch(url, { ...opts, signal: ctrl.signal });
+  clearTimeout(to);
+  let bodyText = '';
+  try { bodyText = await resp.text(); } catch(_){ bodyText=''; }
+  let parsed = null;
+  try { parsed = bodyText ? JSON.parse(bodyText) : null; } catch(_){ /* ignore */ }
+  if(!resp.ok){
+    const msg = (parsed && (parsed.error || parsed.detail)) || resp.status+':'+resp.statusText;
+    console.error('Request failed', {url, status: resp.status, body: bodyText});
+    throw new Error(msg);
+  }
+  return parsed;
+}
+
+// Group CRUD
+const addGroupBtn = document.getElementById('add-group');
+addGroupBtn && addGroupBtn.addEventListener('click', async ()=>{
+  const ng = document.getElementById('new-group');
+  const name = ng ? ng.value.trim() : '';
+  if(!name) { alert('Nama grup kosong'); return; }
+  addGroupBtn.disabled = true; const prevTxt = addGroupBtn.textContent; addGroupBtn.textContent='...';
+  try {
+    const resp = await jsonReq('/api/domain_groups', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({group:name})});
+    console.log('ADD_GROUP_OK', resp);
+    if(ng) ng.value='';
+    await loadGroupsMeta();
+    // refresh domain memberships completely
+    await loadAll();
+    toast('Grup ditambahkan','ok');
+  } catch(e){
+    console.error('ADD_GROUP_FAIL', e);
+    toast('Gagal tambah grup: '+e.message,'err');
+  } finally { addGroupBtn.disabled=false; addGroupBtn.textContent=prevTxt || 'Tambah'; }
+});
+
+async function deleteGroup(g){
+  if(!confirm('Hapus grup '+g+'?')) return;
+  const btn = [...groupListDiv.querySelectorAll('.x-del')].find(b=> b.dataset.group===g);
+  if(btn){ btn.disabled=true; const old=btn.textContent; btn.textContent='...'; btn.dataset._old=old; }
+  try {
+    const resp = await jsonReq('/api/domain_groups/'+encodeURIComponent(g), {method:'DELETE'});
+    console.log('DEL_GROUP_OK', g, resp);
+    await loadGroupsMeta();
+    // full reload to stay consistent
+    await loadAll();
+    toast('Grup dihapus','ok');
+  } catch(e){ alert('Gagal hapus: '+e.message); }
+  finally { if(btn){ btn.disabled=false; btn.textContent=btn.dataset._old || 'Hapus'; delete btn.dataset._old; } }
+}
+
+function openAssign(domain){
+  assignTarget = domain;
+  assignDomainEl.textContent = domain;
+  // options groups not already present
+  const domainRec = allDomains.find(d=> d.domain===domain);
+  const present = domainRec ? domainRec.groups : new Set();
+  const options = Object.keys(groupsMeta).filter(g=> !present.has(g)).sort();
+  assignSelect.innerHTML = options.map(o=> `<option value='${o}'>${o}</option>`).join('');
+  if(!options.length){ assignSelect.innerHTML = '<option value="" disabled>(tidak ada grup tersedia)</option>'; }
+  assignDlg.showModal();
+}
+
+const assignCancelBtn = document.getElementById('assign-cancel');
+assignCancelBtn && assignCancelBtn.addEventListener('click', ()=> assignDlg.close());
+const assignSaveBtn = document.getElementById('assign-save');
+assignSaveBtn && assignSaveBtn.addEventListener('click', async ()=>{
+  const g = assignSelect.value; if(!g) { assignDlg.close(); return; }
+  assignSaveBtn.disabled=true; const oldTxt = assignSaveBtn.textContent; assignSaveBtn.textContent='...';
+  try {
+    await jsonReq(`/api/domain_groups/${encodeURIComponent(g)}/assign`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain: assignTarget})});
+    assignDlg.close();
+    await loadGroupsMeta();
+    await loadAll();
+    toast('Assign ke '+g,'ok');
+  } catch(e){ alert('Gagal assign: '+e.message); }
+  finally { assignSaveBtn.disabled=false; assignSaveBtn.textContent=oldTxt || 'Simpan'; }
+});
+
+async function removeFromGroup(domain, g){
+  const rowBtn = tbody.querySelector(`tr[data-domain='${domain}'] .grp-badge button.rm[data-group='${g}']`);
+  if(rowBtn){ rowBtn.disabled=true; const old=rowBtn.textContent; rowBtn.textContent='.'; rowBtn.dataset._old=old; }
+  try {
+    const resp = await jsonReq(`/api/domain_groups/${encodeURIComponent(g)}/remove`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain})});
+    console.log('REMOVE_FROM_GROUP_OK', {domain, g, resp});
+    await loadGroupsMeta();
+    await loadAll();
+    toast('Dihapus dari '+g,'ok');
+  } catch(e){ alert('Gagal hapus dari grup: '+e.message); }
+  finally { if(rowBtn){ rowBtn.disabled=false; rowBtn.textContent=rowBtn.dataset._old || '×'; delete rowBtn.dataset._old; } }
+}
+
+async function batchAssignSelected(){
+  const group = multiGroupSelect.value;
+  if(!group){ alert('Pilih grup terlebih dahulu'); return; }
+  if(!selectedDomains.size){ return; }
+  multiAssignBtn.disabled=true; multiStatus.textContent='Assign...';
+  let ok=0, fail=0;
+  for(const d of Array.from(selectedDomains)){
+    try {
+      const resp = await jsonReq(`/api/domain_groups/${encodeURIComponent(group)}/assign`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain: d})});
+      console.log('BATCH_ASSIGN_OK', d, resp);
+      ok++;
+    } catch(e){ fail++; console.error('assign_failed', d, e); }
+  }
+  multiStatus.textContent=`Selesai: ${ok} ok, ${fail} gagal`;
+  await loadGroupsMeta();
+  await loadAll();
+  selectedDomains.clear();
+  if(selectAllChk) selectAllChk.checked=false;
+  renderTable();
+  setTimeout(()=>{ multiStatus.textContent=''; updateMultiToolbar(); }, 4000);
+  if(ok) toast(`${ok} domain -> ${group}`,'ok');
+  if(fail) toast(`${fail} gagal assign`,'err');
+}
+
+async function batchRescanSelected(){
+  if(!selectedDomains.size){ return; }
+  if(multiRescanBtn) multiRescanBtn.disabled=true;
+  multiStatus.textContent='Rescan...';
+  let ok=0, fail=0; let i=0; const total = selectedDomains.size;
+  for(const d of Array.from(selectedDomains)){
+    i++;
+    multiStatus.textContent = `Scanning ${i}/${total}...`;
+    try {
+      await fetch('/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain: d, fast_full:1}) });
+      ok++;
+    } catch(e){ fail++; console.error('rescan_failed', d, e); }
+  }
+  multiStatus.textContent=`Rescan selesai: ${ok} ok, ${fail} gagal`;
+  // keep selection so user can maybe assign after scan; do not clear
+  setTimeout(async ()=>{ await loadAll(); renderTable(); }, 1000);
+  setTimeout(()=>{ multiStatus.textContent=''; updateMultiToolbar(); }, 6000);
+  if(ok) toast(`${ok} domain di-rescan`,'ok');
+  if(fail) toast(`${fail} gagal rescan`,'err');
+}
+
+async function batchDeleteSelected(){
+  if(!selectedDomains.size) return;
+  if(!confirm('Hapus '+selectedDomains.size+' domain terpilih?')) return;
+  const domains = Array.from(selectedDomains);
+  if(multiDeleteBtn) multiDeleteBtn.disabled=true;
+  multiStatus.textContent='Delete...';
+  let ok=0, fail=0;
+  for(const d of domains){
+    try {
+      // Placeholder: attempt cache clear; replace with real DELETE endpoint when available
+      await fetch('/sniff_cache', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domains:[d], flush:false})});
+      allDomains = allDomains.filter(r=> r.domain!==d);
+      selectedDomains.delete(d);
+      ok++;
+    } catch(e){ fail++; }
+  }
+  renderTable();
+  multiStatus.textContent=`Delete selesai: ${ok} ok, ${fail} gagal`;
+  setTimeout(()=>{ multiStatus.textContent=''; updateMultiToolbar(); }, 4000);
+  toast(`${ok} domain dihapus`,'ok');
+  if(fail) toast(`${fail} gagal hapus`,'err');
+}
+
+// Detail dialog logic (reused from previous version)
 const dlg = document.getElementById('detail-dialog');
 const detailTitle = document.getElementById('detail-title');
 const detailMeta = document.getElementById('detail-meta');
@@ -58,108 +884,6 @@ const techTbody = document.querySelector('#detail-tech-table tbody');
 const diffAdded = document.getElementById('diff-added');
 const diffRemoved = document.getElementById('diff-removed');
 const diffChanged = document.getElementById('diff-changed');
-
-function sectionSkeleton(title, key){
-  return `<section data-group="${key}">
-    <h4>${title}</h4>
-    <div class="card-grid" id="cards-${key}"></div>
-    <div class="small" id="more-wrapper-${key}" style="margin-top:.5rem"></div>
-  </section>`;
-}
-
-// state for pagination
-const groupState = {}; // key -> {all:[], shown:0}
-const PAGE_SIZE = 60;
-
-async function load(){
-  sectionsDiv.innerHTML = '<p>Loading...</p>';
-  try {
-    const data = await apiFetch('/api/domains');
-    render(data);
-  } catch(e){ sectionsDiv.innerHTML = '<p class="small">Error '+e.message+'</p>'; }
-}
-
-function render(data){
-  summaryEl.textContent = `Total ${data.summary.total_domains} | Scanned ${data.summary.scanned} | Unscanned ${data.summary.unscanned}`;
-  const f = (filterInput.value||'').toLowerCase();
-  const orderKeys = ['faculty','directorate','work_unit','bem_ukm'];
-  sectionsDiv.innerHTML = orderKeys.map(k=>{
-    const g = data.groups.find(x=> x.key===k) || {key:k,label:k.replace('_',' ').toUpperCase(),domains:[],count:0};
-    return sectionSkeleton(g.label + ` (${g.count})`, k);
-  }).join('');
-  // cards
-  orderKeys.forEach(k=>{
-    const g = data.groups.find(x=> x.key===k) || {domains:[]};
-    const filtered = (g.domains||[]).filter(d=> !f || d.domain.includes(f));
-    groupState[k] = { all: filtered, shown: 0 };
-    const container = document.getElementById('cards-'+k);
-    if(!filtered.length){ container.innerHTML = '<p class="small">(empty)</p>'; return; }
-    container.innerHTML = '';
-    renderMore(k);
-  });
-  // append ungrouped at bottom if any
-  if(data.ungrouped && data.ungrouped.length){
-    const extra = document.createElement('section');
-    extra.innerHTML = `<h4>Ungrouped (${data.ungrouped.length})</h4><div class='card-grid' id='cards-ungrouped'></div>`;
-    sectionsDiv.appendChild(extra);
-    const container = document.getElementById('cards-ungrouped');
-    const filteredUG = data.ungrouped.filter(d=> !f || d.domain.includes(f));
-    groupState['ungrouped'] = { all: filteredUG, shown:0 };
-    container.innerHTML='';
-    // add load more wrapper
-    const wrap = document.createElement('div');
-    wrap.id = 'more-wrapper-ungrouped';
-    wrap.className='small';
-    wrap.style.marginTop='.5rem';
-    container.parentElement.appendChild(wrap);
-    renderMore('ungrouped');
-  }
-  sectionsDiv.querySelectorAll('.domain-card').forEach(el=> el.addEventListener('click', ()=> showDetail(el.dataset.domain)));
-}
-
-function renderMore(key){
-  const st = groupState[key];
-  if(!st) return;
-  const container = document.getElementById('cards-'+key);
-  const slice = st.all.slice(st.shown, st.shown + PAGE_SIZE);
-  slice.forEach(d=> container.insertAdjacentHTML('beforeend', cardHTML(d)));
-  st.shown += slice.length;
-  const wrap = document.getElementById('more-wrapper-'+key);
-  if(wrap){
-    if(st.shown < st.all.length){
-      wrap.innerHTML = `<button class='secondary outline small' data-more='${key}'>Load More (${st.shown}/${st.all.length})</button>`;
-      wrap.querySelector('button').addEventListener('click', ()=>{ renderMore(key); attachCardHandlers(); });
-    } else if(st.all.length > PAGE_SIZE) {
-      wrap.innerHTML = `<span>All loaded (${st.all.length})</span>`;
-    } else {
-      wrap.innerHTML='';
-    }
-  }
-  attachCardHandlers();
-}
-
-function attachCardHandlers(){
-  sectionsDiv.querySelectorAll('.domain-card').forEach(el=>{
-    if(!el.dataset.bound){
-      el.dataset.bound='1';
-      el.addEventListener('click', ()=> showDetail(el.dataset.domain));
-    }
-  });
-}
-
-function cardHTML(d){
-  const last = d.last_scan_ts ? new Date(d.last_scan_ts*1000).toLocaleString() : 'never';
-  const badges = [];
-  if(d.diff_added) badges.push(`<span class='badge diff-added' title='Added technologies'>+${d.diff_added}</span>`);
-  if(d.diff_removed) badges.push(`<span class='badge diff-removed' title='Removed technologies'>-${d.diff_removed}</span>`);
-  if(d.diff_changed) badges.push(`<span class='badge diff-changed' title='Changed versions'>±${d.diff_changed}</span>`);
-  const badgeHtml = badges.length? `<div class='dc-badges'>${badges.join(' ')}</div>`:'';
-  return `<div class='domain-card' data-domain='${d.domain}'>
-    <div class='dc-title'>${d.domain}</div>
-    <div class='dc-meta small mono'>tech:${d.tech_count} | last:${last}${d.last_mode? ' | '+d.last_mode:''}</div>
-    ${badgeHtml}
-  </div>`;
-}
 
 async function showDetail(domain){
   detailTitle.textContent = domain;
@@ -170,72 +894,202 @@ async function showDetail(domain){
   const loader = document.getElementById('detail-loader');
   loader.style.display='flex';
   try {
+    // Load persisted detail and render (re-usable renderer below)
     const data = await apiFetch(`/api/domain/${domain}/detail`);
-    // Meta
-    const latest = data.latest; const prev = data.previous;
-    detailMeta.innerHTML = `<strong>Latest Mode:</strong> ${latest.mode} | <strong>Finished:</strong> ${new Date(latest.finished_at*1000).toLocaleString()}${prev? ' | Prev: '+new Date(prev.finished_at*1000).toLocaleString():''}`;
-    if(data.status === 'in-progress'){
-      detailMeta.innerHTML += ` <span class='badge' style='background:#1e3a8a;margin-left:.5rem'>In Progress${data.eta_seconds? ' ~'+data.eta_seconds+'s':''}</span>`;
-    }
-    // Tech table
-    techTbody.innerHTML = '';
-    const addedNames = new Set((data.diff.added||[]).map(x=> x.name));
-    const changedNames = new Set((data.diff.changed||[]).map(x=> x.name));
-    (data.technologies||[]).forEach(t=>{
-      const tr = document.createElement('tr');
-      if(addedNames.has(t.name)) tr.classList.add('diff-added');
-      else if(changedNames.has(t.name)) tr.classList.add('diff-changed');
-      tr.innerHTML = `<td>${t.name}</td><td>${t.version||''}</td><td>${(t.categories||[]).join(', ')}</td><td>${t.confidence||''}</td>`;
-      techTbody.appendChild(tr);
-    });
-    if(!techTbody.children.length){ techTbody.innerHTML = '<tr><td colspan="4" class="small">(no technologies)</td></tr>'; }
-    // Diff
-  (data.diff.added||[]).forEach(a=>{ const li=document.createElement('li'); li.className='diff-added'; li.textContent = a.name + (a.version? ' '+a.version:''); diffAdded.appendChild(li); });
-  (data.diff.removed||[]).forEach(r=>{ const li=document.createElement('li'); li.className='diff-removed'; li.textContent = r.name + (r.version? ' '+r.version:''); diffRemoved.appendChild(li); });
-  (data.diff.changed||[]).forEach(c=>{ const li=document.createElement('li'); li.className='diff-changed'; li.textContent = `${c.name}: ${c.from||'(none)'} -> ${c.to||'(none)'}`; diffChanged.appendChild(li); });
-    if(!diffAdded.children.length) diffAdded.innerHTML = '<li class="small">(none)</li>';
-    if(!diffRemoved.children.length) diffRemoved.innerHTML = '<li class="small">(none)</li>';
-    if(!diffChanged.children.length) diffChanged.innerHTML = '<li class="small">(none)</li>';
+    renderDetailData(domain, data);
   } catch(e){
     techTbody.innerHTML = `<tr><td colspan='4' class='small'>Error ${e.message}</td></tr>`;
-  } finally {
-    loader.style.display='none';
-  }
+  } finally { loader.style.display='none'; }
 }
 
-// quick re-scan with polling
+function renderDetailData(domain, data){
+  // data can be either API detail shape or a direct scan result (from /scan)
+  const latest = data.latest || data; // /api/domain/.../detail returns wrapper, /scan returns raw
+  const prev = (data.previous || null);
+  // Build meta line
+    try{
+      let metaHtml = '';
+      if(latest && latest.mode) metaHtml += `<strong>Mode:</strong> ${latest.mode} | `;
+      if(latest && latest.finished_at) metaHtml += `<strong>Finished:</strong> ${new Date((latest.finished_at||latest.timestamp)*1000).toLocaleString()}`;
+      if(prev && prev.finished_at) metaHtml += ` | Prev: ${new Date(prev.finished_at*1000).toLocaleString()}`;
+      if(data.status === 'in-progress') metaHtml += ` <span class='badge' style='background:#1e3a8a;margin-left:.5rem'>In Progress${data.eta_seconds? ' ~'+data.eta_seconds+'s':''}</span>`;
+      // If server returned a scan id or timestamp include persisted link
+      const scanId = (data.latest && data.latest.scan_id) || (data.scan_id) || null;
+      if(scanId){
+        metaHtml += ` <span class='small mono' style='margin-left:.5rem'>scan_id:${scanId}</span>`;
+        // link to history page filtered by domain
+        metaHtml += ` <a class='secondary outline' href='/history?domain=${encodeURIComponent(domain)}' style='font-size:.7rem;margin-left:.5rem'>Open archived</a>`;
+      }
+      // Small button to explicitly request archived payload (re-read DB)
+      metaHtml += ` <button id='view-archived' class='secondary outline' style='font-size:.7rem;margin-left:.5rem'>View archived</button>`;
+      detailMeta.innerHTML = metaHtml;
+    }catch(_){ detailMeta.textContent=''; }
+
+  // Render technologies list (supports both shapes)
+  techTbody.innerHTML='';
+  const techs = data.technologies || (data.latest && data.latest.technologies) || [];
+  const added = (data.diff && data.diff.added) || [];
+  const changed = (data.diff && data.diff.changed) || [];
+  const addedNames = new Set((added||[]).map(x=> x.name));
+  const changedNames = new Set((changed||[]).map(x=> x.name));
+  (techs||[]).forEach(t=>{
+    const tr = document.createElement('tr');
+    if(addedNames.has(t.name)) tr.classList.add('diff-added');
+    else if(changedNames.has(t.name)) tr.classList.add('diff-changed');
+    tr.innerHTML = `<td>${t.name}</td><td>${t.version||''}</td><td>${(t.categories||[]).join(', ')}</td><td>${t.confidence||''}</td>`;
+    techTbody.appendChild(tr);
+  });
+  if(!techTbody.children.length){ techTbody.innerHTML = '<tr><td colspan="4" class="small">(no technologies)</td></tr>'; }
+
+  // Render diffs
+  diffAdded.innerHTML = '';
+  diffRemoved.innerHTML = '';
+  diffChanged.innerHTML = '';
+  (added||[]).forEach(a=>{ const li=document.createElement('li'); li.className='diff-added'; li.textContent = a.name + (a.version? ' '+a.version:'' ); diffAdded.appendChild(li); });
+  (data.diff && data.diff.removed || []).forEach(r=>{ const li=document.createElement('li'); li.className='diff-removed'; li.textContent = r.name + (r.version? ' '+r.version:'' ); diffRemoved.appendChild(li); });
+  (changed||[]).forEach(c=>{ const li=document.createElement('li'); li.className='diff-changed'; li.textContent = `${c.name}: ${c.from||'(none)'} -> ${c.to||'(none)'}`; diffChanged.appendChild(li); });
+  if(!diffAdded.children.length) diffAdded.innerHTML = '<li class="small">(none)</li>';
+  if(!diffRemoved.children.length) diffRemoved.innerHTML = '<li class="small">(none)</li>';
+  if(!diffChanged.children.length) diffChanged.innerHTML = '<li class="small">(none)</li>';
+
+  // Wire archived view button
+  const viewBtn = document.getElementById('view-archived');
+  if(viewBtn){ viewBtn.addEventListener('click', async ()=> { await loadArchived(domain); }); }
+}
+
+async function loadArchived(domain){
+  // Fetch persisted DB detail and render it (keeps dialog open)
+  try{
+    const data = await apiFetch(`/api/domain/${encodeURIComponent(domain)}/detail`);
+    // api returns wrapper; renderDetailData handles both shapes
+    renderDetailData(domain, data);
+    toast('Loaded archived result','ok');
+  }catch(e){ toast('Gagal load archived: '+(e.message||e),'err'); }
+}
+
 let polling = null;
 async function triggerRescan(){
-  const domain = detailTitle.textContent;
-  const btn = document.getElementById('rescan-btn');
+  const domain = detailTitle.textContent; const btn = document.getElementById('rescan-btn');
   if(!domain) return;
-  if(polling){ return; }
-  btn.disabled = true; btn.textContent='Scanning...';
-  try {
-    await fetch('/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain, fast_full:1}) });
-  } catch(e){
-    btn.disabled=false; btn.textContent='Re-Scan'; alert('Scan start failed: '+e.message); return;
+  // Prevent duplicate in-flight scans
+  if(inflightScans.has(domain)){
+    toast('Scan sudah berjalan untuk '+domain,'err');
+    return;
   }
-  // poll detail every 2s up to 60s
-  const start = Date.now();
-  const poll = async ()=>{
-    try {
-      const data = await apiFetch(`/api/domain/${domain}/detail`);
-      if(data.latest && (Date.now()/1000 - data.latest.finished_at) < 120){
-        // assume new scan finished (recent finished_at)
-        btn.disabled=false; btn.textContent='Re-Scan'; polling=null; showDetail(domain); return;
-      }
-    } catch(e){}
-    if(Date.now() - start < 60000){ polling = setTimeout(poll, 2000); } else { btn.disabled=false; btn.textContent='Re-Scan'; polling=null; }
-  };
-  poll();
+  btn.disabled = true; btn.textContent='Scanning...';
+  // Abortable fetch with timeout
+  const ctrl = new AbortController();
+  const timeoutMs = 60000; // 60s
+  const to = setTimeout(()=> { ctrl.abort(); }, timeoutMs);
+  inflightScans.set(domain, {ctrl, started_at: Date.now()});
+  try {
+    const resp = await fetch(`/scan?domain=${encodeURIComponent(domain)}&force=1`, { signal: ctrl.signal });
+    clearTimeout(to);
+    if(!resp.ok) throw new Error('scan request failed: '+resp.status+' '+resp.statusText);
+    const data = await resp.json();
+    // Render returned live data immediately
+    renderDetailData(domain, data);
+    toast('Scan selesai','ok');
+  } catch(e){
+    if(e.name === 'AbortError') toast('Scan dibatalkan karena timeout','err');
+    else toast('Scan gagal: '+(e.message||e),'err');
+  } finally {
+    inflightScans.delete(domain);
+    clearTimeout(to);
+    // Small cooldown to prevent immediate spam
+    setTimeout(()=>{ btn.disabled = false; btn.textContent='Re-Scan'; }, 8000);
+  }
 }
+const rescanBtn = document.getElementById('rescan-btn');
+rescanBtn && rescanBtn.addEventListener('click', triggerRescan);
+const detailCloseBtn = document.getElementById('detail-close');
+detailCloseBtn && detailCloseBtn.addEventListener('click', ()=> dlg.close());
 
-document.getElementById('rescan-btn').addEventListener('click', triggerRescan);
+// Style group badge
+const style = document.createElement('style');
+style.textContent = `.grp-badge{display:inline-flex;align-items:center;gap:2px;background:var(--ts-badge-group-bg);padding:2px 4px;border-radius:4px;font-size:0.55rem;color:var(--ts-badge-group-text);} .grp-badge button.rm{background:none;border:none;color:var(--ts-danger-soft);cursor:pointer;font-size:.7rem;line-height:1;padding:0 2px;} .grp-badge button.rm:hover{color:var(--ts-danger);} tr.row-detail:hover{background:rgba(255,255,255,0.03);} #multi-toolbar{font-size:0.65rem;} #multi-toolbar select,#multi-toolbar button{font-size:0.6rem;padding:2px 6px;} .grp-count-badge{background:var(--ts-badge-group-bg); color:var(--ts-badge-group-text); font-size:.55rem; padding:2px 6px; border-radius:12px; line-height:1;}`;
+document.head.appendChild(style);
 
-filterInput.addEventListener('input', load);
-document.getElementById('detail-close').addEventListener('click', ()=> dlg.close());
-document.getElementById('reload-groups').addEventListener('click', async ()=>{ try { await fetch('/admin/domain_groups/reload',{method:'POST'}); load(); } catch(e){ alert('Reload failed '+e.message);} });
-load();
+loadAll();
+// Groups popover controls: move popover to body when opened to avoid ancestor overflow clipping
+if(manageGroupsBtn && groupsPopover){
+  // remember original parent so we can restore on close
+  const _popoverOriginalParent = groupsPopover.parentElement;
+  const _popoverOriginalNext = groupsPopover.nextSibling;
+
+  function restorePopoverNode(){
+    try{
+      if(_popoverOriginalParent){
+        // restore only if not already the child
+        if(groupsPopover.parentElement !== _popoverOriginalParent){
+          if(_popoverOriginalNext && _popoverOriginalNext.parentElement === _popoverOriginalParent){
+            _popoverOriginalParent.insertBefore(groupsPopover, _popoverOriginalNext);
+          } else {
+            _popoverOriginalParent.appendChild(groupsPopover);
+          }
+        }
+      }
+    }catch(_){ /* best-effort restore */ }
+  }
+
+  function closePopover(){
+    groupsPopover.classList.remove('show');
+    setTimeout(()=>{ if(!groupsPopover.classList.contains('show')) groupsPopover.style.display='none'; }, 140);
+    manageGroupsBtn.classList.remove('open');
+    manageGroupsBtn.setAttribute('aria-expanded','false');
+    // restore node back into original place to keep markup tidy
+    restorePopoverNode();
+    // clear absolute positioning we set when showing
+    groupsPopover.style.position = '';
+    groupsPopover.style.left = '';
+    groupsPopover.style.top = '';
+    groupsPopover.style.zIndex = '';
+    groupsPopover.style.minWidth = '';
+  }
+
+  function showPopoverAtButton(){
+    // move popover node to body so it won't be clipped by overflow:hidden ancestors
+    try{
+      document.body.appendChild(groupsPopover);
+      groupsPopover.style.position = 'absolute';
+      groupsPopover.style.display = 'block';
+      // compute position next to button (below it)
+      const rect = manageGroupsBtn.getBoundingClientRect();
+      const top = rect.bottom + window.scrollY + 6; // slight gap
+      let left = rect.left + window.scrollX;
+      // ensure min width matches button or original width
+      const minW = Math.max(manageGroupsBtn.offsetWidth, 260);
+      groupsPopover.style.minWidth = minW + 'px';
+      // clamp to viewport to avoid overflow right edge
+      const maxLeft = Math.max(8, window.scrollX + document.documentElement.clientWidth - groupsPopover.offsetWidth - 12);
+      if(left > maxLeft) left = maxLeft;
+      groupsPopover.style.left = left + 'px';
+      groupsPopover.style.top = top + 'px';
+      groupsPopover.style.zIndex = 9999;
+      // show with animation
+      requestAnimationFrame(()=> groupsPopover.classList.add('show'));
+      manageGroupsBtn.classList.add('open');
+      manageGroupsBtn.setAttribute('aria-expanded','true');
+    }catch(e){
+      // fallback: simply toggle inline display on original node
+      groupsPopover.style.display = groupsPopover.style.display === 'block' ? 'none' : 'block';
+    }
+  }
+
+  manageGroupsBtn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const open = groupsPopover.classList.contains('show') || groupsPopover.style.display==='block';
+    if(open){ closePopover(); return; }
+    showPopoverAtButton();
+  });
+
+  document.addEventListener('click', (e)=>{
+    if((groupsPopover.classList.contains('show') || groupsPopover.style.display==='block') && !groupsPopover.contains(e.target) && e.target!==manageGroupsBtn){
+      closePopover();
+    }
+  });
+
+  document.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && (groupsPopover.classList.contains('show') || groupsPopover.style.display==='block')){ closePopover(); }});
+}
 </script>
 {% endblock %}

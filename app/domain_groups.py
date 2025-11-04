@@ -1,11 +1,12 @@
-import json, os, time, threading, logging
+import json, os, time, threading, logging, tempfile
 from typing import Dict, List, Tuple
 
 _GROUPS_PATH = os.environ.get('TECHSCAN_DOMAIN_GROUPS_FILE', os.path.join(os.path.dirname(__file__), '..', 'data', 'domain_groups.json'))
-_lock = threading.Lock()
+_lock = threading.RLock()
 _groups_cache: dict = {}
 _groups_mtime: float | None = None
 _logger = logging.getLogger('techscan.domain_groups')
+_last_write_error: dict | None = None
 
 DEFAULT_KEYS = ["faculty", "directorate", "work_unit", "bem_ukm"]
 
@@ -68,6 +69,174 @@ def load(force: bool = False) -> DomainGroups:
 
 def reload() -> DomainGroups:
     return load(force=True)
+
+# --- Write / mutate helpers ---
+
+def _write_data(data: dict):
+    """Atomically write domain groups data to disk (with fallback)."""
+    global _last_write_error, _cached_obj, _groups_mtime
+    path = os.path.abspath(_GROUPS_PATH)
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    tmp_fd = None
+    tmp_path = None
+    t0 = time.time()
+    _logger.debug('domain_groups_write_start path=%s', path)
+    try:
+        tmp_fd, tmp_path = tempfile.mkstemp(prefix='._dg', dir=directory)  # binary safe
+        with os.fdopen(tmp_fd, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+        # update mtime cache
+        try:
+            st = os.stat(path)
+            _groups_mtime = st.st_mtime
+        except Exception:
+            pass
+        _last_write_error = None
+        _cached_obj = DomainGroups(data.get('groups', {}), data.get('version'), data.get('updated_at'))
+        _logger.info('domain_groups_write_success path=%s version=%s dur_ms=%d size=%s', path, data.get('version'), int((time.time()-t0)*1000), os.path.exists(path) and os.path.getsize(path) or -1)
+    except Exception as e:
+        _last_write_error = {'error': str(e), 'path': path, 'ts': time.time()}
+        _logger.error('domain_groups_write_failed path=%s err=%s (attempting fallback direct write)', path, e)
+        # Fallback direct write
+        try:
+            with open(path, 'w', encoding='utf-8') as f2:
+                json.dump(data, f2, indent=2, ensure_ascii=False)
+            _last_write_error['fallback'] = 'direct_ok'
+            _logger.warning('domain_groups_fallback_direct_write_ok path=%s', path)
+        except Exception as e2:
+            _last_write_error['fallback'] = f'direct_failed:{e2}'
+            _logger.exception('domain_groups_fallback_direct_write_failed path=%s err=%s', path, e2)
+            raise
+    finally:
+        if tmp_path:
+            try:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+            except Exception:
+                pass
+
+def _current_data() -> dict:
+    obj = load()
+    return {
+        'version': obj.version or 1,
+        'updated_at': obj.updated_at,
+        'groups': obj.groups
+    }
+
+def _bump_version(data: dict):
+    v = data.get('version') or 1
+    data['version'] = v + 1
+    data['updated_at'] = time.time()
+
+def add_group(group: str) -> DomainGroups:
+    group = (group or '').strip()
+    if not group:
+        raise ValueError('empty_group')
+    with _lock:
+        data = _current_data()
+        groups = data.setdefault('groups', {})
+        if group in groups:
+            return _cached_obj or load()
+        groups[group] = []
+        _bump_version(data)
+        _write_data(data)
+        return _cached_obj or reload()
+
+def delete_group(group: str) -> DomainGroups:
+    group = (group or '').strip()
+    if not group:
+        raise ValueError('empty_group')
+    with _lock:
+        data = _current_data()
+        groups = data.setdefault('groups', {})
+        if group in groups:
+            groups.pop(group)
+            _bump_version(data)
+            _write_data(data)
+            return _cached_obj or reload()
+        return _cached_obj or load()
+
+def assign_domain(group: str, domain: str) -> DomainGroups:
+    group = (group or '').strip()
+    domain = (domain or '').strip().lower()
+    if not group or not domain:
+        raise ValueError('bad_params')
+    with _lock:
+        data = _current_data()
+        groups = data.setdefault('groups', {})
+        arr = groups.setdefault(group, [])
+        if domain not in arr:
+            arr.append(domain)
+            arr.sort()
+            _bump_version(data)
+            _write_data(data)
+            return _cached_obj or reload()
+        return _cached_obj or load()
+
+def remove_domain(group: str, domain: str) -> DomainGroups:
+    group = (group or '').strip()
+    domain = (domain or '').strip().lower()
+    if not group or not domain:
+        raise ValueError('bad_params')
+    with _lock:
+        data = _current_data()
+        groups = data.setdefault('groups', {})
+        arr = groups.get(group)
+        if arr and domain in arr:
+            arr.remove(domain)
+            _bump_version(data)
+            _write_data(data)
+            return _cached_obj or reload()
+        return _cached_obj or load()
+
+    def rename_group(old: str, new: str) -> DomainGroups:
+        """Rename a group key while preserving domains. If new exists, merge domains.
+        Raises ValueError on invalid params or if old not found.
+        """
+        old = (old or '').strip()
+        new = (new or '').strip()
+        if not old or not new:
+            raise ValueError('bad_params')
+        if old == new:
+            return _cached_obj or load()
+        with _lock:
+            data = _current_data()
+            groups = data.setdefault('groups', {})
+            if old not in groups:
+                raise ValueError('group_not_found')
+            src_domains = groups.pop(old)
+            dest = groups.setdefault(new, [])
+            # merge unique
+            merged = set(dest) | set(src_domains)
+            groups[new] = sorted(merged)
+            _bump_version(data)
+            _write_data(data)
+            return _cached_obj or reload()
+
+def diagnostics() -> dict:
+    path = os.path.abspath(_GROUPS_PATH)
+    info = {'path': path}
+    try:
+        info['exists'] = os.path.exists(path)
+        if info['exists']:
+            st = os.stat(path)
+            info['size'] = st.st_size
+            info['mtime'] = st.st_mtime
+    except Exception as e:
+        info['stat_error'] = str(e)
+    info['cached_version'] = (_cached_obj.version if _cached_obj else None)
+    info['last_write_error'] = _last_write_error
+    try:
+        info['dir_writable'] = os.access(os.path.dirname(path), os.W_OK)
+        info['file_writable'] = (os.access(path, os.W_OK) if info.get('exists') else True)
+    except Exception:
+        pass
+    info['lock_type'] = type(_lock).__name__
+    return info
 
 
 def group_domains(domain_meta: List[Tuple[str, float | None, str | None, int | None]], extras: dict | None = None):

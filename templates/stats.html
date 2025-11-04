@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TechScan | Statistics</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/stats.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <nav>
+    <a href="/">Scanner</a> |
+    <a href="/stats" class="active">Statistics</a> |
+    <a href="/admin/health">Health</a>
+  </nav>
+
+  <h1>📊 TechScan Statistics</h1>
+
+  <section id="summary">
+    <div class="card"><strong>Total Scans:</strong> <span id="total">-</span></div>
+    <div class="card"><strong>Avg Duration (ms):</strong> <span id="avg_duration">-</span></div>
+    <div class="card"><strong>Avg Tech Count:</strong> <span id="avg_tech">-</span></div>
+    <div class="card"><strong>Uptime (s):</strong> <span id="uptime">-</span></div>
+  </section>
+
+  <section id="timings">
+    <div class="card"><strong>Avg Evidence (ms, 24h):</strong> <span id="avg_evidence">-</span></div>
+    <div class="card"><strong>Avg Version Audit (ms, 24h):</strong> <span id="avg_va">-</span></div>
+  </section>
+
+  <section id="charts">
+    <div class="chart-wrap">
+      <h3>Top Technologies</h3>
+      <canvas id="techChart"></canvas>
+    </div>
+    <div class="chart-wrap">
+      <h3>Top Categories</h3>
+      <canvas id="catChart"></canvas>
+    </div>
+  </section>
+
+  <footer>
+    <small>Auto-refresh setiap 60 detik</small>
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/stats.js') }}"></script>
+</body>
+</html>

@@ -51,7 +51,20 @@ async function run() {
   const navTimeout = parseInt(process.env.TECHSCAN_NAV_TIMEOUT || '0', 10)
   const full = process.env.TECHSCAN_FULL === '1'
   const blockResourcesEnv = process.env.TECHSCAN_BLOCK_RESOURCES
-  const shouldBlock = blockResourcesEnv === '0' ? false : (full ? false : true)
+  // Blocking logic:
+  //  - If TECHSCAN_BLOCK_RESOURCES=0 => never block
+  //  - If =1 => always block (even for full)
+  //  - If unset => block only for fast (non-full) mode (previous default)
+  const shouldBlock = blockResourcesEnv === '0' ? false : (blockResourcesEnv === '1' ? true : (!full))
+  // Allow custom resource types list (comma separated) else default
+  const customTypes = (process.env.TECHSCAN_BLOCK_RESOURCE_TYPES || '').split(',').map(s=>s.trim()).filter(Boolean)
+  const blockTypes = customTypes.length ? customTypes : ['image','media','font','stylesheet']
+  // Optional size threshold in KB (abort images/media larger than this)
+  let sizeThresholdKB = 0
+  if (process.env.TECHSCAN_BLOCK_MAX_KB) {
+    const v = parseInt(process.env.TECHSCAN_BLOCK_MAX_KB,10)
+    if (!isNaN(v) && v>0) sizeThresholdKB = v
+  }
   const baseWait = full ? 15000 : 10000
   const maxWait = navTimeout && navTimeout > 0 ? navTimeout : baseWait
   const options = {
@@ -76,10 +89,31 @@ async function run() {
         if (page && !page._techscanInterception) {
           await page.setRequestInterception(true)
           page.on('request', req => {
-            const type = req.resourceType()
-            if (['image','media','font','stylesheet'].includes(type)) return req.abort()
+            try {
+              const type = req.resourceType()
+              if (blockTypes.includes(type)) return req.abort()
+            } catch {}
             req.continue()
           })
+          if (sizeThresholdKB > 0) {
+            try {
+              page.on('response', async resp => {
+                try {
+                  const req = resp.request()
+                  if (!req) return
+                  const type = req.resourceType()
+                  if (!['image','media'].includes(type)) return
+                  const lenH = resp.headers()['content-length']
+                  if (lenH) {
+                    const bytes = parseInt(lenH,10)
+                    if (!isNaN(bytes) && bytes/1024 > sizeThresholdKB) {
+                      try { req.abort() } catch {}
+                    }
+                  }
+                } catch {}
+              })
+            } catch {}
+          }
           page._techscanInterception = true
         }
       } catch (e) {
@@ -260,6 +294,88 @@ async function run() {
       }
     } catch (e) {
       if (process.env.TECHSCAN_DEBUG) console.error('[techscan] GA4 synthetic detection failed:', e.message || String(e))
+    }
+    // Synthetic YouTube / Polymer SPA detection (optional)
+    if (process.env.TECHSCAN_SYNTHETIC_YOUTUBE !== '0' && !techs.find(t => t.name === 'YouTube Platform')) {
+      try {
+        const page = site.driver && site.driver.browser && site.driver.browser.pages ? (await site.driver.browser.pages())[0] : null
+        if (page) {
+          const yt = await page.evaluate(() => {
+            const out = { ytcfg: false, polymer: false, ytPlayer: false, scripts: 0 }
+            try {
+              if (window.ytcfg && typeof window.ytcfg.get === 'function') out.ytcfg = true
+            } catch {}
+            try {
+              if (window.Polymer || (window.webcomponents && window.webcomponents.readyTime)) out.polymer = true
+            } catch {}
+            try {
+              if (window.ytplayer || window.yt) out.ytPlayer = true
+            } catch {}
+            try {
+              out.scripts = document.querySelectorAll('script').length
+            } catch {}
+            return out
+          })
+          const strong = yt && (yt.ytcfg && yt.ytPlayer)
+          const moderate = yt && (yt.ytcfg || yt.ytPlayer) && yt.polymer
+          if (strong || moderate) {
+            techs.push({
+              name: 'YouTube Platform',
+              version: null,
+              categories: ['Video platforms','CDN'],
+              confidence: strong ? 80 : 55
+            })
+          }
+        }
+      } catch (ye) {
+        if (process.env.TECHSCAN_DEBUG) console.error('[techscan] YouTube synthetic detection failed:', ye.message || String(ye))
+      }
+    }
+    // Generic SPA detection (React / Vue / Angular) optional
+    if (process.env.TECHSCAN_SYNTHETIC_SPA !== '0') {
+      try {
+        const page = site.driver && site.driver.browser && site.driver.browser.pages ? (await site.driver.browser.pages())[0] : null
+        if (page) {
+          const spa = await page.evaluate(() => {
+            const out = { react: false, reactVersion: null, vue: false, vueVersion: null, angular: false, angularVersion: null }
+            try {
+              // React detection: look for __REACT_DEVTOOLS_GLOBAL_HOOK__ or React dev attributes
+              if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__) out.react = true
+              // Try to infer version from preloaded data (heuristic: search script text)
+              const scripts = Array.from(document.querySelectorAll('script')).map(s => s.innerHTML || '')
+              for (const src of scripts.slice(0, 20)) {
+                const m = src.match(/react@([0-9]+\.[0-9]+\.[0-9]+)/i)
+                if (m) { out.reactVersion = m[1]; break }
+              }
+            } catch {}
+            try {
+              if (window.Vue || window.__VUE_DEVTOOLS_GLOBAL_HOOK__) out.vue = true
+              if (window.Vue && window.Vue.version) out.vueVersion = window.Vue.version
+            } catch {}
+            try {
+              // Angular: presence of ng-version attribute or window.ng.coreTokens
+              const ngRoot = document.querySelector('[ng-version]')
+              if (ngRoot) { out.angular = true; out.angularVersion = ngRoot.getAttribute('ng-version') }
+              if (!out.angular && window.ng && window.ng.coreTokens) out.angular = true
+            } catch {}
+            return out
+          })
+          // React
+          if (spa.react && process.env.TECHSCAN_SYNTHETIC_REACT !== '0' && !techs.find(t => t.name === 'React')) {
+            techs.push({ name: 'React', version: spa.reactVersion || null, categories: ['JavaScript frameworks'], confidence: spa.reactVersion ? 70 : 55 })
+          }
+            // Vue
+          if (spa.vue && process.env.TECHSCAN_SYNTHETIC_VUE !== '0' && !techs.find(t => t.name === 'Vue.js' || t.name === 'Vue')) {
+            techs.push({ name: 'Vue.js', version: spa.vueVersion || null, categories: ['JavaScript frameworks'], confidence: spa.vueVersion ? 70 : 55 })
+          }
+          // Angular
+          if (spa.angular && process.env.TECHSCAN_SYNTHETIC_ANGULAR !== '0' && !techs.find(t => t.name === 'Angular')) {
+            techs.push({ name: 'Angular', version: spa.angularVersion || null, categories: ['JavaScript frameworks'], confidence: spa.angularVersion ? 70 : 55 })
+          }
+        }
+      } catch (se) {
+        if (process.env.TECHSCAN_DEBUG) console.error('[techscan] SPA synthetic detection failed:', se.message || String(se))
+      }
     }
     const categories = {}
     for (const t of techs) {

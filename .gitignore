@@ -13,6 +13,7 @@ dist/
 
 # Virtual environments
 venv/
+.env
 .env/
 .venv/
 ENV/
@@ -80,6 +81,8 @@ app/static/
 *.tmp
 *.temp
 *.bak
+tmp_*.py
+scripts/tmp_*.py
 
 # Local env override
 .env.local

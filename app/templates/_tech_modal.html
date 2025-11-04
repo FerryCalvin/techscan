@@ -1,0 +1,108 @@
+<!-- Clean single tech modal partial -->
+<div id="tech-modal" class="tech-modal" role="dialog" aria-modal="true" aria-hidden="true">
+  <div id="tech-modal-overlay" class="tech-modal-backdrop" data-close="true"></div>
+  <!-- adopt stats-cat-panel styling to match category popup visuals -->
+  <div class="tech-modal-panel stats-cat-panel" role="document" aria-labelledby="tech-modal-name" tabindex="-1">
+    <header class="tech-modal-header">
+      <div class="tech-meta">
+        <img id="tech-modal-icon" src="/static/assets/images/placeholder-tech.svg" alt="" class="tech-icon" />
+        <div>
+          <h2 id="tech-modal-name">Technology</h2>
+          <div id="tech-modal-sub" class="small-note"></div>
+        </div>
+      </div>
+      <div class="tech-actions">
+        <button id="tech-modal-export" class="btn">Export CSV</button>
+        <button id="tech-modal-close" class="btn" aria-label="Close">✕</button>
+      </div>
+    </header>
+    <div class="tech-modal-body">
+      <div class="tech-left">
+        <section id="tech-sites" class="tech-section">
+          <h3>Sites using this technology</h3>
+          <div style="margin-bottom:8px"><input id="tech-modal-search" placeholder="Search sites…" style="width:100%;padding:.45rem;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit" /></div>
+          <div id="tech-modal-sites-list" style="max-height:62vh;overflow:auto;padding:8px;">Loading...</div>
+          <div id="tech-modal-sites-pager" class="tech-sites-pager" style="padding:8px;text-align:center;"></div>
+        </section>
+      </div>
+      <aside class="tech-right">
+        <section id="tech-summary" class="tech-section">
+          <h3>Summary</h3>
+          <div id="tech-modal-summary-inner">Loading metadata…</div>
+        </section>
+        <section id="tech-evidence" class="tech-section">
+          <h3>Evidence</h3>
+          <div id="tech-evidence-list">Loading evidence…</div>
+        </section>
+        <section id="tech-trend" class="tech-section">
+          <h3>Trend</h3>
+          <canvas id="modalTrend" style="width:100%;height:180px"></canvas>
+        </section>
+      </aside>
+    </div>
+    <footer class="tech-modal-footer">
+      <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
+        <div id="tech-modal-footer-left"></div>
+        <div>
+          <button id="tech-modal-view-websites" class="btn">View all on Websites</button>
+        </div>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<style>
+/* Modal defaults: hidden until activated. Use fixed overlay + centered panel */
+#tech-modal { position: fixed; inset: 0; z-index: 1200; display: none; align-items: center; justify-content: center; }
+#tech-modal.active { display: flex; }
+#tech-modal-overlay { position: fixed; inset: 0; background: rgba(12,14,18,0.52); backdrop-filter: blur(6px) saturate(120%); z-index: 1200; }
+
+/* Liquid glass panel */
+.tech-modal-panel {
+  position: relative;
+  width: 86%;
+  max-width: 980px;
+  border-radius: 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 84vh;
+  overflow: auto;
+  z-index: 1201;
+  background: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(245,248,255,0.45));
+  box-shadow: 0 8px 30px rgba(2,6,23,0.45), inset 0 1px 0 rgba(255,255,255,0.35);
+  border: 1px solid rgba(255,255,255,0.18);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  transition: transform .26s cubic-bezier(.2,.9,.2,1), opacity .22s ease, box-shadow .22s ease;
+}
+.tech-modal-panel::before{
+  content: '';
+  position: absolute; inset: 0; z-index: 0; border-radius: 14px; pointer-events: none;
+  background: linear-gradient(120deg, rgba(255,255,255,0.02), rgba(255,255,255,0.06) 30%, rgba(255,255,255,0.01) 70%);
+}
+
+.tech-modal-header{ position: relative; display:flex; justify-content:space-between; align-items:center; padding:14px 18px; z-index:1; }
+.tech-modal-body{ display:flex; gap:18px; padding:12px 18px 18px 18px; z-index:1; }
+.tech-left{ flex:1 1 60%; }
+.tech-right{ flex:0 0 38%; max-width:420px; }
+.evidence-list{ margin-top:8px; }
+.evidence-item{ padding:8px 10px; border-radius:8px; background:rgba(255,255,255,0.06); margin-bottom:8px; font-size:0.95rem; }
+.sites-section .site-card{ padding:10px; border-bottom:1px solid rgba(255,255,255,0.04); display:flex; justify-content:space-between; gap:8px; }
+.sites-pager{ display:flex; gap:8px; align-items:center; margin-top:8px; }
+.tech-modal-footer{ display:flex; gap:8px; padding:12px 16px; border-top:1px solid rgba(255,255,255,0.04); justify-content:flex-end; z-index:1; }
+
+/* enter/exit animation */
+#tech-modal.active .tech-modal-panel { transform: translateY(0) scale(1); opacity: 1; }
+#tech-modal .tech-modal-panel { transform: translateY(-10px) scale(.995); opacity: 0; }
+
+/* visible state transitions */
+#tech-modal.active .tech-modal-panel { transition: transform .26s cubic-bezier(.2,.9,.2,1), opacity .2s ease; }
+
+/* header tech icon */
+.tech-icon{ width:56px; height:56px; object-fit:cover; border-radius:10px; margin-right:12px; z-index:1; }
+
+/* small helpers for focus ring */
+.tech-modal-panel :focus{ outline: 2px solid rgba(66,133,244,0.9); outline-offset: 3px; }
+
+</style>

@@ -24,6 +24,85 @@ def search_tech():
         logging.getLogger('techscan.search').error('search error tech=%s category=%s version=%s err=%s', tech, category, version, e)
         return jsonify({'error': 'search failed', 'details': str(e)}), 500
 
+@search_bp.route('/tech_suggest', methods=['GET'])
+def tech_suggest():
+    """Return distinct technology names starting with a given prefix.
+    Params: prefix (required, min length 1), limit (default 10, max 50)
+    Response: {suggestions: ["WordPress", "WooCommerce", ...]}
+    """
+    prefix = (request.args.get('prefix') or '').strip()
+    if not prefix:
+        return jsonify({'suggestions': []})
+    # simple safeguard: avoid wildcard abuse
+    if len(prefix) > 64:
+        prefix = prefix[:64]
+    try:
+        limit = int(request.args.get('limit', 10))
+    except ValueError:
+        limit = 10
+    limit = max(1, min(limit, 50))
+    # If DB disabled, return empty quickly
+    if getattr(_db, '_DB_DISABLED', False):
+        return jsonify({'suggestions': []})
+    try:
+        with _db.get_conn() as conn:  # type: ignore[attr-defined]
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT DISTINCT tech_name FROM domain_techs
+                           WHERE LOWER(tech_name) LIKE LOWER(%s)
+                           ORDER BY tech_name ASC LIMIT %s""",
+                    (prefix + '%', limit)
+                )
+                rows = cur.fetchall()
+        suggestions = [r[0] for r in rows if r and r[0]]
+        return jsonify({'suggestions': suggestions, 'count': len(suggestions), 'prefix': prefix})
+    except Exception as e:
+        logging.getLogger('techscan.search').warning('tech_suggest failed prefix=%s err=%s', prefix, e)
+        return jsonify({'suggestions': [], 'error': 'suggest failed'}), 500
+
+@search_bp.route('/category_suggest', methods=['GET'])
+def category_suggest():
+    """Return distinct category names starting with a given prefix.
+    Categories are stored as comma-separated values in domain_techs.categories.
+    We unnest by splitting then DISTINCT filter. This is a lightweight helper
+    for the tech search UI. Params: prefix, limit (default 10, max 50).
+    """
+    prefix = (request.args.get('prefix') or '').strip()
+    if not prefix:
+        return jsonify({'suggestions': []})
+    if len(prefix) > 64:
+        prefix = prefix[:64]
+    try:
+        limit = int(request.args.get('limit', 10))
+    except ValueError:
+        limit = 10
+    limit = max(1, min(limit, 50))
+    if getattr(_db, '_DB_DISABLED', False):
+        return jsonify({'suggestions': []})
+    try:
+        with _db.get_conn() as conn:  # type: ignore[attr-defined]
+            with conn.cursor() as cur:
+                # Split categories string by comma, trim blanks, filter by prefix
+                cur.execute(
+                    """
+                    WITH cats AS (
+                        SELECT DISTINCT UNNEST(STRING_TO_ARRAY(categories, ',')) AS cat
+                        FROM domain_techs
+                        WHERE categories IS NOT NULL
+                    )
+                    SELECT cat FROM cats
+                    WHERE cat IS NOT NULL AND cat <> '' AND LOWER(cat) LIKE LOWER(%s)
+                    ORDER BY cat ASC LIMIT %s
+                    """,
+                    (prefix + '%', limit)
+                )
+                rows = cur.fetchall()
+        suggestions = [r[0] for r in rows if r and r[0]]
+        return jsonify({'suggestions': suggestions, 'count': len(suggestions), 'prefix': prefix})
+    except Exception as e:
+        logging.getLogger('techscan.search').warning('category_suggest failed prefix=%s err=%s', prefix, e)
+        return jsonify({'suggestions': [], 'error': 'suggest failed'}), 500
+
 @search_bp.route('/domain', methods=['GET'])
 def domain_lookup():
     """Return current technologies (merged view) for a single domain.
@@ -177,3 +256,99 @@ def diff_domain():
     except Exception as e:
         logging.getLogger('techscan.search').error('diff error domain=%s err=%s', domain_norm, e)
         return jsonify({'error':'diff failed'}), 500
+
+@search_bp.route('/scan_history', methods=['GET'])
+def scan_history():
+    """Return scan history rows (global or per-domain) with sorting & pagination.
+    Params:
+      domain (optional) - if provided, filter to that domain; else global recent scans
+      limit (default 20, max 200)
+      offset (default 0)
+      sort (finished_at|started_at|duration_ms|domain) default finished_at
+      dir (asc|desc) default desc
+    Response: {count, results:[{domain,mode,started_at,finished_at,duration_ms,from_cache,adaptive_timeout,retries,timeout_used}], offset, limit, total}
+    """
+    if getattr(_db, '_DB_DISABLED', False):
+        return jsonify({'count':0,'results':[],'offset':0,'limit':20,'total':0})
+    domain = (request.args.get('domain') or '').strip().lower()
+    try:
+        limit = int(request.args.get('limit','20'))
+        offset = int(request.args.get('offset','0'))
+    except ValueError:
+        return jsonify({'error':'bad_params'}), 400
+    if limit < 1: limit = 20
+    if limit > 200: limit = 200
+    if offset < 0: offset = 0
+    sort_key = (request.args.get('sort') or 'finished_at').lower()
+    sort_dir = (request.args.get('dir') or 'desc').lower()
+    valid_cols = {
+        'finished_at': 'finished_at',
+        'started_at': 'started_at',
+        'duration_ms': 'duration_ms',
+        'domain': 'domain'
+    }
+    col = valid_cols.get(sort_key, 'finished_at')
+    dir_sql = 'ASC' if sort_dir == 'asc' else 'DESC'
+    base = 'FROM scans'
+    params = []
+    where = ''
+    if domain:
+        where = ' WHERE domain=%s'
+        params.append(domain)
+    count_sql = 'SELECT COUNT(*) ' + base + where
+    sql = f'''SELECT domain, mode, started_at, finished_at, duration_ms, from_cache, adaptive_timeout, retries, timeout_used
+              {base}{where} ORDER BY {col} {dir_sql} LIMIT %s OFFSET %s'''
+    params.extend([limit, offset])
+    try:
+        with _db.get_conn() as conn:  # type: ignore[attr-defined]
+            with conn.cursor() as cur:
+                cur.execute(count_sql, params[:-2])
+                total = cur.fetchone()[0]
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+        out = []
+        for r in rows:
+            out.append({
+                'domain': r[0],
+                'mode': r[1],
+                'started_at': r[2].timestamp(),
+                'finished_at': r[3].timestamp(),
+                'duration_ms': r[4],
+                'from_cache': r[5],
+                'adaptive_timeout': r[6],
+                'retries': r[7],
+                'timeout_used': r[8]
+            })
+        return jsonify({'count': len(out), 'results': out, 'offset': offset, 'limit': limit, 'total': total, 'sort': col, 'dir': dir_sql.lower(), 'domain': domain or None})
+    except Exception as e:
+        logging.getLogger('techscan.search').error('scan_history_failed domain=%s err=%s', domain, e)
+        return jsonify({'error':'history_failed'}), 500
+
+@search_bp.route('/domain_suggest', methods=['GET'])
+def domain_suggest():
+    """Suggest distinct domains starting with prefix (case-insensitive).
+    Params: prefix (min 1), limit (default 10, max 50)
+    Source: scans table distinct domain values ordered ASC.
+    """
+    if getattr(_db, '_DB_DISABLED', False):
+        return jsonify({'suggestions': []})
+    prefix = (request.args.get('prefix') or '').strip().lower()
+    if not prefix:
+        return jsonify({'suggestions': []})
+    if len(prefix) > 128:
+        prefix = prefix[:128]
+    try:
+        limit = int(request.args.get('limit','10'))
+    except ValueError:
+        limit = 10
+    limit = max(1, min(limit, 50))
+    try:
+        with _db.get_conn() as conn:  # type: ignore[attr-defined]
+            with conn.cursor() as cur:
+                cur.execute('''SELECT DISTINCT domain FROM scans WHERE LOWER(domain) LIKE %s ORDER BY domain ASC LIMIT %s''', (prefix+'%', limit))
+                rows = cur.fetchall()
+        suggestions = [r[0] for r in rows if r and r[0]]
+        return jsonify({'suggestions': suggestions, 'count': len(suggestions), 'prefix': prefix})
+    except Exception as e:
+        logging.getLogger('techscan.search').warning('domain_suggest_failed prefix=%s err=%s', prefix, e)
+        return jsonify({'suggestions': [], 'error': 'suggest failed'}), 500

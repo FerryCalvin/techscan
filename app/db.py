@@ -1,7 +1,16 @@
 import os, time, json, logging
+import threading
 from urllib.parse import quote as _urlquote
 from contextlib import contextmanager
 import psycopg
+try:
+    # psycopg_pool provides a robust connection pool for psycopg (psycopg3)
+    from psycopg_pool import ConnectionPool as _PsycopgConnectionPool
+except Exception:
+    _PsycopgConnectionPool = None
+
+# In-memory mirror storage for domain techs is always available (even when DB enabled)
+_MEM_DOMAIN_TECHS: dict = {}
 
 _explicit_url = os.environ.get('TECHSCAN_DB_URL')
 if _explicit_url:
@@ -12,7 +21,7 @@ else:
     db_port = os.environ.get('TECHSCAN_DB_PORT', '5432')
     db_name = os.environ.get('TECHSCAN_DB_NAME', 'techscan')
     db_user = os.environ.get('TECHSCAN_DB_USER', 'postgres')
-    db_pass = os.environ.get('TECHSCAN_DB_PASSWORD', 'postgres')
+    db_pass = os.environ.get('TECHSCAN_DB_PASSWORD', 'REDACTED')
     # URL-encode password to safely handle special characters (@, #, :)
     enc_pass = _urlquote(db_pass, safe='')
     DB_URL = f'postgresql://{db_user}:{enc_pass}@{db_host}:{db_port}/{db_name}'
@@ -20,6 +29,8 @@ else:
 # Allow disabling DB usage completely for test/perf runs without a live Postgres
 if os.environ.get('TECHSCAN_DISABLE_DB','0') == '1':
     logging.getLogger('techscan.db').warning('TECHSCAN_DISABLE_DB=1 -> database persistence DISABLED (using stubs)')
+    # Ensure in-memory mirror storage is defined before stubs use it
+    _MEM_DOMAIN_TECHS = {}
     def ensure_schema():  # type: ignore
         return
     def save_scan(result: dict, from_cache: bool, timeout_used: int):  # type: ignore
@@ -70,8 +81,7 @@ if os.environ.get('TECHSCAN_DISABLE_DB','0') == '1':
         return out
     # Short-circuit further real definitions
     _DB_DISABLED = True
-    # simple in-memory storage for domain techs
-    _MEM_DOMAIN_TECHS = {}
+    # simple in-memory storage for domain techs (already defined at module top)
 else:
     _DB_DISABLED = False
 
@@ -121,20 +131,137 @@ _count_cache: dict = {}
 _COUNT_CACHE_TTL = 60  # seconds
 _COUNT_CACHE_MAX = 500
 
+# Connection pool (initialized when DB enabled)
+DB_POOL_SIZE = int(os.environ.get('TECHSCAN_DB_POOL_SIZE', '10'))
+_POOL = None
+
+if os.environ.get('TECHSCAN_DISABLE_DB','0') != '1':
+    # Try to create a psycopg_pool-backed pool if available
+    if _PsycopgConnectionPool is not None:
+        try:
+            _POOL = _PsycopgConnectionPool(conninfo=DB_URL, max_size=DB_POOL_SIZE)
+            logging.getLogger('techscan.db').info('Initialized psycopg connection pool size=%s', DB_POOL_SIZE)
+        except Exception as e:
+            logging.getLogger('techscan.db').warning('Failed to initialize psycopg_pool: %s; will fall back to single-connection-per-use', e)
+            _POOL = None
+    else:
+        logging.getLogger('techscan.db').info('psycopg_pool not available; falling back to creating short-lived connections (set TECHSCAN_DB_POOL_SIZE and install psycopg_pool for pooling)')
+
+
+def pool_stats():
+    """Return lightweight pool statistics for monitoring.
+
+    If a psycopg_pool ConnectionPool instance is initialized this
+    returns a dict with basic counts (max_size, num_connections,
+    available, in_use, timestamp). If no pool is present returns
+    {'pool': None}.
+    """
+    try:
+        if _POOL is not None:
+            # psycopg_pool exposes .max_size and some runtime internals
+            stats = {
+                'max_size': getattr(_POOL, 'max_size', None),
+                # num_connections: how many connections the pool has allocated
+                'num_connections': getattr(_POOL, 'num_connections', None),
+                # available: how many are currently available for checkout
+                'available': getattr(_POOL, 'available', None),
+                'in_use': None,
+                'timestamp': time.time()
+            }
+            try:
+                if stats['max_size'] is not None and stats['available'] is not None:
+                    stats['in_use'] = max(0, int(stats['max_size']) - int(stats['available']))
+            except Exception:
+                stats['in_use'] = None
+            return stats
+    except Exception:
+        # Defensive: never raise from telemetry helper
+        logging.getLogger('techscan.db').exception('pool_stats helper failed')
+    return {'pool': None}
+
+
+def _pool_monitor_check():
+    """Internal check used by optional background monitor.
+
+    Returns tuple (ok: bool, stats: dict). Logs a warning when pool appears
+    saturated.
+    """
+    st = pool_stats()
+    ok = True
+    try:
+        if st and st.get('max_size') and st.get('in_use') is not None:
+            if st['in_use'] >= st['max_size']:
+                logging.getLogger('techscan.db').warning('DB pool at full capacity (%d/%d)', st['in_use'], st['max_size'])
+                ok = False
+    except Exception:
+        pass
+    return ok, st
+
+
+# Background monitor thread controls (optional). When enabled via env var
+# TECHSCAN_DB_POOL_MONITOR=1 the monitor thread will periodically log pool
+# utilization and warn when saturated. Use start_pool_monitor()/stop_pool_monitor()
+# to control lifecycle from application startup code.
+_POOL_MONITOR_THREAD = None
+_POOL_MONITOR_STOP = threading.Event()
+
+
+def _pool_monitor_loop(interval_s: float = 10.0):
+    log = logging.getLogger('techscan.db')
+    while not _POOL_MONITOR_STOP.wait(interval_s):
+        try:
+            ok, stats = _pool_monitor_check()
+            # Log at DEBUG normally, WARNING already emitted by _pool_monitor_check
+            log.debug('db_pool monitor stats=%s ok=%s', stats, ok)
+        except Exception:
+            log.exception('unexpected error in db_pool monitor loop')
+
+
+def start_pool_monitor(interval_s: float = 10.0):
+    """Start the background pool monitor thread (idempotent).
+
+    Call from application startup when you want lightweight telemetry/logging
+    of the psycopg_pool usage. The thread is daemonic so it won't block shutdown.
+    """
+    global _POOL_MONITOR_THREAD, _POOL_MONITOR_STOP
+    if _POOL_MONITOR_THREAD and _POOL_MONITOR_THREAD.is_alive():
+        return
+    _POOL_MONITOR_STOP.clear()
+    t = threading.Thread(target=_pool_monitor_loop, args=(float(os.environ.get('TECHSCAN_DB_POOL_MONITOR_INTERVAL', '10')),), daemon=True, name='db-pool-monitor')
+    _POOL_MONITOR_THREAD = t
+    t.start()
+
+
+def stop_pool_monitor():
+    """Stop the background pool monitor thread if running."""
+    global _POOL_MONITOR_THREAD, _POOL_MONITOR_STOP
+    _POOL_MONITOR_STOP.set()
+    if _POOL_MONITOR_THREAD:
+        try:
+            _POOL_MONITOR_THREAD.join(timeout=2.0)
+        except Exception:
+            pass
+    _POOL_MONITOR_THREAD = None
+
+
 @contextmanager
 def get_conn():
-    # simple pool keyed by thread id to reuse connection
-    import threading
-    tid = threading.get_ident()
-    conn = _pool.get(tid)
-    if conn is None or conn.closed:
+    # Prefer using an established connection pool if available. Otherwise
+    # create a short-lived connection per use (safer when clients may leak).
+    if _POOL is not None:
+        # psycopg_pool ConnectionPool yields a connection context
+        with _POOL.connection() as conn:
+            yield conn
+    else:
+        # Fallback: create a new connection and close it when done
         conn = psycopg.connect(DB_URL, autocommit=False)
-        _pool[tid] = conn
-    try:
-        yield conn
-    finally:
-        # do not close for pooling; rely on process exit
-        pass
+        try:
+            yield conn
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 def ensure_schema():
     if _DB_DISABLED:
@@ -257,10 +384,7 @@ def save_scan(result: dict, from_cache: bool, timeout_used: int):
     if _count_cache:
         _count_cache.clear()
     # Mirror into in-memory map for test code paths that call _db.get_domain_techs after save_scan without performing query
-    try:
-        global _MEM_DOMAIN_TECHS
-    except NameError:
-        _MEM_DOMAIN_TECHS = {}
+    global _MEM_DOMAIN_TECHS
     now_epoch = finished_at
     for tech in technologies:
         name = tech.get('name')
@@ -286,7 +410,43 @@ def save_scan(result: dict, from_cache: bool, timeout_used: int):
 
 def search_tech(tech: str | None = None, category: str | None = None, version: str | None = None, limit: int = 200, offset: int = 0, new24: bool = False, sort_key: str | None = None, sort_dir: str = 'desc'):
     if _DB_DISABLED:
-        return []
+        # Return synthesized results from in-memory mirror
+        out = []
+        for (d, name, ver), rec in list(globals().get('_MEM_DOMAIN_TECHS', {}).items()):
+            if tech and name.lower() != tech.lower():
+                continue
+            if category:
+                cats = (rec.get('categories') or '').lower()
+                if category.lower() not in cats:
+                    continue
+            if version and ver != version:
+                continue
+            if new24:
+                try:
+                    if rec.get('first_seen', 0) < (time.time() - 24*3600):
+                        continue
+                except Exception:
+                    pass
+            out.append({
+                'domain': d,
+                'tech_name': name,
+                'version': ver,
+                'categories': rec.get('categories').split(',') if rec.get('categories') else [],
+                'first_seen': rec.get('first_seen'),
+                'last_seen': rec.get('last_seen')
+            })
+        # sort
+        reverse = (sort_dir.lower() != 'asc')
+        key_map = {
+            'domain': lambda r: r['domain'],
+            'tech_name': lambda r: r['tech_name'],
+            'version': lambda r: r['version'] or '',
+            'first_seen': lambda r: r.get('first_seen', 0),
+            'last_seen': lambda r: r.get('last_seen', 0)
+        }
+        keyfn = key_map.get((sort_key or '').lower(), lambda r: r.get('last_seen', 0))
+        out.sort(key=keyfn, reverse=reverse)
+        return out[offset:offset+limit]
     clauses = []
     params = []
     base = 'SELECT domain, tech_name, version, categories, first_seen, last_seen FROM domain_techs'
@@ -332,7 +492,24 @@ def search_tech(tech: str | None = None, category: str | None = None, version: s
 
 def count_search_tech(tech: str | None = None, category: str | None = None, version: str | None = None, new24: bool = False):
     if _DB_DISABLED:
-        return 0
+        seen = set()
+        for (d, name, ver), rec in list(globals().get('_MEM_DOMAIN_TECHS', {}).items()):
+            if tech and name.lower() != tech.lower():
+                continue
+            if category:
+                cats = (rec.get('categories') or '').lower()
+                if category.lower() not in cats:
+                    continue
+            if version and ver != version:
+                continue
+            if new24:
+                try:
+                    if rec.get('first_seen', 0) < (time.time() - 24*3600):
+                        continue
+                except Exception:
+                    pass
+            seen.add(d)
+        return len(seen)
     # Cache key
     k = (tech.lower() if tech else None, category.lower() if category else None, version, new24)
     now = time.time()
@@ -449,6 +626,75 @@ def count_history(domain: str):
         with conn.cursor() as cur:
             cur.execute('SELECT COUNT(*) FROM scans WHERE domain=%s', (domain,))
             return cur.fetchone()[0]
+
+
+def get_latest_scan_raw(domain: str):
+    """Return raw JSON of the latest scan for a domain, or None."""
+    if _DB_DISABLED:
+        # try to synthesize from in-memory mirror by returning a fabricated raw
+        # For tests, domain_techs mirror contains minimal info; return None
+        return None
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute('''SELECT raw_json, technologies_json, finished_at FROM scans WHERE domain=%s ORDER BY finished_at DESC LIMIT 1''', (domain,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            raw_json = row[0]
+            techs_json = row[1]
+            finished_at = row[2]
+            return {'raw': raw_json, 'technologies': techs_json, 'finished_at': finished_at.timestamp() if finished_at else None}
+
+
+def top_versions_for_tech(tech: str, limit: int = 10):
+    """Return list of (version, count) for top versions for a tech."""
+    if _DB_DISABLED:
+        counts = {}
+        for (d, name, ver), rec in list(globals().get('_MEM_DOMAIN_TECHS', {}).items()):
+            if name.lower() != tech.lower():
+                continue
+            if ver is None:
+                continue
+            counts[ver] = counts.get(ver, 0) + 1
+        items = sorted([{'version': v, 'count': c} for v, c in counts.items()], key=lambda x: x['count'], reverse=True)
+        return items[:limit]
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute('''SELECT version, COUNT(*) AS cnt FROM domain_techs WHERE LOWER(tech_name)=LOWER(%s) AND version IS NOT NULL GROUP BY version ORDER BY cnt DESC LIMIT %s''', (tech, limit))
+            return [{'version': r[0], 'count': r[1]} for r in cur.fetchall()]
+
+
+def tech_trend(tech: str, days: int = 30):
+    """Return timeseries counts per day for the past `days` days for a tech."""
+    if _DB_DISABLED:
+        # approximate trend from in-memory mirror using last_seen timestamps
+        from collections import defaultdict
+        buckets = defaultdict(int)
+        cutoff = time.time() - days*24*3600
+        for (d, name, ver), rec in list(globals().get('_MEM_DOMAIN_TECHS', {}).items()):
+            if name.lower() != tech.lower():
+                continue
+            ls = rec.get('last_seen')
+            if not ls or ls < cutoff:
+                continue
+            day = time.strftime('%Y-%m-%d', time.gmtime(ls))
+            buckets[day] += 1
+        days_list = []
+        for i in range(days):
+            ts = time.time() - (days - i - 1)*24*3600
+            day = time.strftime('%Y-%m-%d', time.gmtime(ts))
+            days_list.append({'day': day, 'count': buckets.get(day, 0)})
+        return days_list
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # Use domain_techs.last_seen (timestamptz) to compute daily counts
+            cur.execute('''
+                SELECT DATE(dt.last_seen) AS day, COUNT(DISTINCT dt.domain)
+                FROM domain_techs dt
+                WHERE LOWER(dt.tech_name)=LOWER(%s) AND dt.last_seen >= NOW() - (%s)::interval
+                GROUP BY day ORDER BY day
+            ''', (tech, f"{days} days"))
+            return [{'day': r[0].isoformat(), 'count': r[1]} for r in cur.fetchall()]
 
 def db_stats():
     """Return aggregate DB statistics for quick dashboard use."""

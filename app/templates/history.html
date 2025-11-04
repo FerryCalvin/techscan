@@ -1,0 +1,285 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-centered glass-panel" style="padding:1.1rem 1.25rem; margin-bottom:1.2rem;">
+  <style>
+    .hist-controls{display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end;justify-content:center;margin:0 0 1rem;}
+    .hist-group{display:flex;flex-direction:column;gap:.25rem;}
+    .hist-group label{font-size:0.55rem;letter-spacing:.5px;opacity:.85;}
+  .hist-group input[type=text]{height:32px;padding:0 .6rem;font-size:.65rem;background:var(--ts-input-bg);border:1px solid var(--ts-input-border);}
+  .hist-group input[type=text]:focus{outline:2px solid var(--ts-accent);outline-offset:2px;}
+    #hist-submit{height:32px;font-size:.6rem;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;width:70px;}
+    #hist-summary{font-size:.6rem;opacity:.8;margin:.2rem 0 .4rem;text-align:center;}
+    table#hist-table{width:100%;font-size:0.65rem;border-collapse:separate;border-spacing:0;}
+  #hist-table thead th{position:sticky;top:0;background:var(--glass-surf-2);color:var(--ts-text);z-index:5;font-size:0.62rem;}
+  #hist-table tbody tr{background:var(--glass-surf-1);}
+  #hist-table tbody tr:nth-child(even){background:var(--glass-surf-2);}
+  #hist-table tbody tr:hover{background:var(--glass-surf-3);}
+  .glass-panel{background:var(--glass-surf-1);border:1px solid var(--glass-border-strong);box-shadow:var(--glass-shadow-1),var(--glass-shadow-2);backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));}
+  body.dark .glass-panel{background:rgba(60,80,110,0.22);border:1px solid #b6c2e0;}
+  body.dark #hist-table thead th{background:rgba(90,120,170,0.22);color:#eaf2ff;}
+  body.dark #hist-table tbody tr{background:rgba(60,80,110,0.18);}
+  body.dark #hist-table tbody tr:nth-child(even){background:rgba(90,120,170,0.18);}
+  body.dark #hist-table tbody tr:hover{background:rgba(120,160,220,0.22);}
+    #hist-results-wrap{position:relative;}
+  #hist-loading{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(12,17,22,.55);backdrop-filter:blur(2px);font-size:.65rem;letter-spacing:.5px;}
+    #hist-empty{font-size:.6rem;opacity:.7;padding:.6rem;}
+    #paging-bar{display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-top:.9rem;font-size:0.6rem;}
+  #paging-bar .pg-box{display:flex;align-items:center;gap:.5rem;background:var(--ts-input-bg);border:1px solid var(--ts-input-border);padding:6px 10px;border-radius:10px;height:38px;}
+  #paging-bar .pg-box select{background:var(--ts-input-bg);border:1px solid var(--ts-input-border);color:var(--ts-text);font-size:0.6rem;padding:3px 6px;border-radius:6px;height:26px;line-height:1;}
+    #paging-bar .pg-nav{display:flex;align-items:center;gap:.4rem;}
+    #paging-bar .pg-btn{font-size:.55rem;padding:3px 10px;min-width:36px;height:26px;line-height:1;display:inline-flex;align-items:center;justify-content:center;}
+    #paging-bar .pg-info{min-width:120px;text-align:center;font-size:0.6rem;}
+    #paging-bar .pg-btn[disabled]{opacity:.4;cursor:not-allowed;}
+  #paging-bar .pg-btn:not([disabled]){border-color:var(--glass-border-strong);}
+  #paging-bar .pg-btn:not([disabled]):hover{background:rgba(255,255,255,0.06);}
+  </style>
+  <h2 class="page-title" style="text-align:center;margin-top:0;margin-bottom:1.2rem;">Scan History</h2>
+  <form id="hist-form" class="hist-controls" autocomplete="off">
+    <div class="hist-group" style="width:240px;position:relative;">
+      <label for="hist-domain">Domain (optional)</label>
+      <input id="hist-domain" name="domain" type="text" placeholder="example.com" autocomplete="off" />
+  <div id="hist-domain-suggest" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--glass-surf-2);border:1px solid var(--glass-border-strong);border-radius:12px;margin-top:4px;z-index:50;max-height:220px;overflow:auto;box-shadow:var(--glass-shadow-1), var(--glass-shadow-2);backdrop-filter:blur(calc(var(--glass-blur)*.55)) saturate(var(--glass-sat));-webkit-backdrop-filter:blur(calc(var(--glass-blur)*.55)) saturate(var(--glass-sat));font-size:.6rem;">
+        <div class="hd-status" style="display:none;padding:6px 8px;opacity:.7;">Loading...</div>
+        <div class="hd-items"></div>
+      </div>
+    </div>
+    <!-- Removed explicit sort controls; sorting via clicking table headers -->
+    <div class="hist-group" style="width:auto;flex-direction:row;gap:.5rem;align-items:center;min-width:60px;">
+      <button id="hist-submit" class="secondary" type="submit" aria-label="Search History" title="Search">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      </button>
+    </div>
+  </form>
+  <div id="hist-summary" class="mono"></div>
+  
+  <div id="hist-results-wrap" class="glass-panel glass-surface--intense" style="padding:1.1rem 1.25rem;">
+    <table id="hist-table" class="table-glass">
+      <thead>
+        <tr>
+          <th class="sortable" data-sort="domain">Domain <span class="sort-icons"><span class="up">▲</span><span class="down">▼</span></span></th>
+          <th class="sortable" data-sort="mode">Mode <span class="sort-icons"><span class="up">▲</span><span class="down">▼</span></span></th>
+          <th class="sortable" data-sort="started_at">Started <span class="sort-icons"><span class="up">▲</span><span class="down">▼</span></span></th>
+          <th class="sortable" data-sort="finished_at">Finished <span class="sort-icons"><span class="up">▲</span><span class="down">▼</span></span></th>
+          <th class="sortable" data-sort="duration_ms">Duration (ms) <span class="sort-icons"><span class="up">▲</span><span class="down">▼</span></span></th>
+          <th>Cache</th>
+          <th>Retries</th>
+          <th>Timeout Used</th>
+        </tr>
+      </thead>
+      <tbody id="hist-tbody"><tr><td colspan="8" id="hist-empty">Loading initial history...</td></tr></tbody>
+    </table>
+    <div id="hist-loading">Loading...</div>
+  </div>
+  <div id="paging-bar" class="small" style="display:none;">
+    <div class="pg-box">
+      <label for="hist-page-size" style="margin:0;opacity:.75;">Tampil</label>
+      <select id="hist-page-size" style="margin-top:1rem;">
+        <option value="10">10</option>
+        <option value="20" selected>20</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+    </div>
+    <div class="pg-box pg-nav">
+      <button id="hist-first" class="secondary outline pg-btn" disabled>&laquo;</button>
+      <button id="hist-prev" class="secondary outline pg-btn" disabled>&lt;</button>
+      <span id="hist-page-info" class="pg-info">Page 1/1</span>
+      <button id="hist-next" class="secondary outline pg-btn" disabled>&gt;</button>
+      <button id="hist-last" class="secondary outline pg-btn" disabled>&raquo;</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', ()=>{
+  console.log('[history] script loaded, DOMContentLoaded');
+  const form = document.getElementById('hist-form');
+  const tbody = document.getElementById('hist-tbody');
+  const loading = document.getElementById('hist-loading');
+  const summary = document.getElementById('hist-summary');
+  const pageInfo = document.getElementById('hist-page-info');
+  const pageSizeSel = document.getElementById('hist-page-size');
+  const pagingBar = document.getElementById('paging-bar');
+  const btnFirst = document.getElementById('hist-first');
+  const btnPrev = document.getElementById('hist-prev');
+  const btnNext = document.getElementById('hist-next');
+  const btnLast = document.getElementById('hist-last');
+  // Removed dropdown sorting controls; use header click only
+  const domainInput = document.getElementById('hist-domain');
+  
+  const domSuggestBox = document.getElementById('hist-domain-suggest');
+  const domItemsEl = domSuggestBox?.querySelector('.hd-items');
+  const domStatusEl = domSuggestBox?.querySelector('.hd-status');
+  const DOM_SUGGEST_DELAY = 1000; const DOM_SUGGEST_MIN = 2; let domSuggestDebounce = null; const domCache = {}; let domActiveIndex = -1; let domCurrent = [];
+  function hideDomSuggest(){ if(!domSuggestBox) return; domSuggestBox.style.display='none'; if(domItemsEl) domItemsEl.innerHTML=''; if(domStatusEl) domStatusEl.style.display='none'; domActiveIndex=-1; domCurrent=[]; }
+  function showDomStatus(text){ if(!domSuggestBox||!domStatusEl) return; domStatusEl.textContent=text; domStatusEl.style.display='block'; domSuggestBox.style.display='block'; }
+  function showDomItems(){ if(!domSuggestBox||!domItemsEl) return; domStatusEl && (domStatusEl.style.display='none'); domSuggestBox.style.display='block'; }
+  function scheduleDomSuggest(){ if(!domainInput) return; const val=domainInput.value.trim(); if(domSuggestDebounce) clearTimeout(domSuggestDebounce); if(!val || val.length<DOM_SUGGEST_MIN){ hideDomSuggest(); return; } showDomStatus('Loading...'); domSuggestDebounce=setTimeout(()=> fetchDomainSuggest(val), DOM_SUGGEST_DELAY); }
+  async function fetchDomainSuggest(prefix){
+    if(domCache[prefix]){ renderDomainSuggest(prefix, domCache[prefix]); return; }
+    try {
+      const resp = await apiFetch('/domain_suggest?prefix='+encodeURIComponent(prefix));
+      const list = resp.suggestions||[];
+      domCache[prefix]=list;
+      if(!list.length){ hideDomSuggest(); return; }
+      renderDomainSuggest(prefix,list);
+    } catch(e){ hideDomSuggest(); }
+  }
+
+  function renderDomainSuggest(prefix, list){
+    if(!domItemsEl) return;
+    domCurrent = list || [];
+    const pre=prefix.toLowerCase();
+    const html=list.map((d,i)=>{ const low=d.toLowerCase(); let label=d; if(low.startsWith(pre)) label=`<strong>${d.slice(0,prefix.length)}</strong>${d.slice(prefix.length)}`; return `<div class='hd-item' data-idx='${i}' data-val="${d.replace(/"/g,'&quot;')}" style='padding:6px 8px;cursor:pointer;'>${label}</div>`; }).join('');
+    domItemsEl.innerHTML=html;
+    showDomItems();
+    domItemsEl.querySelectorAll('.hd-item').forEach(div=>{ div.addEventListener('mouseenter',()=> setDomActive(parseInt(div.dataset.idx,10))); div.addEventListener('click',()=> selectDom(parseInt(div.dataset.idx,10))); });
+  }
+  function setDomActive(idx){ if(!domItemsEl) return; domActiveIndex=idx; domItemsEl.querySelectorAll('.hd-item').forEach(el=> el.style.background=''); const el=domItemsEl.querySelector(`.hd-item[data-idx='${idx}']`); if(el) el.style.background='#20303b'; }
+  function moveDomActive(delta){ if(!domCurrent.length) return; if(domActiveIndex===-1){ domActiveIndex = delta>0?0:domCurrent.length-1; } else { domActiveIndex=(domActiveIndex+delta+domCurrent.length)%domCurrent.length; } setDomActive(domActiveIndex); }
+  function selectDom(idxOverride){ const idx = typeof idxOverride==='number'? idxOverride:domActiveIndex; if(idx<0||idx>=domCurrent.length) return; const v=domCurrent[idx]; domainInput.value=v; hideDomSuggest(); currentPage=1; loadHistory(); }
+  domainInput?.addEventListener('input', ()=>{ scheduleDomSuggest(); });
+  document.addEventListener('click', (e)=>{ if(!domSuggestBox||!domainInput) return; if(domSuggestBox.contains(e.target)|| e.target===domainInput) return; hideDomSuggest(); });
+  domainInput?.addEventListener('keydown', (e)=>{ if(e.key==='Escape'){ hideDomSuggest(); return; } if(e.key==='ArrowDown'){ moveDomActive(1); e.preventDefault(); } else if(e.key==='ArrowUp'){ moveDomActive(-1); e.preventDefault(); } else if(e.key==='Enter' && domSuggestBox && domSuggestBox.style.display!=='none' && domActiveIndex>=0){ e.preventDefault(); selectDom(domActiveIndex); } });
+  let currentPage = 1; let pageSize = parseInt(pageSizeSel.value,10); let totalRows = 0; let sortKey = 'finished_at'; let sortDir = 'desc';
+
+  if(typeof window.apiFetch !== 'function'){
+    window.apiFetch = async (url, opts={})=>{ const r = await fetch(url, opts); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); };
+  }
+
+  function fmtTime(ts){ if(!ts) return ''; try { const d=new Date(ts*1000); return d.toLocaleString(); } catch(_){ return ''; } }
+
+  function buildParams(){
+    const params = new URLSearchParams();
+    const dom = domainInput.value.trim();
+    if(dom) params.set('domain', dom);
+    params.set('limit', pageSize);
+    params.set('offset', (currentPage-1)*pageSize);
+    params.set('sort', sortKey);
+    params.set('dir', sortDir);
+    return params;
+  }
+
+async function loadHistory(){
+  console.log('[history] loadHistory start', {page: currentPage, pageSize: pageSize, sort: sortKey, dir: sortDir});
+  loading.style.display='flex';
+    tbody.innerHTML = `<tr><td colspan="8" id="hist-empty">Loading...</td></tr>`;
+    try{
+      const params = buildParams();
+      const dom = (domainInput && domainInput.value && domainInput.value.trim()) || '';
+      let resp = null;
+      // Prefer domain-specific history endpoint if domain provided
+      if(dom){
+        try{
+          console.debug('Fetching domain history for', dom);
+          resp = await apiFetch(`/api/domain/${encodeURIComponent(dom)}/history?` + params.toString());
+          console.debug('[history] domain-specific response received', resp && (resp.scans||resp.history||resp.results||resp));
+        }catch(e){
+          // If domain-specific fails (maybe not available), fall back to /scan_history?domain=...
+          console.warn('Domain history fetch failed, falling back to /scan_history:', e);
+          resp = await apiFetch('/scan_history?' + params.toString());
+        }
+      } else {
+        resp = await apiFetch('/scan_history?' + params.toString());
+        console.debug('[history] scan_history response received', resp && (resp.results||resp));
+      }
+
+  // Normalise rows & total from either endpoint shapes
+  const rows = resp.results || resp.history || resp.scans || resp || [];
+      // total may be in resp.total or resp.count
+      if(typeof resp.total === 'number') totalRows = resp.total;
+      else if(typeof resp.count === 'number') totalRows = resp.count;
+      else totalRows = rows.length;
+
+  // render rows
+      if(!rows || !rows.length){
+        tbody.innerHTML = `<tr><td colspan="8" class="small">(tidak ada hasil)</td></tr>`;
+      } else {
+        tbody.innerHTML = rows.map(r=>{
+          // domain may be missing per-row for domain-specific endpoint; fall back to resp.domain or requested domain
+          const rowDomain = r.domain || (resp && resp.domain) || dom || '';
+          return `<tr>
+            <td class="mono">${rowDomain}</td>
+            <td>${r.mode||''}</td>
+            <td>${fmtTime(r.started_at)}</td>
+            <td>${fmtTime(r.finished_at)}</td>
+            <td>${r.duration_ms!=null? r.duration_ms : ''}</td>
+            <td>${r.from_cache? 'Ya' : ''}</td>
+            <td>${r.retries!=null? r.retries : ''}</td>
+            <td>${r.timeout_used? 'Ya' : ''}</td>
+          </tr>`;
+        }).join('');
+      }
+
+      // update paging UI
+      const totalPages = Math.max(1, Math.ceil((totalRows||0) / pageSize));
+      pageInfo.textContent = `Page ${totalRows? currentPage:0}/${totalPages}`;
+      btnPrev.disabled = currentPage<=1;
+      btnFirst.disabled = currentPage<=1;
+      btnNext.disabled = currentPage>=totalPages;
+      btnLast.disabled = currentPage>=totalPages;
+      pagingBar.style.display = (totalRows>pageSize) ? 'flex' : 'none';
+
+      // update summary and range
+      const start = totalRows? ((currentPage-1)*pageSize + 1) : 0;
+      const end = totalRows? Math.min(currentPage*pageSize, totalRows) : 0;
+      summary.textContent = `Total ${totalRows||0} | Range: ${start}-${end}`;
+    }catch(e){
+      console.error('loadHistory failed', e);
+      tbody.innerHTML = `<tr><td colspan="8" class="small">Error: ${e && e.message ? e.message : String(e)}</td></tr>`;
+    } finally {
+      loading.style.display='none';
+    }
+}
+
+// Paging button event listeners
+btnLast.addEventListener('click', ()=>{ 
+  const tp = Math.max(1, Math.ceil(totalRows / pageSize)); 
+  if(currentPage !== tp){ 
+    currentPage = tp; 
+    loadHistory(); 
+  }
+});
+
+// other paging controls
+btnPrev && btnPrev.addEventListener('click', ()=>{ if(currentPage>1){ currentPage--; loadHistory(); } });
+btnNext && btnNext.addEventListener('click', ()=>{ const tp = Math.max(1, Math.ceil(totalRows / pageSize)); if(currentPage < tp){ currentPage++; loadHistory(); } });
+btnFirst && btnFirst.addEventListener('click', ()=>{ if(currentPage!==1){ currentPage=1; loadHistory(); } });
+
+// page size change
+pageSizeSel && pageSizeSel.addEventListener('change', ()=>{ pageSize = parseInt(pageSizeSel.value,10) || 20; currentPage = 1; loadHistory(); });
+
+// form submit -> run search
+form && form.addEventListener('submit', (e)=>{ e.preventDefault(); currentPage=1; loadHistory(); });
+
+// Clickable header sorting (overrides dropdown values)
+document.querySelectorAll('#hist-table thead th.sortable').forEach(th=>{
+  th.style.cursor='pointer';
+  th.addEventListener('click', ()=>{
+    const k = th.dataset.sort;
+    if(sortKey === k){ sortDir = (sortDir==='asc'?'desc':'asc'); }
+    else { sortKey = k; sortDir='asc'; }
+    currentPage = 1; 
+    loadHistory();
+  });
+});
+
+function updateHeaderIndicators(){
+  document.querySelectorAll('#hist-table thead th.sortable').forEach(h=> h.classList.remove('sorted-asc','sorted-desc'));
+  const active = document.querySelector(`#hist-table thead th.sortable[data-sort='${sortKey}']`);
+  if(active){ active.classList.add(sortDir==='asc'?'sorted-asc':'sorted-desc'); }
+}
+
+// Wrap loadHistory to update indicators after data load
+const _origLoadHistory = loadHistory;
+loadHistory = async function(){
+  await _origLoadHistory();
+  updateHeaderIndicators();
+}
+
+// Initial load (global recent history)
+loadHistory();
+});
+</script>
+{% endblock %}

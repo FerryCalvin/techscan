@@ -114,3 +114,143 @@ def audit_versions(scan: Dict[str, Any], latest_map: Dict[str,str] | None = None
             meta['outdated_patch'] = patch_c
         meta['version_dataset'] = 'latest_versions.json'
     return scan
+
+# ---------------- Version Evidence Extraction (static) -----------------
+
+# Simple normalization: keep digits, dots and letters separators, trim
+_SAFE_VER_RE = re.compile(r'[^0-9A-Za-z\.-]')
+
+def normalize_version_str(v: str) -> str | None:
+    if not v:
+        return None
+    v2 = _SAFE_VER_RE.sub('', v.strip())
+    # reject obviously bogus like '1' or '1.0.0' for WordPress handled elsewhere; generic filter minimal
+    if not any(ch.isdigit() for ch in v2):
+        return None
+    # collapse leading/trailing dots
+    v2 = v2.strip('.')
+    return v2 or None
+
+def extract_versions_from_meta(meta: Dict[str, str]) -> List[Dict[str, Any]]:
+    evidences: List[Dict[str, Any]] = []
+    if not meta:
+        return evidences
+    # Common generators: WordPress, Joomla, Drupal, Next.js, Hugo, Gatsby, Laravel
+    gen = meta.get('generator') or meta.get('x-generator') or meta.get('powered-by')
+    if gen:
+        g = gen.strip()
+        # Try capture last token with digits
+        m = re.search(r'(\d+[^\s]*)', g)
+        if m:
+            nv = normalize_version_str(m.group(1))
+            if nv:
+                evidences.append({'tech_hint': g.lower(), 'source': 'meta.generator', 'raw': gen, 'normalized': nv, 'weight': 0.55})
+    return evidences
+
+_ASSET_VER_RE = re.compile(r'[\/?&](?:v|ver|version)=([0-9][0-9A-Za-z\.-]{0,30})', re.I)
+_ASSET_PATH_VER_RE = re.compile(r'/([0-9]+\.[0-9][0-9A-Za-z\.-]{0,20})[\./-]')
+
+def extract_versions_from_assets(urls: List[str]) -> List[Dict[str, Any]]:
+    evidences: List[Dict[str, Any]] = []
+    if not urls:
+        return evidences
+    # Look for ?ver=, ?v=, /1.2.3/
+    for u in urls:
+        if not isinstance(u, str) or len(u) > 600:
+            continue
+        m = _ASSET_VER_RE.search(u)
+        if m:
+            nv = normalize_version_str(m.group(1))
+            if nv:
+                evidences.append({'source': 'asset.query', 'raw': u, 'normalized': nv, 'weight': 0.35})
+                continue
+        m2 = _ASSET_PATH_VER_RE.search(u)
+        if m2:
+            nv = normalize_version_str(m2.group(1))
+            if nv:
+                evidences.append({'source': 'asset.path', 'raw': u, 'normalized': nv, 'weight': 0.25})
+    return evidences
+
+def combine_confidences(weights: List[float]) -> float:
+    # 1 - Π(1-w)
+    if not weights:
+        return 0.0
+    p = 1.0
+    for w in weights:
+        try:
+            w2 = max(0.0, min(1.0, float(w)))
+        except Exception:
+            w2 = 0.0
+        p *= (1.0 - w2)
+    return round(1.0 - p, 4)
+
+def apply_version_evidence(result: Dict[str, Any]) -> None:
+    """Augment technologies with version_candidates and set version using simple voting.
+    - Consumes extras.meta/scripts/links if present in result['raw'] or result itself.
+    - Does not override an existing strong version unless new confidence is higher.
+    """
+    try:
+        techs = result.get('technologies') or []
+        if not techs:
+            return
+        # Gather extras
+        extras = None
+        raw = result.get('raw') or {}
+        if isinstance(raw, dict):
+            extras = raw.get('extras') or raw.get('data', {}).get('extras')
+        if not extras and isinstance(result, dict):
+            extras = result.get('extras')
+        meta = (extras or {}).get('meta') or {}
+        scripts = (extras or {}).get('scripts') or []
+        links = (extras or {}).get('links') or []
+        evid_meta = extract_versions_from_meta(meta)
+        evid_assets = extract_versions_from_assets([*scripts, *links])
+        all_evid = evid_meta + evid_assets
+        if not all_evid:
+            return
+        # Map evidence to technologies by loose hint
+        for t in techs:
+            name = (t.get('name') or '').lower()
+            candidates: List[Dict[str, Any]] = t.setdefault('version_candidates', [])
+            # Select evidences that likely belong to this tech
+            rel = []
+            for ev in all_evid:
+                hint = (ev.get('tech_hint') or '')
+                if not hint:
+                    # Try map by common library asset names
+                    raw = ev.get('raw') or ''
+                    low = raw.lower()
+                    if ('jquery' in low and 'jquery' in name) or \
+                       ('react' in low and 'react' in name) or \
+                       ('vue' in low and ('vue' in name or 'nuxt' in name)) or \
+                       ('angular' in low and 'angular' in name) or \
+                       ('wp-' in low and 'wordpress' in name):
+                        rel.append(ev)
+                else:
+                    if name and name.split()[0] in hint:
+                        rel.append(ev)
+            # Add normalized deduped candidates
+            seen = set((c.get('normalized'), c.get('source')) for c in candidates)
+            for ev in rel:
+                key = (ev.get('normalized'), ev.get('source'))
+                if not ev.get('normalized') or key in seen:
+                    continue
+                candidates.append(ev)
+                seen.add(key)
+            if not candidates:
+                continue
+            # Pick winner by highest weight; compute confidence aggregate
+            best = max(candidates, key=lambda c: c.get('weight', 0))
+            conf = combine_confidences([c.get('weight', 0) for c in candidates])
+            # Set version only if empty or weaker
+            if not t.get('version'):
+                t['version'] = best.get('normalized')
+                t.setdefault('version_confidence', conf)
+            else:
+                prev_conf = float(t.get('version_confidence') or 0.0)
+                if conf > prev_conf:
+                    t['version'] = best.get('normalized')
+                    t['version_confidence'] = conf
+    except Exception:
+        # best effort only
+        return
