@@ -14,9 +14,10 @@
 
   <!-- 🟢 Header Summary -->
   <div class="glass-card" style="max-width:1100px;width:100%;padding:1rem;">
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:1rem;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;">
       <div class="mini-card"><div class="mini-label">Total Scans</div><div class="mini-value" id="total-scans">-</div></div>
-      <div class="mini-card"><div class="mini-label">Domain Scanned</div><div class="mini-value" id="unique-domains">-</div></div>
+      <div class="mini-card"><div class="mini-label">Total Domains</div><div class="mini-value" id="total-domains">-</div></div>
+      <div class="mini-card"><div class="mini-label">Unique Domains</div><div class="mini-value" id="unique-domains">-</div></div>
       <div class="mini-card"><div class="mini-label">Avg Duration</div><div class="mini-value" id="avg-duration">-</div></div>
       <div class="mini-card"><div class="mini-label">Uptime</div><div class="mini-value" id="uptime">-</div></div>
       <div class="mini-card"><div class="mini-label">Last Scan</div><div class="mini-value mini-value-small" id="last-scan">-</div></div>
@@ -161,21 +162,28 @@
 async function fetchStats() {
   let data;
   try {
-    const res = await fetch(`/api/stats?t=${Date.now()}`, { cache: 'no-store' });
+    const res = await fetch('/api/stats', { cache: 'no-store' });
     data = await res.json();
     localStorage.setItem('techscan_lastStats', JSON.stringify(data));
   } catch (err) {
-    console.warn('API failed, loading fallback');
+    console.error('stats fetch failed: using cached snapshot', err);
     data = JSON.parse(localStorage.getItem('techscan_lastStats') || '{}');
   }
 
   if (!data) return;
 
+  window._lastStats = data;
+
   // Total Scans
   document.getElementById('total-scans').textContent = data.scans_total || 0;
-  
-  // Domain Scanned - dari domain_techs COUNT(DISTINCT domain)
-  document.getElementById('unique-domains').textContent = data.unique_domains || 0;
+
+  // Total Domains & Unique Domains (fallback to available values)
+  const totalDomains = (data && (data.domains_total ?? data.total_domains ?? data.unique_domains)) || 0;
+  const uniqueDomains = (data && (data.unique_domains ?? data.domains_total ?? data.total_domains)) || 0;
+  const totalDomainsEl = document.getElementById('total-domains');
+  if (totalDomainsEl) totalDomainsEl.textContent = totalDomains;
+  const uniqueDomainsEl = document.getElementById('unique-domains');
+  if (uniqueDomainsEl) uniqueDomainsEl.textContent = uniqueDomains;
   
   // Last Scan - format dengan tanggal lengkap
   if (data.last_scan) {
@@ -208,7 +216,7 @@ async function fetchStats() {
 
   // system health fallback
   try {
-    const health = await fetch(`/api/system_health?t=${Date.now()}`, { cache: 'no-store' }).then(r=>r.json());
+  const health = await fetch('/api/system_health', { cache: 'no-store' }).then(r=>r.json());
     ['redis','db','queue'].forEach(k=>{
       const el=document.getElementById(`${k}-status`);
       const st=health[k]||'unknown';
