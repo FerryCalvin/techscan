@@ -16,7 +16,11 @@ from __future__ import annotations
 import os, json, argparse, logging
 import psycopg
 
-DB_URL = os.environ.get('TECHSCAN_DB_URL', 'postgresql://postgres:postgres@localhost:5432/techscan')
+# Require TECHSCAN_DB_URL from environment; do not ship default credentials.
+try:
+    DB_URL = os.environ['TECHSCAN_DB_URL']
+except KeyError:
+    raise RuntimeError('TECHSCAN_DB_URL is required for backfill_counts.py')
 
 log = logging.getLogger('techscan.backfill')
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
