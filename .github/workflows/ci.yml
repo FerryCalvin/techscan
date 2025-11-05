@@ -26,6 +26,8 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          # Extra linters and security tools (kept non-blocking for now)
+          pip install ruff pip-audit
       - name: Run contrast audit
         run: python scripts/contrast_audit.py
       - name: Set up Node
@@ -36,6 +38,17 @@ jobs:
         run: npm install -g markdownlint-cli@0.41.0
       - name: Markdown lint
         run: markdownlint README.md
+      - name: Ruff (lint)
+        run: |
+          ruff --version
+          # Limit to core folders; do not fail the build yet to avoid noisy first run
+          ruff check app tests scripts || true
+      - name: pip-audit (dependencies)
+        continue-on-error: true
+        run: |
+          pip-audit -V
+          # Do not fail CI on initial advisories; treat as report
+          pip-audit --progress-spinner off || true
 
   tests:
     runs-on: ubuntu-latest

@@ -1,9 +1,10 @@
-import json, re, subprocess, threading, time, os, pathlib, logging
+import json, re, threading, time, os, pathlib, logging
 import socket, ssl, random
 from functools import lru_cache
 from collections import deque
 from typing import Dict, Any, List
 from . import version_audit
+from . import safe_subprocess as sproc
 
 DOMAIN_RE = re.compile(r'^(?!-)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$')
 CACHE_TTL = 300  # default seconds
@@ -754,7 +755,7 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
                 from . import persistent_client as pc
                 data = pc.scan(domain, full=full)
             else:
-                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=eff_timeout, env=env)
+                proc = sproc.safe_run(cmd, capture_output=True, text=True, timeout=eff_timeout, env=env)
                 if proc.returncode != 0:
                     stderr = proc.stderr.strip()
                     if 'Cannot find module' in stderr and 'puppeteer' in stderr:
@@ -852,7 +853,7 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
                 except Exception:
                     pass
             return result
-        except (subprocess.TimeoutExpired) as te:
+        except (sproc.TimeoutExpired) as te:
             last_err = te
             _record_failure(domain)
             with _stats_lock:
@@ -1862,7 +1863,8 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
 
         def maybe_jitter():
             if jitter_ms > 0:
-                time.sleep(random.uniform(0, jitter_ms)/1000.0)
+                # non-cryptographic jitter to avoid herd effects in concurrent calls
+                time.sleep(random.uniform(0, jitter_ms)/1000.0)  # nosec B311
 
         def adjust():
             nonlocal target

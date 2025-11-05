@@ -1,0 +1,37 @@
+# Example systemd unit for the persistent Node scanner daemon used by TechScan
+# Copy to /etc/systemd/system/techscan-node.service and adjust paths.
+
+[Unit]
+Description=TechScan persistent Node scanner (wappalyzer/puppeteer)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Path to your repository checkout
+WorkingDirectory=/opt/techscan/node_scanner
+# Set Node binary if not on PATH (optional)
+# Environment=TECHSCAN_NODE=/usr/bin/node
+# Increase V8 heap if needed (in MB)
+# Environment=TECHSCAN_NODE_MAX_OLD_SPACE=2048
+# Environment file for additional env vars if desired
+# EnvironmentFile=-/etc/techscan/techscan.env
+
+# Ensure dependencies are installed prior to first start
+# ExecStartPre=/usr/bin/npm ci --omit=dev
+
+# Start the persistent server.js used by app/persistent_client.py
+ExecStart=/usr/bin/env node server.js
+Restart=always
+RestartSec=3
+# Give it time to stop gracefully
+TimeoutStopSec=15
+
+# Hardening options (adjust as needed)
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

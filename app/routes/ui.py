@@ -64,7 +64,7 @@ def legacy_index_redirect():
         resp.headers['Pragma'] = 'no-cache'
         resp.headers['Expires'] = '0'
     except Exception:
-        pass
+        _log.debug('failed to set no-cache headers on legacy redirect', exc_info=True)
     return resp
 
 @ui_bp.route('/websites')
@@ -124,12 +124,13 @@ def api_stats():
                 vac = int(ph.get('version_audit_count') or 0)
                 out['avg_version_audit_ms'] = round(vam / vac, 2) if vac else 0.0
         except Exception:
+            _log.debug('failed to compute aggregated avg durations from STATS; falling back', exc_info=True)
             out['avg_duration_ms'] = s.get('average_duration_ms', {}).get('fast')
             out['avg_version_audit_ms'] = 0.0
         out['uptime_seconds'] = s.get('uptime_seconds')
         out['cache_entries'] = s.get('cache_entries')
     except Exception:
-        pass
+        _log.debug('failed to load runtime STATS mirror', exc_info=True)
     # DB-backed aggregates when available
     if not getattr(_db, '_DB_DISABLED', False):
         try:
@@ -305,7 +306,7 @@ def api_domains():
                                 except Exception:
                                     continue
                 except Exception:
-                    pass
+                    _log.debug('failed computing per-domain diff extras', exc_info=True)
         else:
             mem = getattr(_db, '_MEM_DOMAIN_TECHS', {})
             by_domain = {}
@@ -375,7 +376,7 @@ def api_domain_detail(domain: str):
                 if k in phases:
                     metrics[k] = phases[k]
     except Exception:
-        pass
+        _log.debug('failed to extract phases metrics from latest raw', exc_info=True)
     technologies = latest.get('technologies') if latest else []
     # Ensure simplified tech objects (name, version, categories, confidence) if raw format contains them
     norm_tech = []
@@ -416,13 +417,13 @@ def api_domain_detail(domain: str):
                     if avg_ms:
                         eta_s = round((avg_ms/1000.0),2)
                 except Exception:
-                    pass
+                    _log.debug('failed to compute ETA from STATS', exc_info=True)
         if in_progress:
             response['status'] = 'in-progress'
             if eta_s:
                 response['eta_seconds'] = eta_s
     except Exception:
-        pass
+        _log.debug('failed in in-progress detection heuristics', exc_info=True)
     return jsonify(response)
 
 @ui_bp.route('/api/domain/<domain>/history')
@@ -646,7 +647,7 @@ def debug_report():
         try:
             _log.info('DEBUG REPORT: %s', data)
         except Exception:
-            pass
+            _log.debug('failed to log debug report', exc_info=True)
         # also persist to a file for easier inspection in test runs
         try:
             # Persist debug reports into the repository tmp/ directory so test runs

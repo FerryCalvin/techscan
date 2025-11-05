@@ -184,7 +184,7 @@ def tech_meta(tech_key):
         try:
             return jsonify(json.loads(cached))
         except Exception:
-            pass
+            LOGGER.debug('failed to decode cached tech_meta payload for key=%s', cache_key, exc_info=True)
     # Build aggregated response
     total = _db.count_search_tech(tech=tech_key)
     top_versions = _db.top_versions_for_tech(tech_key, limit=10)
@@ -222,7 +222,7 @@ def tech_meta(tech_key):
     try:
         tech_cache.set(cache_key, json.dumps(out), ttl=120)
     except Exception:
-        pass
+        LOGGER.debug('failed to set cache for key=%s', cache_key, exc_info=True)
     return jsonify(out)
 
 
@@ -237,7 +237,7 @@ def tech_detail_short(tech_key):
         try:
             return jsonify(json.loads(cached))
         except Exception:
-            pass
+            LOGGER.debug('failed to decode cached detail for key=%s', cache_key, exc_info=True)
 
     # Aggregate basic info
     total = _db.count_search_tech(tech=tech_key)
@@ -279,7 +279,7 @@ def tech_detail_short(tech_key):
     try:
         tech_cache.set(cache_key, json.dumps(out), ttl=60)
     except Exception:
-        pass
+        LOGGER.debug('failed to set cache for key=%s', cache_key, exc_info=True)
     return jsonify(out)
 
 
