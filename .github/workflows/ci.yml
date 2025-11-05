@@ -5,6 +5,12 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      run_node_scanner:
+        description: "Also set up Node scanner and run heavier tests"
+        required: false
+        default: "false"
 
 jobs:
   lint-and-a11y:
@@ -52,6 +58,7 @@ jobs:
       TECHSCAN_DB_URL: postgresql://postgres:postgres@localhost:5432/techscan
       TECHSCAN_DISABLE_DB: '0'
       TECHSCAN_ADMIN_TOKEN: ci-token
+      RUN_NODE_SCANNER: ${{ inputs.run_node_scanner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -64,6 +71,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install bandit
+      - name: Set up Node (optional for scanner)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_node_scanner == 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install node_scanner deps (optional)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_node_scanner == 'true' }}
+        run: |
+          npm ci --prefix node_scanner
       - name: Wait for Postgres
         run: |
           python - <<'PY'
@@ -83,9 +99,13 @@ jobs:
               time.sleep(2)
           raise SystemExit(f'Postgres not ready: {last}')
           PY
-      - name: Run tests (skip heavy playwright)
+      - name: Run tests
         run: |
-          pytest -q -k "not playwright" || python -m unittest discover -s tests -p 'test_*.py'
+          if [ "${{ inputs.run_node_scanner }}" = "true" ]; then
+            pytest -q || python -m unittest discover -s tests -p 'test_*.py'
+          else
+            pytest -q -k "not playwright" || python -m unittest discover -s tests -p 'test_*.py'
+          fi
       - name: Bandit security scan
         run: |
           bandit -r app -q

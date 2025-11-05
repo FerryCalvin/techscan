@@ -1,0 +1,21 @@
+[Unit]
+Description=TechScan Flask API (Gunicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/techscan
+# Optional: load environment variables from a file managed by ops/secret manager
+EnvironmentFile=/etc/techscan/techscan.env
+# Ensure virtualenv is used (adjust path)
+Environment=PATH=/opt/techscan/venv/bin:/usr/local/bin:/usr/bin
+ExecStart=/opt/techscan/venv/bin/gunicorn "app:create_app()" --bind 127.0.0.1:8000 --workers 4 --threads 2 --timeout 120 --access-logfile - --error-logfile -
+Restart=on-failure
+RestartSec=5
+KillTimeoutSec=30
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
