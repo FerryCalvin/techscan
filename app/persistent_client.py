@@ -1,7 +1,8 @@
-import json, subprocess, threading, uuid, time, os, logging
+import json, threading, uuid, time, os, logging
 from typing import Optional, Dict, Any
+from . import safe_subprocess as sproc
 
-_proc: subprocess.Popen | None = None
+_proc: sproc.PopenType | None = None
 _lock = threading.Lock()
 _responses: Dict[str, Dict[str, Any]] = {}
 _cond = threading.Condition(_lock)
@@ -89,7 +90,7 @@ def _ensure_process() -> None:
     for attempt in range(1, start_attempts + 1):
         try:
             logging.getLogger('techscan.persist').info('starting persistent scanner daemon (attempt %d/%d): %s', attempt, start_attempts, ' '.join(cmd_base))
-            _proc = subprocess.Popen(cmd_base, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, cwd=node_cwd)
+            _proc = sproc.safe_popen(cmd_base, stdin=sproc.PIPE, stdout=sproc.PIPE, stderr=sproc.PIPE, text=True, bufsize=1, cwd=node_cwd)
             with _lock:
                 _metrics['last_start_ts'] = time.time()
             # start reader threads for stdout/stderr
@@ -124,7 +125,9 @@ def _stderr_reader_thread():
             pass
 
 def _reader_thread():
-    assert _proc is not None
+    if _proc is None or _proc.stdout is None:
+        logging.getLogger('techscan.persist').warning('_reader_thread started without active process/stdout')
+        return
     for line in _proc.stdout:  # type: ignore
         line = line.strip()
         if not line:
@@ -142,7 +145,8 @@ def _reader_thread():
 
 def _send(message: dict) -> dict:
     _ensure_process()
-    assert _proc is not None and _proc.stdin is not None
+    if _proc is None or _proc.stdin is None:
+        raise RuntimeError('persistent process stdin is not available')
     _id = message.get('id') or str(uuid.uuid4())
     message['id'] = _id
     data = json.dumps(message, separators=(',', ':')) + '\n'

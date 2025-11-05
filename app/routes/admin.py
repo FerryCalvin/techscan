@@ -3,7 +3,8 @@ from flask import Blueprint, request, jsonify, current_app
 import os, logging, json, time
 from ..scan_utils import flush_cache, load_heuristic_patterns, get_stats
 from .. import heuristic_fast
-import subprocess, pathlib, shlex
+import pathlib, shlex
+from .. import safe_subprocess as sproc
 from .. import version_audit
 from .. import scan_utils
 from .. import db as dbmod
@@ -82,8 +83,8 @@ def stats_view():
             'hits': snap['hits'],
             'misses': snap['misses']
         }
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('techscan.admin').debug('stats sniff_cache augmentation failed: %s', e)
     return jsonify({'status': 'ok', 'stats': stats})
 
 @admin_bp.route('/phases', methods=['GET'])
@@ -150,6 +151,7 @@ def sniff_cache_view():
         snap = scan_utils._sniff_cache_snapshot()  # type: ignore[attr-defined]
         return jsonify({'status':'ok', **snap})
     except Exception as e:
+        logging.getLogger('techscan.admin').debug('sniff_cache snapshot failed: %s', e)
         return jsonify({'error': str(e)}), 500
 
 @admin_bp.route('/update_tech', methods=['POST'])
@@ -179,7 +181,7 @@ def update_tech():
             # Git repository update
             method = 'git-pull'
             cmd = ['git', '-C', str(p), 'pull', '--ff-only']
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            proc = sproc.safe_run(cmd, capture_output=True, text=True, timeout=120)
             stdout, stderr = proc.stdout, proc.stderr
             if proc.returncode != 0:
                 return jsonify({'error': 'git pull failed', 'method': method, 'stderr': stderr[-400:]}), 500
@@ -194,7 +196,7 @@ def update_tech():
                 cmd = [npm_cmd, 'install', 'wappalyzer@latest']
             else:
                 cmd = [npm_cmd, 'update', 'wappalyzer']
-            proc = subprocess.run(cmd, cwd=str(p), capture_output=True, text=True, timeout=240)
+            proc = sproc.safe_run(cmd, cwd=str(p), capture_output=True, text=True, timeout=240)
             stdout, stderr = proc.stdout, proc.stderr
             if proc.returncode != 0:
                 return jsonify({'error': 'npm update failed', 'method': method, 'stderr': stderr[-400:]}), 500
@@ -208,7 +210,7 @@ def update_tech():
         snippet_err = (stderr or '')[-400:]
         logging.getLogger('techscan.admin').info('update_tech success method=%s wpath=%s', method, wpath)
         return jsonify({'status': 'ok', 'method': method, 'stdout': snippet_out, 'stderr': snippet_err})
-    except subprocess.TimeoutExpired:
+    except sproc.TimeoutExpired:
         return jsonify({'error': f'{method or "update"} command timeout'}), 504
     except FileNotFoundError as nf:
         return jsonify({'error': f'command not found: {nf}'}), 500
@@ -434,6 +436,7 @@ def quarantine_state():
                 res.append({'domain': dom, 'quarantine_until': qt, 'seconds_remaining': round(qt-now, 2)})
         res.sort(key=lambda x: x['seconds_remaining'], reverse=True)
     except Exception as e:
+        logging.getLogger('techscan.admin').debug('quarantine state snapshot failed: %s', e)
         return jsonify({'error': str(e)}), 500
     return jsonify({'status':'ok','count': len(res),'items': res})
 
