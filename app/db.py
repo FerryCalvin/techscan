@@ -6,29 +6,42 @@ import psycopg
 try:
     # psycopg_pool provides a robust connection pool for psycopg (psycopg3)
     from psycopg_pool import ConnectionPool as _PsycopgConnectionPool
-except Exception:
+except Exception as pool_import_err:
+    logging.getLogger('techscan.db').debug('psycopg_pool import failed err=%s', pool_import_err, exc_info=True)
     _PsycopgConnectionPool = None
+
+_LOG = logging.getLogger('techscan.db')
 
 # In-memory mirror storage for domain techs is always available (even when DB enabled)
 _MEM_DOMAIN_TECHS: dict = {}
 
+_DB_DISABLED_ENV = os.environ.get('TECHSCAN_DISABLE_DB', '0') == '1'
+
 _explicit_url = os.environ.get('TECHSCAN_DB_URL')
 if _explicit_url:
     DB_URL = _explicit_url
-else:
-    # Build from individual pieces if provided; fall back to defaults
+elif not _DB_DISABLED_ENV:
+    # Build from individual pieces when DB enabled; all secrets must come from env
     db_host = os.environ.get('TECHSCAN_DB_HOST', '127.0.0.1')
     db_port = os.environ.get('TECHSCAN_DB_PORT', '5432')
     db_name = os.environ.get('TECHSCAN_DB_NAME', 'techscan')
     db_user = os.environ.get('TECHSCAN_DB_USER', 'postgres')
-    db_pass = os.environ.get('TECHSCAN_DB_PASSWORD', 'REDACTED')
+    db_pass = os.environ.get('TECHSCAN_DB_PASSWORD')
+    if not db_pass:
+        if os.environ.get('TECHSCAN_ALLOW_EMPTY_DB_PASSWORD', '0') == '1':
+            _LOG.warning('TECHSCAN_DB_PASSWORD is empty (allowed by TECHSCAN_ALLOW_EMPTY_DB_PASSWORD=1). Use only for local development.')
+            db_pass = ''  # nosec B105: explicit empty password permitted only for local development override
+        else:
+            raise RuntimeError('TECHSCAN_DB_PASSWORD is not set. Define TECHSCAN_DB_URL or set TECHSCAN_DB_PASSWORD via environment.')
     # URL-encode password to safely handle special characters (@, #, :)
     enc_pass = _urlquote(db_pass, safe='')
     DB_URL = f'postgresql://{db_user}:{enc_pass}@{db_host}:{db_port}/{db_name}'
+else:
+    DB_URL = ''
 
 # Allow disabling DB usage completely for test/perf runs without a live Postgres
-if os.environ.get('TECHSCAN_DISABLE_DB','0') == '1':
-    logging.getLogger('techscan.db').warning('TECHSCAN_DISABLE_DB=1 -> database persistence DISABLED (using stubs)')
+if _DB_DISABLED_ENV:
+    _LOG.warning('TECHSCAN_DISABLE_DB=1 -> database persistence DISABLED (using stubs)')
     # Ensure in-memory mirror storage is defined before stubs use it
     _MEM_DOMAIN_TECHS = {}
     def ensure_schema():  # type: ignore
