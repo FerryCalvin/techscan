@@ -1,6 +1,8 @@
 # TechScan
 
-A fast, production-ready web technology scanner. TechScan detects technologies running on websites (CMS, frameworks, JS libraries, servers) using a combination of heuristic analysis and Wappalyzer-powered deep scanning.
+A fast, production-ready web technology scanner. TechScan detects technologies
+running on websites (CMS, frameworks, JS libraries, servers) using a combination
+of heuristic analysis and Wappalyzer-powered deep scanning.
 
 ## Features
 
@@ -212,7 +214,7 @@ docker-compose up -d
 
 ## Project Structure
 
-```
+```text
 techscan/
 ├── app/                    # Flask application
 │   ├── routes/             # API endpoints
@@ -269,4 +271,4 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 ---
 
-**Built for Internship Project at Universitas Airlangga**
+Built for Internship Project at Universitas Airlangga
