@@ -72,7 +72,6 @@ quick_test2.json
 test_out.jsonl
 test_out2.jsonl
 hasil.jsonl
-app/static/
 
 # Allow small curated example JSON if needed (whitelist here)
 # !example_small.jsonl

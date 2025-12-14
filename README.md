@@ -1,179 +1,272 @@
 # TechScan
 
-For complete setup, server configuration, deployment, and API details, see the full documentation: `docs/README_full.md`.
+A fast, production-ready web technology scanner. TechScan detects technologies running on websites (CMS, frameworks, JS libraries, servers) using a combination of heuristic analysis and Wappalyzer-powered deep scanning.
 
-Documentation links:
-- Full guide: `docs/README_full.md`
-- API spec (OpenAPI): `docs/openapi.yaml`
-- Documentation standards: `docs/CONTRIBUTING_DOCS.md`
+## Features
 
-Fast, production-ready web technology scanner. TechScan exposes a Flask API that detects technologies running on a domain (CMS, frameworks, JS libraries, servers), enriches results with heuristics, and optionally persists scans to Postgres. A Node.js Wappalyzer worker is used for deep/full scans; Redis can be used to back rate limits and caching.
+- **Dual Scanning Modes**: Fast heuristic scanner + deep Wappalyzer-based detection
+- **Modern Web UI**: Dashboard, websites management, technology search, scan history, and statistics
+- **Weekly Auto-Rescan**: Automatic periodic scanning of all domains
+- **Domain Groups**: Organize domains into custom groups
+- **PostgreSQL Persistence**: Store scan results and technology history
+- **Redis Integration**: Rate limiting and caching
+- **REST API**: Full API access for automation
+- **CSV Export**: Export scan results in bulk
 
-## What’s inside
+## Technology Stack
 
-- Python 3.12, Flask 3 app factory (`app:create_app()`)
-- Heuristic “fast” scanner + optional Node/Wappalyzer “full” scanner
-- Optional Postgres persistence (psycopg 3) with light connection pooling
-- Optional Redis backend for rate limiting/cache
-- Test suite (pytest) and basic security linting (Bandit)
+- **Backend**: Python 3.12, Flask 3
+- **Scanner**: Node.js 18+, Wappalyzer
+- **Database**: PostgreSQL 13+ (optional)
+- **Cache/Rate Limit**: Redis 6+ (optional)
+- **Frontend**: Vanilla HTML/CSS/JS with glassmorphism UI
 
-## Requirements
+## Quick Start
 
-- Python 3.11+ (tested on 3.12)
-- Node.js 18+ (required for the Wappalyzer worker in `node_scanner/`)
-- Optional: PostgreSQL 13+ (for persistence and search endpoints)
-- Optional: Redis 6+ (for rate limiting/cache)
+### 1. Clone and Setup Environment
 
-## Quickstart (Windows PowerShell)
+```bash
+git clone https://github.com/FerryCalvin/techscan.git
+cd techscan
 
-1) Create and activate a virtual environment, then install deps
-
-```powershell
+# Create virtual environment
 python -m venv venv
+
+# Windows
 ./venv/Scripts/Activate.ps1
+
+# Linux/Mac
+source venv/bin/activate
+
+# Install Python dependencies
 pip install -r requirements.txt
 ```
 
-2) Install Node.js deps for deep scans
+### 2. Install Node.js Scanner
 
-```powershell
+```bash
 cd node_scanner
 npm install
 cd ..
 ```
 
-3) Create a `.env` file (dev only; production must use real env/secret manager)
+### 3. Configure Environment
 
-```dotenv
-# Database (choose ONE of the two)
-TECHSCAN_DB_URL=postgresql://user:password@host:5432/techscan
-# or compose from parts
-# TECHSCAN_DB_HOST=localhost
-# TECHSCAN_DB_PORT=5432
-# TECHSCAN_DB_NAME=techscan
-# TECHSCAN_DB_USER=postgres
-# TECHSCAN_DB_PASSWORD=your_password
-
-# Admin token for /admin/* endpoints
-TECHSCAN_ADMIN_TOKEN=change-me
-
-# Optional Redis (for rate limiting/cache)
-# TECHSCAN_REDIS_URL=redis://localhost:6379/0
-
-# Where your node scanner lives (auto-detected by default)
-# WAPPALYZER_PATH=./node_scanner
-```
-
-4) Run the API for local development
-
-```powershell
-python run.py
-# App runs at http://127.0.0.1:5000
-```
-
-Try a quick scan:
-
-```powershell
-curl "http://127.0.0.1:5000/scan?domain=example.com&quick=1"
-```
-
-## Production run
-
-Use Gunicorn with the app factory (set env vars via systemd/containers, not .env):
+Copy `.env.example` to `.env` and configure:
 
 ```bash
-gunicorn "app:create_app()" --bind 0.0.0.0:8000 --workers 4 --threads 2 --timeout 120 --access-logfile - --error-logfile -
+cp .env.example .env
 ```
 
-Tips
-- Put Nginx in front for TLS and compression
-- Provide `TECHSCAN_ADMIN_TOKEN` and DB vars via your secret manager
-- For rate limiting at scale, set `TECHSCAN_REDIS_URL`
+Essential variables:
 
-## Key environment variables
+```dotenv
+# Database (required for persistence)
+TECHSCAN_DB_HOST=127.0.0.1
+TECHSCAN_DB_PORT=5432
+TECHSCAN_DB_NAME=techscan
+TECHSCAN_DB_USER=postgres
+TECHSCAN_DB_PASSWORD=your_password
 
-- Persistence (choose ONE)
-	- `TECHSCAN_DB_URL` full URL (preferred)
-	- or compose from: `TECHSCAN_DB_HOST`, `TECHSCAN_DB_PORT`, `TECHSCAN_DB_NAME`, `TECHSCAN_DB_USER`, `TECHSCAN_DB_PASSWORD`
-- Admin
-	- `TECHSCAN_ADMIN_TOKEN` required for `/admin/*`
-- Rate limiting/cache
-	- `TECHSCAN_REDIS_URL` optional Redis connection string
-- Scanner
-	- `WAPPALYZER_PATH` path to `node_scanner/` (auto-detected if not set)
-	- `TECHSCAN_PREFLIGHT` fail-fast TCP reachability check (default `1`, disable only if your network blocks raw sockets)
-	- `TECHSCAN_DNS_NEG_CACHE` seconds to cache unreachable DNS lookups (default `600`)
-- Safety switches
-	- `TECHSCAN_DISABLE_DB=1` run without a DB (persistence/search disabled)
-- Background maintenance
-	- `TECHSCAN_WEEKLY_RESCAN` enable weekly auto-rescans (default `1`)
-	- `TECHSCAN_WEEKLY_RESCAN_MAX` cap domains per sweep (default `2000`)
-	- `TECHSCAN_WEEKLY_RESCAN_LOOKBACK_DAYS` days since last scan to qualify domains (default `7`)
-	- `TECHSCAN_WEEKLY_RESCAN_CRON` cron-style schedule (`m h * * dow`, default `0 3 * * 0` for Sunday 03:00 local time)
-	- `TECHSCAN_WEEKLY_RESCAN_INTERVAL_S` fallback interval when cron spec invalid (default `604800` seconds)
+# Wappalyzer path
+WAPPALYZER_PATH=/path/to/wappalyzer
 
-## Rekomendasi Infrastruktur 1 Tahun
+# Admin token for protected endpoints
+TECHSCAN_ADMIN_TOKEN=your_secret_token
+```
 
-Paket di bawah ini sudah dipakai untuk perhitungan satu tahun ke depan (dengan asumsi ±400 domain yang discan ulang setiap bulan dan aktivitas harian ringan):
+### 4. Run the Application
 
-- **CPU**: 4 vCPU (sekitar 2 core fisik dengan hyper-threading). Cukup untuk Flask API, worker Node/Chromium, dan job bulanan. Jika antrean scan sering menumpuk, siapkan opsi upgrade ke 8 vCPU.
-- **RAM**: 16 GB. Memberi ruang untuk Python app, Node worker (±4 GB), Postgres, serta cache OS. Naikkan ke 24–32 GB bila jumlah domain atau concurrency bertambah banyak.
-- **Storage utama**: SSD 200 GB.
-  - ±30 GB untuk OS + dependensi
-  - `<1 GB` data scan + index selama 1 tahun
-  - sisanya untuk log, backup, dan ruang tumbuh
-- **Database (opsional terpisah)**: jika memakai managed Postgres atau volume khusus, siapkan SSD 100 GB—sudah sangat cukup untuk beberapa tahun.
-- **Jaringan**: NIC 1 Gbps, siapkan IP publik statis atau load balancer dengan TLS. Perkiraan data keluar <25 GB/tahun.
-- **Backup & pemeliharaan**: snapshot mingguan + incremental harian, uji restore tiap kuartal. Patch OS bulanan, pantau utilisasi CPU/RAM/DB.
-- **Monitoring**: aktifkan Prometheus/Grafana (atau solusi setara), alert untuk antrean scan dan error Node worker. Evaluasi ulang setengah tahun jika domain atau traffic meningkat >2×.
+```bash
+python run.py
+# Access at http://127.0.0.1:5000
+```
 
-## Endpoints (high level)
+## UI Pages
 
-- `GET /scan?domain=...&quick=1|0&deep=1|0` Run a scan
-- `GET /tech?domain=...` Technology details and history (if DB enabled)
-- `GET /ui/*` Lightweight UI pages (stats, results)
-- `GET /metrics/prometheus` Basic Prometheus metrics
-- Admin (token required in header `Authorization: Bearer <token>`)
-	- `POST /admin/log_level` change log level
-	- `POST /admin/cache/flush` flush cache
-	- `GET /admin/db/stats` DB stats (if enabled)
-	- `POST /admin/version/reload` refresh datasets
+| Page | URL | Description |
+|------|-----|-------------|
+| Dashboard | `/` | Main scan interface with single/bulk scanning |
+| Websites | `/websites` | View and manage all scanned domains |
+| Technology Search | `/technology` | Search domains by technology |
+| History | `/history` | Scan history with filtering |
+| Statistics | `/stats` | System dashboard with charts and metrics |
 
-## Running tests
+## API Endpoints
 
-Use the provided VS Code Task, or run directly:
+### Scanning
 
-```powershell
-# VS Code Task: "tests - run pytest quick smoke"
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/scan?domain=example.com` | Scan a single domain |
+| POST | `/bulk_scan` | Scan multiple domains |
+| GET | `/bulk_scan?batch_id=xxx` | Get bulk scan results |
+| GET | `/export_csv` | Export results as CSV |
+
+### Domain Management
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/domains` | List all domains |
+| GET | `/api/domain/{domain}/detail` | Get domain details |
+| DELETE | `/api/domain/{domain}` | Delete a domain |
+
+### Domain Groups
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/domain_groups` | List all groups |
+| POST | `/api/domain_groups` | Create a group |
+| DELETE | `/api/domain_groups/{group}` | Delete a group |
+| POST | `/api/domain_groups/{group}/assign` | Add domain to group |
+| POST | `/api/domain_groups/{group}/remove` | Remove domain from group |
+
+### Statistics & Metrics
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/stats` | Get system statistics |
+| GET | `/api/top_technologies` | Top detected technologies |
+| GET | `/api/performance/timeseries` | Scan performance data |
+| GET | `/metrics/prometheus` | Prometheus metrics |
+
+### Admin (requires `TECHSCAN_ADMIN_TOKEN`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/admin/cache/flush` | Flush cache |
+| POST | `/admin/weekly_rescan/run` | Trigger weekly rescan |
+| POST | `/admin/log_level` | Change log level |
+| GET | `/admin/db/stats` | Database statistics |
+
+## Environment Variables
+
+See `.env.example` for complete documentation. Key variables:
+
+### Database
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TECHSCAN_DB_URL` | - | Full PostgreSQL URL |
+| `TECHSCAN_DB_HOST` | `127.0.0.1` | Database host |
+| `TECHSCAN_DB_PORT` | `5432` | Database port |
+| `TECHSCAN_DB_NAME` | `techscan` | Database name |
+| `TECHSCAN_DB_USER` | `postgres` | Username |
+| `TECHSCAN_DB_PASSWORD` | - | Password (required) |
+| `TECHSCAN_DISABLE_DB` | `0` | Set `1` to disable DB |
+
+### Scanner
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WAPPALYZER_PATH` | - | Path to Wappalyzer |
+| `TECHSCAN_PERSIST_BROWSER` | `1` | Enable persistent browser |
+| `TECHSCAN_UNIFIED` | `1` | Unified scan mode |
+| `TECHSCAN_NODE_CONCURRENCY` | `3` | Concurrent Node scanners |
+
+### Weekly Rescan
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TECHSCAN_WEEKLY_RESCAN` | `1` | Enable weekly rescan |
+| `TECHSCAN_WEEKLY_RESCAN_CRON` | `0 3 * * 0` | Cron schedule (Sunday 3AM) |
+| `TECHSCAN_WEEKLY_RESCAN_MAX` | `2000` | Max domains per run |
+| `TECHSCAN_WEEKLY_RESCAN_CONCURRENCY` | `3` | Concurrent scans |
+
+### UI Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TECHSCAN_STATS_AUTO_REFRESH` | `0` | Enable stats auto-refresh |
+| `TECHSCAN_STATS_AUTO_REFRESH_INTERVAL_MS` | `300000` | Refresh interval (5 min) |
+
+## Production Deployment
+
+### Using Gunicorn
+
+```bash
+gunicorn "app:create_app()" \
+  --bind 0.0.0.0:8000 \
+  --workers 4 \
+  --threads 2 \
+  --timeout 120 \
+  --access-logfile - \
+  --error-logfile -
+```
+
+### Docker
+
+```bash
+docker-compose up -d
+```
+
+### Infrastructure Recommendations (1 Year)
+
+| Resource | Recommendation |
+|----------|----------------|
+| CPU | 4 vCPU (scale to 8 if needed) |
+| RAM | 16 GB minimum |
+| Storage | SSD 200 GB |
+| Database | Managed PostgreSQL or 100 GB SSD |
+| Network | 1 Gbps, static IP |
+
+## Project Structure
+
+```
+techscan/
+├── app/                    # Flask application
+│   ├── routes/             # API endpoints
+│   ├── templates/          # HTML templates
+│   ├── static/             # CSS, JS, assets
+│   ├── db.py               # Database layer
+│   ├── scan_utils.py       # Scan logic
+│   └── periodic.py         # Weekly rescan
+├── node_scanner/           # Node.js Wappalyzer scanner
+├── scripts/                # Utility scripts
+├── tests/                  # Test suite
+├── docs/                   # Documentation
+├── data/                   # Data files
+├── .env.example            # Environment template
+├── requirements.txt        # Python dependencies
+└── run.py                  # Development server
+```
+
+## Running Tests
+
+```bash
+# Run all tests
 pytest -q
+
+# Run without heavy tests
+pytest -q -k "not playwright"
 ```
 
-## Security checks (Bandit)
+## Documentation
 
-Bandit was run on the `app/` tree. Summary:
-
-- High: 0
-- Medium: 0
-- Low: 101 (mostly try/except pass/continue patterns, subprocess usage, asserts in internal utilities, and non-crypto random for jitter)
-
-Notes
-- These Low findings are expected in several “best-effort” sections (background workers, cache, enrichment). We’ll progressively tighten or annotate with `# nosec` where appropriate.
-- No secrets are hard-coded; DB credentials must come from environment variables only.
+- [Full Guide](docs/README_full.md)
+- [API Specification](docs/openapi.yaml)
+- [Database Configuration](docs/db_configuration.md)
+- [Contributing Guide](CONTRIBUTING.md)
 
 ## Troubleshooting
 
-- “DB password required”: ensure `TECHSCAN_DB_URL` or the composed parts are present before the app imports `app/db.py`.
-- Node scanner not found: run `npm install` under `node_scanner/` and verify `WAPPALYZER_PATH`.
-- Rate limiter using memory: set `TECHSCAN_REDIS_URL` to enable Redis backend.
-- VS Code Pylance MCP: when registering the MCP server inside VS Code, choose **Auth type: None** (or start your MCP adapter with `--no-auth`). Otherwise VS Code will try to fetch `/.well-known/openid-configuration` from port 3048 and the connector will fail with the 401/404 errors shown above.
+| Issue | Solution |
+|-------|----------|
+| "DB password required" | Set `TECHSCAN_DB_PASSWORD` or use `TECHSCAN_DB_URL` |
+| Node scanner not found | Run `npm install` in `node_scanner/` |
+| Rate limiter using memory | Set `TECHSCAN_REDIS_URL` for Redis backend |
+| Weekly scan not running | Check `TECHSCAN_WEEKLY_RESCAN=1` |
 
-## Development notes
+## Security
 
-- App factory: `app:create_app()` (used by Gunicorn/process managers)
-- Local dev loads `.env` via `python-dotenv` in `run.py` only. Production must use real env.
-- Database schema is auto-ensured on startup when DB is enabled.
+- Bandit security scan: 0 High, 0 Medium vulnerabilities
+- No hardcoded secrets - all credentials via environment
+- Admin endpoints protected by `TECHSCAN_ADMIN_TOKEN`
 
 ## License
 
-This project’s license wasn’t specified. Add a LICENSE file if you intend to distribute publicly.
+MIT License - See [LICENSE](LICENSE) for details.
 
+---
+
+**Built for Internship Project at Universitas Airlangga**
