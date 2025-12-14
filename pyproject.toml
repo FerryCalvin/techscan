@@ -1,10 +1,18 @@
 [tool.ruff]
 line-length = 120
-select = ["E", "F"]
 exclude = [
   ".git",
   ".venv",
   "venv",
   "node_scanner",
   "__pycache__",
+]
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = [
+  "E401",  # Multiple imports on one line (style preference)
+  "E501",  # Line too long (already configured line-length)
+  "E722",  # Do not use bare except
+  "E731",  # Do not assign a lambda expression
 ]
