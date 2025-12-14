@@ -1,4 +1,5 @@
-import os, logging
+import os
+import logging
 from flask import Flask
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -36,7 +37,9 @@ def create_app():
             fh.setLevel(level)
             fh.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s'))
             logging.getLogger().addHandler(fh)
-            logging.getLogger(__name__).info('RotatingFileHandler attached path=%s max_bytes=%d backups=%d', log_file, max_bytes, backup)
+            logging.getLogger(__name__).info(
+                'RotatingFileHandler attached path=%s max_bytes=%d backups=%d',
+                log_file, max_bytes, backup)
         except Exception:
             logging.getLogger(__name__).warning('failed attaching RotatingFileHandler for %s', log_file)
     logging.getLogger('werkzeug').setLevel(logging.WARNING)
@@ -132,11 +135,14 @@ def create_app():
                     _pc._ensure_process()
                     logging.getLogger(__name__).info('Persistent scanner daemon ensured at startup')
                 except Exception as pc_err:
-                    logging.getLogger(__name__).warning('Failed to start persistent scanner daemon at startup: %s', pc_err)
+                    logging.getLogger(__name__).warning(
+                        'Failed to start persistent scanner daemon at startup: %s', pc_err)
             except Exception as import_err:
-                logging.getLogger(__name__).warning('Failed importing persistent_client to start daemon: %s', import_err)
+                logging.getLogger(__name__).warning(
+                    'Failed importing persistent_client to start daemon: %s', import_err)
         else:
-            logging.getLogger(__name__).info('Persistent daemon autostart disabled via TECHSCAN_DISABLE_PERSIST_AUTOSTART')
+            logging.getLogger(__name__).info(
+                'Persistent daemon autostart disabled via TECHSCAN_DISABLE_PERSIST_AUTOSTART')
     except Exception:
         # Defensive: never fail app startup because persistent daemon couldn't be ensured
         logging.getLogger(__name__).debug('Persistent startup block encountered an unexpected error')
@@ -165,7 +171,8 @@ def create_app():
     # Stats page auto-refresh configuration (default: manual/off)
     # Set TECHSCAN_STATS_AUTO_REFRESH=1 to enable auto-refresh with 5 minute interval
     app.config['STATS_AUTO_REFRESH'] = os.environ.get('TECHSCAN_STATS_AUTO_REFRESH', '0') == '1'
-    app.config['STATS_AUTO_REFRESH_INTERVAL_MS'] = int(os.environ.get('TECHSCAN_STATS_AUTO_REFRESH_INTERVAL_MS', '300000'))
+    refresh_interval = os.environ.get('TECHSCAN_STATS_AUTO_REFRESH_INTERVAL_MS', '300000')
+    app.config['STATS_AUTO_REFRESH_INTERVAL_MS'] = int(refresh_interval)
     
     # Version / commit (surface in config for other components if needed)
     app.config['TECHSCAN_VERSION'] = os.environ.get('TECHSCAN_VERSION', '0.3.0')
@@ -226,7 +233,8 @@ def create_app():
                     return jsonify({'status':'ok','fallback': True,'count': len(out),'routes': out})
                 except Exception as e:
                     return jsonify({'error': str(e)}), 500
-            logging.getLogger(__name__).warning('Primary /_routes diagnostic endpoint absent; fallback /routes registered.')
+            logging.getLogger(__name__).warning(
+                'Primary /_routes diagnostic endpoint absent; fallback /routes registered.')
         # Prometheus-friendly metrics endpoint (lightweight)
         from flask import Response
         @app.route('/metrics/prometheus')  # type: ignore

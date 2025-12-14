@@ -3,7 +3,10 @@ Stores recent bulk scan result lists so CSV export or follow-up fetch does not t
 Not intended for long-term persistence. Controlled by TECHSCAN_BULK_BATCH_MAX and TECHSCAN_BULK_BATCH_TTL.
 """
 from __future__ import annotations
-import threading, time, uuid, os
+import threading
+import time
+import uuid
+import os
 from typing import Dict, Any, List, Optional
 
 _lock = threading.Lock()

@@ -1,4 +1,7 @@
-import os, time, json, logging
+import os
+import time
+import json
+import logging
 import threading
 from urllib.parse import quote as _urlquote
 from contextlib import contextmanager
@@ -39,10 +42,14 @@ elif not _DB_DISABLED_ENV:
     db_pass = os.environ.get('TECHSCAN_DB_PASSWORD')
     if not db_pass:
         if os.environ.get('TECHSCAN_ALLOW_EMPTY_DB_PASSWORD', '0') == '1':
-            _LOG.warning('TECHSCAN_DB_PASSWORD is empty (allowed by TECHSCAN_ALLOW_EMPTY_DB_PASSWORD=1). Use only for local development.')
+            _LOG.warning(
+                'TECHSCAN_DB_PASSWORD is empty (allowed by '
+                'TECHSCAN_ALLOW_EMPTY_DB_PASSWORD=1). Use only for local development.')
             db_pass = ''  # nosec B105: explicit empty password permitted only for local development override
         else:
-            raise RuntimeError('TECHSCAN_DB_PASSWORD is not set. Define TECHSCAN_DB_URL or set TECHSCAN_DB_PASSWORD via environment.')
+            raise RuntimeError(
+                'TECHSCAN_DB_PASSWORD is not set. '
+                'Define TECHSCAN_DB_URL or set TECHSCAN_DB_PASSWORD via environment.')
     # URL-encode password to safely handle special characters (@, #, :)
     enc_pass = _urlquote(db_pass, safe='')
     DB_URL = f'postgresql://{db_user}:{enc_pass}@{db_host}:{db_port}/{db_name}'
@@ -146,7 +153,8 @@ SCHEMA_STATEMENTS = [
     'CREATE INDEX IF NOT EXISTS idx_domain_techs_first_seen ON domain_techs(first_seen);',
     # Lowercase index to accelerate exact tech name lookups with LOWER(tech_name)=LOWER($1)
     'CREATE INDEX IF NOT EXISTS idx_domain_techs_lower_name ON domain_techs(LOWER(tech_name));',
-    # Legacy functional unique index (kept if already exists). New approach uses update-then-insert so we only need a normal index.
+    # Legacy functional unique index (kept if already exists).
+    # New approach uses update-then-insert so we only need a normal index.
     'CREATE INDEX IF NOT EXISTS idx_domain_techs_dtv ON domain_techs(domain, tech_name, version);'
 ]
 
@@ -166,10 +174,14 @@ if os.environ.get('TECHSCAN_DISABLE_DB','0') != '1':
             _POOL = _PsycopgConnectionPool(conninfo=DB_URL, max_size=DB_POOL_SIZE)
             logging.getLogger('techscan.db').info('Initialized psycopg connection pool size=%s', DB_POOL_SIZE)
         except Exception as e:
-            logging.getLogger('techscan.db').warning('Failed to initialize psycopg_pool: %s; will fall back to single-connection-per-use', e)
+            logging.getLogger('techscan.db').warning(
+                'Failed to initialize psycopg_pool: %s; '
+                'will fall back to single-connection-per-use', e)
             _POOL = None
     else:
-        logging.getLogger('techscan.db').info('psycopg_pool not available; falling back to creating short-lived connections (set TECHSCAN_DB_POOL_SIZE and install psycopg_pool for pooling)')
+        logging.getLogger('techscan.db').info(
+            'psycopg_pool not available; falling back to creating short-lived connections '
+            '(set TECHSCAN_DB_POOL_SIZE and install psycopg_pool for pooling)')
 
 
 def pool_stats():
@@ -215,7 +227,8 @@ def _pool_monitor_check():
     try:
         if st and st.get('max_size') and st.get('in_use') is not None:
             if st['in_use'] >= st['max_size']:
-                logging.getLogger('techscan.db').warning('DB pool at full capacity (%d/%d)', st['in_use'], st['max_size'])
+                logging.getLogger('techscan.db').warning(
+                    'DB pool at full capacity (%d/%d)', st['in_use'], st['max_size'])
                 ok = False
     except Exception:
         pass
@@ -251,7 +264,9 @@ def start_pool_monitor(interval_s: float = 10.0):
     if _POOL_MONITOR_THREAD and _POOL_MONITOR_THREAD.is_alive():
         return
     _POOL_MONITOR_STOP.clear()
-    t = threading.Thread(target=_pool_monitor_loop, args=(float(os.environ.get('TECHSCAN_DB_POOL_MONITOR_INTERVAL', '10')),), daemon=True, name='db-pool-monitor')
+    interval = float(os.environ.get('TECHSCAN_DB_POOL_MONITOR_INTERVAL', '10'))
+    t = threading.Thread(
+        target=_pool_monitor_loop, args=(interval,), daemon=True, name='db-pool-monitor')
     _POOL_MONITOR_THREAD = t
     t.start()
 
@@ -318,7 +333,9 @@ def ensure_schema():
 
 def save_scan(result: dict, from_cache: bool, timeout_used: int):
     """Persist single scan result.
-    result expects keys: domain, scan_mode, duration, technologies, categories, timestamp, (optional) adaptive_timeout, retries, raw
+
+    result expects keys: domain, scan_mode, duration, technologies, categories,
+    timestamp, (optional) adaptive_timeout, retries, raw
     """
     # If disabled at import-time or runtime, only mirror to in-memory store
     if _DB_DISABLED or _is_disabled_runtime():
