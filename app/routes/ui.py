@@ -1,11 +1,16 @@
-from flask import Blueprint, render_template, jsonify, request, redirect, url_for
-import logging, os
+from flask import Blueprint, render_template, jsonify, request, redirect, url_for, send_from_directory, abort
+import logging, os, datetime
+from werkzeug.utils import safe_join
 
 from .. import db as _db
 from .. import domain_groups as _dg
 
 ui_bp = Blueprint('ui', __name__)
 _log = logging.getLogger('techscan.ui')
+
+_ICON_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'node_modules', 'tech-stack-icons', 'icons'))
+if not os.path.isdir(_ICON_DIR):
+    _log.warning('tech-stack-icons icon directory missing path=%s', _ICON_DIR)
 
 # --- Diff helper ---
 
@@ -137,16 +142,32 @@ def api_stats():
             from ..db import get_conn
             with get_conn() as conn:
                 with conn.cursor() as cur:
-                    # scans total and last scan
-                    cur.execute('SELECT COUNT(*), MAX(finished_at) FROM scans')
+                    # scans total, last scan, and total payload footprint
+                    cur.execute('SELECT COUNT(*), MAX(finished_at), SUM(payload_bytes) FROM scans')
                     r = cur.fetchone()
                     out['scans_total'] = r[0] or 0
                     out['last_scan'] = {'finished_at': r[1].timestamp()} if r and r[1] else None
+                    total_payload_raw = r[2] if r else None
+                    try:
+                        out['total_payload_bytes'] = int(total_payload_raw) if total_payload_raw is not None else 0
+                    except Exception:
+                        out['total_payload_bytes'] = float(total_payload_raw) if total_payload_raw is not None else 0.0
                     
-                    # unique domains count
+                    # unique domains count from domain_techs mirror (legacy)
                     cur.execute('SELECT COUNT(DISTINCT domain) FROM domain_techs')
                     unique_count = cur.fetchone()
                     out['unique_domains'] = unique_count[0] if unique_count else 0
+
+                    # total domains aligned with /api/domains (distinct domains from scans table)
+                    try:
+                        cur.execute('SELECT COUNT(DISTINCT domain) FROM scans')
+                        domain_row = cur.fetchone()
+                        domains_total = domain_row[0] if domain_row else out['unique_domains']
+                        out['domains_total'] = domains_total
+                        out['total_domains'] = domains_total
+                    except Exception:
+                        out['domains_total'] = out.get('unique_domains', 0)
+                        out['total_domains'] = out['domains_total']
                     
                     # avg tech count and duration over last 24h
                     cur.execute("""
@@ -160,22 +181,42 @@ def api_stats():
                     # avg evidence/version audit from raw_json->phases (best-effort)
                     try:
                         cur.execute("""
-                            SELECT AVG( (raw_json->'phases'->>'evidence_ms')::INT ),
-                                   AVG( (raw_json->'phases'->>'version_audit_ms')::INT )
-                            FROM scans WHERE raw_json IS NOT NULL AND finished_at >= NOW() - INTERVAL '24 hours'
+                            SELECT
+                                AVG(
+                                    CASE
+                                        WHEN (raw_json->'phases'->>'evidence_ms') ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                                            THEN (raw_json->'phases'->>'evidence_ms')::DOUBLE PRECISION
+                                        ELSE NULL
+                                    END
+                                ) AS evidence_avg,
+                                AVG(
+                                    CASE
+                                        WHEN (raw_json->'phases'->>'version_audit_ms') ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                                            THEN (raw_json->'phases'->>'version_audit_ms')::DOUBLE PRECISION
+                                        ELSE NULL
+                                    END
+                                ) AS version_audit_avg
+                            FROM scans
+                            WHERE raw_json IS NOT NULL AND finished_at >= NOW() - INTERVAL '24 hours'
                         """)
                         r3 = cur.fetchone()
                         out['avg_evidence_ms_24h'] = float(r3[0]) if r3 and r3[0] is not None else None
                         out['avg_version_audit_ms_24h'] = float(r3[1]) if r3 and r3[1] is not None else None
                     except Exception:
+                        _log.debug('failed to compute evidence/version audit rolling averages', exc_info=True)
                         out['avg_evidence_ms_24h'] = None
                         out['avg_version_audit_ms_24h'] = out.get('avg_version_audit_ms')
 
-                    # top technologies
+                    # top technologies (larger window, default uncategorized bucket)
                     cur.execute(
                         """
-                        SELECT tech_name, categories, COUNT(*) AS c
-                        FROM domain_techs GROUP BY tech_name, categories ORDER BY c DESC LIMIT 15
+                           SELECT tech_name,
+                               COALESCE(NULLIF(categories, ''), 'Uncategorized') AS cat_label,
+                               COUNT(*) AS c
+                        FROM domain_techs
+                           GROUP BY tech_name, COALESCE(NULLIF(categories, ''), 'Uncategorized')
+                        ORDER BY c DESC
+                        LIMIT 60
                         """
                     )
                     out['top_technologies'] = [{'tech': r[0], 'categories': r[1], 'count': r[2]} for r in cur.fetchall()]
@@ -183,26 +224,60 @@ def api_stats():
                     # top categories (split comma-separated categories)
                     # Include explicit 'uncategorized' bucket for rows where categories is NULL/empty
                     cur.execute(
-                        """
-                        SELECT category, c FROM (
-                          SELECT LOWER(trim(x)) AS category, COUNT(*) AS c
-                          FROM (
-                            SELECT unnest(string_to_array(categories, ',')) AS x
-                            FROM domain_techs
-                            WHERE categories IS NOT NULL
-                          ) t
-                          WHERE trim(x) <> ''
-                          GROUP BY LOWER(trim(x))
-                          UNION ALL
-                          SELECT 'uncategorized' AS category, COUNT(*) FROM domain_techs WHERE categories IS NULL OR trim(categories) = ''
-                        ) q
-                        ORDER BY c DESC
-                        LIMIT 15
-                        """
-                    )
+                                """
+                                    SELECT category, c FROM (
+                                    SELECT LOWER(trim(x)) AS category, COUNT(*) AS c
+                                        FROM (
+                                        SELECT unnest(string_to_array(categories, ',')) AS x
+                                        FROM domain_techs
+                                        WHERE categories IS NOT NULL
+                                            ) t
+                                            WHERE trim(x) <> ''
+                                            GROUP BY LOWER(trim(x))
+                                            UNION ALL
+                                            SELECT 'uncategorized' AS category, COUNT(*) FROM domain_techs WHERE categories IS NULL OR trim(categories) = ''
+                                            ) q
+                                            ORDER BY c DESC
+                                            LIMIT 60
+                                        """
+                                        )
                     out['top_categories'] = [{'category': r[0], 'count': r[1]} for r in cur.fetchall()]
+
+                    # payload size aggregates (last 30 days)
+                    try:
+                        cur.execute(
+                            """
+                            SELECT
+                                AVG(payload_bytes) FILTER (WHERE finished_at >= NOW() - INTERVAL '1 day') AS avg_day,
+                                AVG(payload_bytes) FILTER (WHERE finished_at >= NOW() - INTERVAL '7 day') AS avg_week,
+                                AVG(payload_bytes) FILTER (WHERE finished_at >= NOW() - INTERVAL '30 day') AS avg_month
+                            FROM scans
+                            WHERE finished_at >= NOW() - INTERVAL '30 day' AND payload_bytes IS NOT NULL
+                            """
+                        )
+                        payload_row = cur.fetchone()
+                        out['payload_size_stats'] = {
+                            'avg_daily_bytes': float(payload_row[0]) if payload_row and payload_row[0] is not None else None,
+                            'avg_weekly_bytes': float(payload_row[1]) if payload_row and payload_row[1] is not None else None,
+                            'avg_monthly_bytes': float(payload_row[2]) if payload_row and payload_row[2] is not None else None
+                        }
+                    except Exception:
+                        _log.debug('failed to compute payload size aggregates', exc_info=True)
+                        out['payload_size_stats'] = {
+                            'avg_daily_bytes': None,
+                            'avg_weekly_bytes': None,
+                            'avg_monthly_bytes': None
+                        }
         except Exception as e:
-            return jsonify({'error': 'db_query_failed', 'detail': str(e)}), 500
+            _log.exception('api_stats db aggregation failed err=%s', e)
+            out['db_error'] = str(e)
+            out.setdefault('top_technologies', [])
+            out.setdefault('top_categories', [])
+            out.setdefault('payload_size_stats', {
+                'avg_daily_bytes': None,
+                'avg_weekly_bytes': None,
+                'avg_monthly_bytes': None
+            })
     else:
         # Fallback to in-memory mirror when DB disabled
         try:
@@ -227,14 +302,26 @@ def api_stats():
             out['unique_domains'] = len(unique_domains_set)
             out['last_scan'] = {'finished_at': last_seen} if last_seen else None
             out['top_technologies'] = sorted(
-                [{'tech': k, 'count': v} for k,v in tech_counts.items()], key=lambda x: x['count'], reverse=True
-            )[:15]
+                [{'tech': k, 'count': v} for k, v in tech_counts.items()], key=lambda x: x['count'], reverse=True
+            )[:30]
             out['top_categories'] = sorted(
-                [{'category': k, 'count': v} for k,v in cat_counts.items()], key=lambda x: x['count'], reverse=True
-            )[:15]
+                [{'category': k, 'count': v} for k, v in cat_counts.items()], key=lambda x: x['count'], reverse=True
+            )[:25]
+            out['payload_size_stats'] = {
+                'avg_daily_bytes': None,
+                'avg_weekly_bytes': None,
+                'avg_monthly_bytes': None
+            }
+            out['total_payload_bytes'] = None
         except Exception:
             out.setdefault('top_technologies', [])
             out.setdefault('top_categories', [])
+            out.setdefault('payload_size_stats', {
+                'avg_daily_bytes': None,
+                'avg_weekly_bytes': None,
+                'avg_monthly_bytes': None
+            })
+            out.setdefault('total_payload_bytes', None)
     return jsonify(out)
 
 @ui_bp.route('/api/domains')
@@ -254,9 +341,10 @@ def api_domains():
                         SELECT s.domain,
                                s.finished_at AS last_scan,
                                s.mode AS last_mode,
-                               COALESCE(jsonb_array_length(s.technologies_json), 0) AS tech_count
+                               COALESCE(jsonb_array_length(s.technologies_json), 0) AS tech_count,
+                               s.payload_bytes
                         FROM (
-                            SELECT DISTINCT ON (domain) domain, finished_at, mode, technologies_json
+                            SELECT DISTINCT ON (domain) domain, finished_at, mode, technologies_json, payload_bytes
                             FROM scans
                             ORDER BY domain, finished_at DESC
                         ) s
@@ -267,7 +355,8 @@ def api_domains():
                         last_scan_ts = r[1].timestamp() if r[1] else None
                         last_mode = r[2]
                         tech_count = r[3]
-                        domain_meta.append((domain, last_scan_ts, last_mode, tech_count))
+                        payload_bytes = r[4]
+                        domain_meta.append((domain, last_scan_ts, last_mode, tech_count, payload_bytes))
                 # Compute diff counts for each domain (best-effort) by looking at last two scans
                 try:
                     with conn.cursor() as cur2:
@@ -317,18 +406,113 @@ def api_domains():
                 if ls and (dm['last_seen'] is None or ls > dm['last_seen']):
                     dm['last_seen'] = ls
             for domain, info in by_domain.items():
-                domain_meta.append((domain, info['last_seen'], None, len(info['techs'])))
+                domain_meta.append((domain, info['last_seen'], None, len(info['techs']), None))
     except Exception as e:
         return jsonify({'error': 'failed_collect_domains', 'detail': str(e)}), 500
     payload = _dg.group_domains(domain_meta, extras=diff_extras)
     return jsonify(payload)
 
+@ui_bp.route('/api/domain/<domain>', methods=['DELETE'])
+def api_domain_delete(domain: str):
+    raw_domain = (domain or '').strip()
+    if not raw_domain:
+        return jsonify({'error': 'bad_domain'}), 400
+    normalized = raw_domain.lower()
+    scans_deleted = 0
+    tech_rows_deleted = 0
+    db_disabled = bool(getattr(_db, '_DB_DISABLED', False))
+    runtime_disabled = False
+    try:
+        runtime_disabled = bool(getattr(_db, '_is_disabled_runtime', lambda: False)())
+    except Exception:
+        runtime_disabled = False
+    db_disabled = db_disabled or runtime_disabled
+    if not db_disabled:
+        try:
+            get_conn = getattr(_db, 'get_conn')
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute('DELETE FROM scans WHERE domain=%s', (normalized,))
+                    scans_deleted = cur.rowcount or 0
+                    cur.execute('DELETE FROM domain_techs WHERE domain=%s', (normalized,))
+                    tech_rows_deleted = cur.rowcount or 0
+                conn.commit()  # IMPORTANT: Commit the transaction to persist changes
+        except Exception as e:
+            _log.exception('api_domain_delete_failed domain=%s', normalized)
+            return jsonify({'error': 'delete_failed', 'detail': str(e)}), 500
+    else:
+        # Mirror removal handled below via in-memory store purge
+        pass
+    mem_entries_cleared = 0
+    try:
+        mem = getattr(_db, '_MEM_DOMAIN_TECHS', {})
+        if mem:
+            to_remove = [k for k in list(mem.keys()) if k and k[0] == normalized]
+            for key in to_remove:
+                mem.pop(key, None)
+            mem_entries_cleared = len(to_remove)
+    except Exception:
+        _log.debug('api_domain_delete_mem_cleanup_failed domain=%s', normalized, exc_info=True)
+    # When DB is disabled, mem mirror is the source of truth for tech rows
+    if db_disabled:
+        tech_rows_deleted = mem_entries_cleared
+    # Remove from any assigned groups
+    groups_removed = 0
+    try:
+        membership = _dg.load().membership(normalized)
+        groups_removed = len(membership)
+        if groups_removed:
+            _dg.remove_domain_everywhere(normalized)
+    except Exception:
+        _log.debug('api_domain_delete_group_cleanup_failed domain=%s', normalized, exc_info=True)
+    # Flush sniff cache entries for this domain (best-effort)
+    sniff_purged = False
+    try:
+        from .. import scan_utils as _su
+        flushed = 0
+        for key in {raw_domain, normalized}:
+            if not key:
+                continue
+            try:
+                if getattr(_su, '_html_sniff_cache', None) and key in _su._html_sniff_cache:  # type: ignore[attr-defined]
+                    _su._html_sniff_cache.pop(key, None)  # type: ignore[attr-defined]
+                    flushed += 1
+            except Exception:
+                continue
+        sniff_purged = flushed > 0
+    except Exception:
+        _log.debug('api_domain_delete_sniff_cleanup_failed domain=%s', normalized, exc_info=True)
+    # Clear cached aggregate counts
+    try:
+        cache = getattr(_db, '_count_cache', None)
+        if cache:
+            cache.clear()
+    except Exception:
+        pass
+    _log.info('api_domain_delete_ok domain=%s scans=%s tech_rows=%s groups=%s mem_cleared=%s', normalized, scans_deleted, tech_rows_deleted, groups_removed, mem_entries_cleared)
+    return jsonify({
+        'status': 'deleted',
+        'domain': normalized,
+        'scans_deleted': scans_deleted,
+        'tech_rows_deleted': tech_rows_deleted,
+        'groups_removed': groups_removed,
+        'mem_entries_cleared': mem_entries_cleared,
+        'sniff_cache_cleared': sniff_purged
+    })
+
 @ui_bp.route('/api/domain/<domain>/detail')
 def api_domain_detail(domain: str):
     # Retrieve latest two scans
-    if getattr(_db, '_DB_DISABLED', False):
+    db_disabled = bool(getattr(_db, '_DB_DISABLED', False))
+    try:
+        if getattr(_db, '_is_disabled_runtime', None):
+            db_disabled = db_disabled or bool(_db._is_disabled_runtime())  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    if db_disabled:
         return jsonify({'error': 'db_disabled'}), 503
-    from ..db import get_conn
+    snapshot_param = (request.args.get('snapshot') or '').strip().lower()
+    prefer_best_snapshot = snapshot_param in ('best', 'max', 'top')
     # Import scan_utils to introspect inflight/deferred status (best-effort)
     try:
         from .. import scan_utils as _su
@@ -336,48 +520,93 @@ def api_domain_detail(domain: str):
         _su = None
     latest = None
     previous = None
+    best_scan = None
     try:
+        get_conn = getattr(_db, 'get_conn')
         with get_conn() as conn:
+            def row_to_scan(r):
+                techs = r[8] if isinstance(r[8], list) else []
+                return {
+                    'scan_id': r[0],
+                    'mode': r[1],
+                    'started_at': r[2].timestamp(),
+                    'finished_at': r[3].timestamp(),
+                    'duration_ms': r[4],
+                    'from_cache': r[5],
+                    'retries': r[6],
+                    'timeout_used': r[7],
+                    'technologies': techs,
+                    'tech_count': len(techs),
+                    'raw': r[9],
+                    'payload_bytes': (r[10] if len(r) > 10 else None)
+                }
             with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id, mode, started_at, finished_at, duration_ms, from_cache, retries, timeout_used, technologies_json, raw_json
-                    FROM scans WHERE domain=%s ORDER BY finished_at DESC LIMIT 2
-                """, (domain,))
+                cur.execute(
+                    """
+                        SELECT id, mode, started_at, finished_at, duration_ms, from_cache, retries, timeout_used,
+                               technologies_json, raw_json, payload_bytes
+                        FROM scans
+                        WHERE domain=%s
+                        ORDER BY finished_at DESC
+                        LIMIT 2
+                    """,
+                    (domain,)
+                )
                 rows = cur.fetchall()
                 if not rows:
                     return jsonify({'error': 'not_found'}), 404
-                def row_to_scan(r):
-                    techs = r[8] if isinstance(r[8], list) else []
-                    return {
-                        'scan_id': r[0],
-                        'mode': r[1],
-                        'started_at': r[2].timestamp(),
-                        'finished_at': r[3].timestamp(),
-                        'duration_ms': r[4],
-                        'from_cache': r[5],
-                        'retries': r[6],
-                        'timeout_used': r[7],
-                        'technologies': techs,
-                        'raw': r[9]
-                    }
                 if len(rows) >= 1:
                     latest = row_to_scan(rows[0])
-                if len(rows) == 2:
+                if len(rows) >= 2:
                     previous = row_to_scan(rows[1])
+            with conn.cursor() as cur_best:
+                cur_best.execute(
+                    """
+                        SELECT id, mode, started_at, finished_at, duration_ms, from_cache, retries, timeout_used,
+                               technologies_json, raw_json, payload_bytes
+                        FROM scans
+                        WHERE domain=%s
+                        ORDER BY COALESCE(tech_count, 0) DESC, finished_at DESC
+                        LIMIT 1
+                    """,
+                    (domain,)
+                )
+                brow = cur_best.fetchone()
+                if isinstance(brow, (list, tuple)) and len(brow) >= 10:
+                    best_scan = row_to_scan(brow)
     except Exception as e:
         return jsonify({'error': 'db_query_failed', 'detail': str(e)}), 500
-    diff = _compute_diff(latest, previous)
+    active_snapshot = 'latest'
+    # Only use best snapshot if explicitly requested via query parameter
+    # Removed auto-preference to best snapshot to keep metrics consistent with table listing
+    if prefer_best_snapshot and best_scan:
+        active_snapshot = 'best'
+    active_scan = best_scan if active_snapshot == 'best' else latest
+    if not active_scan:
+        # fallback: use latest even if best missing or preference failed
+        active_snapshot = 'latest'
+        active_scan = latest
+    compare_scan = None
+    if active_snapshot == 'latest':
+        compare_scan = previous
+    else:
+        # when viewing best snapshot, compare against actual latest if different, else previous
+        if latest and best_scan and latest.get('scan_id') != best_scan.get('scan_id'):
+            compare_scan = latest
+        else:
+            compare_scan = previous
+    diff = _compute_diff(active_scan, compare_scan)
     # Metrics: extract phases if present in raw
     metrics = {}
     try:
-        phases = (latest.get('raw') or {}).get('phases') if latest else None
+        phases = (active_scan.get('raw') or {}).get('phases') if active_scan else None
         if isinstance(phases, dict):
             for k in ['engine_ms','synthetic_ms','heuristic_total_ms','heuristic_core_ms','sniff_ms','micro_ms','node_full_ms','full_attempt_ms','fallback_ms','version_audit_ms']:
                 if k in phases:
                     metrics[k] = phases[k]
     except Exception:
         _log.debug('failed to extract phases metrics from latest raw', exc_info=True)
-    technologies = latest.get('technologies') if latest else []
+    technologies = active_scan.get('technologies') if active_scan else []
     # Ensure simplified tech objects (name, version, categories, confidence) if raw format contains them
     norm_tech = []
     for t in technologies:
@@ -389,14 +618,34 @@ def api_domain_detail(domain: str):
             'categories': t.get('categories') or [],
             'confidence': t.get('confidence')
         })
+    tiered_hint_meta = None
+    raw_blob = active_scan.get('raw') if active_scan else None
+    if isinstance(raw_blob, dict):
+        tiered_hint_meta = raw_blob.get('_tiered_hint_meta')
+    def summarize_full(scan: dict | None):
+        if not scan:
+            return None
+        return {k: scan.get(k) for k in ['scan_id','mode','started_at','finished_at','duration_ms','from_cache','retries','timeout_used','payload_bytes','tech_count']}
+
+    def summarize_brief(scan: dict | None):
+        if not scan:
+            return None
+        return {k: scan.get(k) for k in ['scan_id','mode','finished_at','payload_bytes','tech_count']}
+
     response = {
         'domain': domain,
-        'latest': {k: latest[k] for k in ['scan_id','mode','started_at','finished_at','duration_ms','from_cache','retries','timeout_used']},
-        'previous': ({k: previous[k] for k in ['scan_id','mode','finished_at']} if previous else None),
+        'latest': summarize_full(latest),
+        'previous': summarize_brief(previous),
+        'best_snapshot': summarize_full(best_scan),
+        'compare_snapshot': summarize_brief(compare_scan),
+        'selected_snapshot': active_snapshot,
+        'selected_scan': summarize_full(active_scan),
         'diff': diff,
         'technologies': norm_tech,
         'metrics': metrics
     }
+    if tiered_hint_meta:
+        response['tiered_hint_meta'] = tiered_hint_meta
     # In-progress detection heuristics: if single-flight map or deferred background set contains domain key
     try:
         in_progress = False
@@ -635,6 +884,59 @@ def api_domain_groups_raw():
         _log.exception('domain_group_raw_failed err=%s', e)
         return jsonify({'error': 'internal', 'detail': str(e)}), 500
 
+    @ui_bp.route('/assets/tech-icons/<path:filename>')
+    def serve_tech_icon(filename: str):
+        # Defensive: try multiple candidate filename normalizations before giving up.
+        if not filename:
+            abort(404)
+        # Ensure svg extension
+        if not filename.lower().endswith('.svg'):
+            filename = filename + '.svg'
+
+        def _candidates(name: str):
+            name = name or ''
+            base = os.path.basename(name)
+            yield base
+            # lowercase
+            yield base.lower()
+            # remove spaces, ampersands, parentheses variations
+            no_paren = base.split('(')[0]
+            yield no_paren
+            # content inside parentheses
+            if '(' in base and ')' in base:
+                inside = base.split('(',1)[1].split(')',1)[0]
+                yield inside + '.svg'
+                yield inside.lower() + '.svg'
+            # replace & with 'and' and non-alnum to hyphens
+            s = base
+            s = s.replace('&', 'and')
+            import re
+            s = re.sub(r"\s*\(.*?\)\s*", ' ', s)
+            s = re.sub(r'[^a-zA-Z0-9]+', '-', s).strip('-')
+            if s:
+                if not s.lower().endswith('.svg'):
+                    yield s.lower() + '.svg'
+                else:
+                    yield s.lower()
+
+        # Try candidate paths
+        tried = []
+        for cand in _candidates(filename):
+            try_path = safe_join(_ICON_DIR, cand)
+            tried.append(cand)
+            if not try_path:
+                continue
+            # Ensure path under icon dir
+            if not str(try_path).startswith(_ICON_DIR):
+                continue
+            if os.path.isfile(try_path):
+                rel_path = os.path.relpath(try_path, _ICON_DIR)
+                try:
+                    return send_from_directory(_ICON_DIR, rel_path, cache_timeout=60 * 60 * 24 * 7)
+                except FileNotFoundError:
+                    continue
+        _log.debug('serve_tech_icon_missing requested=%s tried=%s dir=%s', filename, tried, _ICON_DIR)
+        abort(404)
 
 # Temporary debug endpoint used by the UI instrumentation when diagnosing
 # Playwright click/visibility issues. Accepts a JSON payload and records it
@@ -676,68 +978,172 @@ except NameError:
 
 # Independent API
 
+def _timeseries_fallback_payload():
+    labels = []
+    now = datetime.datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+    for i in range(11, -1, -1):
+        slot = now - datetime.timedelta(hours=i)
+        labels.append(slot.strftime('%H:%M'))
+    scans = [18, 22, 27, 31, 36, 42, 45, 40, 34, 30, 26, 22]
+    avg_conf = [83.2, 83.9, 84.6, 85.1, 85.8, 86.3, 86.6, 86.2, 85.7, 85.1, 84.6, 84.0]
+    return {
+        'timestamps': labels,
+        'scans': scans[:len(labels)],
+        'avg_conf': avg_conf[:len(labels)],
+        'success': 820,
+        'timeout': 145,
+        'error': 35
+    }
+
+
 @ui_bp.route("/api/performance_timeseries")
 def api_performance_timeseries():
-    from app.db import get_db
-    import datetime
-
-    db = get_db()
-    rows = db.execute("""
-        SELECT date_trunc('hour', finished_at) AS hour,
-               COUNT(*) AS scans,
-               AVG(confidence) AS avg_conf,
-               SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS success,
-               SUM(CASE WHEN status='timeout' THEN 1 ELSE 0 END) AS timeout,
-               SUM(CASE WHEN status='error' THEN 1 ELSE 0 END) AS error
-        FROM scans
-        WHERE finished_at > NOW() - INTERVAL '24 hours'
-        GROUP BY hour
-        ORDER BY hour
-    """).fetchall()
+    fallback = _timeseries_fallback_payload()
+    if getattr(_db, '_DB_DISABLED', False):
+        return jsonify(fallback)
+    try:
+        with _db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    WITH recent AS (
+                        SELECT
+                            date_trunc('hour', s.finished_at) AS hour,
+                            NULLIF(s.error, '') AS error,
+                            conf.avg_conf
+                        FROM scans s
+                        LEFT JOIN LATERAL (
+                            SELECT AVG((tech->>'confidence')::DOUBLE PRECISION) AS avg_conf
+                            FROM jsonb_array_elements(COALESCE(s.technologies_json, '[]'::jsonb)) AS tech
+                            WHERE (tech->>'confidence') ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                        ) AS conf ON TRUE
+                        WHERE s.finished_at > NOW() - INTERVAL '24 hours'
+                    )
+                    SELECT
+                        hour,
+                        COUNT(*) AS scans,
+                        AVG(avg_conf) AS avg_conf,
+                        SUM(CASE WHEN error IS NULL THEN 1 ELSE 0 END) AS success,
+                        SUM(CASE WHEN error IS NOT NULL AND (
+                            error ILIKE '%timeout%' OR
+                            error ILIKE '%timed out%' OR
+                            error ILIKE '%time out%' OR
+                            error ILIKE '%deadline%'
+                        ) THEN 1 ELSE 0 END) AS timeout,
+                        SUM(CASE WHEN error IS NOT NULL AND NOT (
+                            error ILIKE '%timeout%' OR
+                            error ILIKE '%timed out%' OR
+                            error ILIKE '%time out%' OR
+                            error ILIKE '%deadline%'
+                        ) THEN 1 ELSE 0 END) AS error
+                    FROM recent
+                    GROUP BY hour
+                    ORDER BY hour
+                """)
+                rows = cur.fetchall()
+    except Exception as exc:
+        _log.warning('performance_timeseries query failed; using fallback', exc_info=True)
+        return jsonify(fallback)
 
     if not rows:
-        # fallback
-        return {
-            "timestamps": [f"{i}h" for i in range(1,13)],
-            "scans": [10,20,30,15,25,35,30,20,25,40,50,45],
-            "avg_conf": [80,78,75,83,85,90,88,79,84,86,89,92],
-            "success": 120, "timeout": 10, "error": 5,
-        }
+        return jsonify(fallback)
 
-    timestamps = [r["hour"].strftime("%H:%M") for r in rows]
-    return {
-        "timestamps": timestamps,
-        "scans": [r["scans"] for r in rows],
-        "avg_conf": [r["avg_conf"] for r in rows],
-        "success": sum(r["success"] for r in rows),
-        "timeout": sum(r["timeout"] for r in rows),
-        "error": sum(r["error"] for r in rows),
+    timestamps: list[str] = []
+    scans: list[int] = []
+    avg_conf: list[float] = []
+    success_total = timeout_total = error_total = 0
+    for hour, count, avg, success, timeout, error in rows:
+        try:
+            label = hour.strftime('%H:%M') if hasattr(hour, 'strftime') else str(hour)
+        except Exception:
+            label = str(hour)
+        timestamps.append(label)
+        scans.append(int(count or 0))
+        avg_conf.append(float(avg) if avg is not None else 0.0)
+        success_total += int(success or 0)
+        timeout_total += int(timeout or 0)
+        error_total += int(error or 0)
+
+    payload = {
+        'timestamps': timestamps,
+        'scans': scans,
+        'avg_conf': avg_conf,
+        'success': success_total,
+        'timeout': timeout_total,
+        'error': error_total
     }
+    return jsonify(payload)
     
 @ui_bp.route("/api/top_technologies")
 def api_top_technologies():
-    from app.db import get_db
-    db = get_db()
-    rows = db.execute("""
-        SELECT t.name, t.category, COUNT(*) as count, AVG(t.confidence) as avg_conf
-        FROM technologies t
-        JOIN scans s ON s.id = t.scan_id
-        WHERE s.finished_at > NOW() - INTERVAL '30 days'
-        GROUP BY t.name, t.category
-        ORDER BY count DESC
-        LIMIT 10
-    """).fetchall()
+    if getattr(_db, '_DB_DISABLED', False):
+        return jsonify([
+            {"name": "Apache", "category": "Web Server", "count": 50, "avg_conf": 90},
+            {"name": "jQuery", "category": "JS Library", "count": 40, "avg_conf": 95}
+        ])
+    try:
+        with _db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    WITH expanded AS (
+                        SELECT
+                            tech->>'name' AS name,
+                            (
+                                SELECT array_to_string(ARRAY_AGG(DISTINCT trim(cat_name)) FILTER (WHERE trim(cat_name) <> ''), ', ')
+                                FROM (
+                                    SELECT cat->>'name' AS cat_name
+                                    FROM jsonb_array_elements(tech->'categories') AS cat
+                                ) AS cat_names
+                            ) AS category_labels,
+                            CASE
+                                WHEN (tech->>'confidence') ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                                    THEN (tech->>'confidence')::DOUBLE PRECISION
+                                ELSE NULL
+                            END AS confidence
+                        FROM scans s
+                        CROSS JOIN LATERAL jsonb_array_elements(COALESCE(s.technologies_json, '[]'::jsonb)) AS tech
+                        WHERE s.finished_at > NOW() - INTERVAL '30 days'
+                    )
+                    SELECT
+                        name,
+                        COALESCE(category_labels, '') AS categories,
+                        COUNT(*) AS count,
+                        AVG(confidence) AS avg_conf
+                    FROM expanded
+                    WHERE name IS NOT NULL AND trim(name) <> ''
+                    GROUP BY name, category_labels
+                    ORDER BY count DESC
+                    LIMIT 10
+                """)
+                rows = cur.fetchall()
+    except Exception:
+        _log.warning('top_technologies query failed; returning fallback', exc_info=True)
+        rows = []
 
     if not rows:
-        return [{"name":"Apache","category":"Web Server","count":50,"avg_conf":90},
-                {"name":"jQuery","category":"JS Lib","count":40,"avg_conf":95}]
+        return jsonify([
+            {"name": "Apache", "category": "Web Server", "count": 50, "avg_conf": 90},
+            {"name": "jQuery", "category": "JavaScript Library", "count": 40, "avg_conf": 95}
+        ])
 
-    return [dict(r) for r in rows]
+    normalized = []
+    for name, category, count, avg_conf in rows:
+        categories = []
+        if category:
+            categories = [seg.strip() for seg in str(category).split(',') if seg.strip()]
+        normalized.append({
+            'name': name,
+            'category': category,
+            'categories': categories,
+            'count': int(count or 0),
+            'avg_conf': float(avg_conf) if avg_conf is not None else None
+        })
+    return jsonify(normalized)
 
 @ui_bp.route('/api/tech/<tech_name>/domains')
 def api_tech_domains(tech_name: str):
     """Get list of domains that use a specific technology."""
     try:
+        include_hints = request.args.get('include_hints') == '1'
         if getattr(_db, '_DB_DISABLED', False):
             # Fallback to in-memory mirror
             mem = getattr(_db, '_MEM_DOMAIN_TECHS', {})
@@ -745,7 +1151,8 @@ def api_tech_domains(tech_name: str):
             for (domain, name, _ver), rec in mem.items():
                 if name.lower() == tech_name.lower():
                     domains.add(domain)
-            return jsonify({'tech': tech_name, 'domains': sorted(list(domains))})
+            payload = {'tech': tech_name, 'domains': sorted(list(domains)), 'count': len(domains)}
+            return jsonify(payload)
         
         from ..db import get_conn
         with get_conn() as conn:
@@ -758,43 +1165,89 @@ def api_tech_domains(tech_name: str):
                     LIMIT 500
                 """, (tech_name,))
                 domains = [r[0] for r in cur.fetchall()]
-                return jsonify({'tech': tech_name, 'domains': domains, 'count': len(domains)})
+        hint_meta = {}
+        if include_hints and domains:
+            try:
+                hint_meta = _db.get_hint_meta_for_domains(domains)
+            except Exception:
+                logging.getLogger('techscan.ui').debug('failed fetching hint meta for tech=%s', tech_name, exc_info=True)
+        payload = {'tech': tech_name, 'domains': domains, 'count': len(domains)}
+        if include_hints and hint_meta:
+            payload['hint_meta'] = hint_meta
+        return jsonify(payload)
     except Exception as e:
         _log.exception('tech_domains_failed tech=%s err=%s', tech_name, e)
         return jsonify({'error': 'internal', 'detail': str(e)}), 500
 
 @ui_bp.route('/api/category/<category_name>/technologies')
 def api_category_technologies(category_name: str):
-    """Get list of technologies in a specific category, ordered by usage count."""
+    """Get list of technologies in a specific category, ordered by usage count.
+
+    Handles both explicit category labels (split from comma-separated field) and the
+    synthetic "uncategorized" bucket (rows where categories is NULL/empty).
+    """
+    normalized = (category_name or '').strip().lower()
+    if not normalized:
+        return jsonify({'category': category_name, 'technologies': []})
+
     try:
         if getattr(_db, '_DB_DISABLED', False):
             # Fallback to in-memory mirror
             mem = getattr(_db, '_MEM_DOMAIN_TECHS', {})
             tech_counts = {}
-            for (domain, name, version), rec in mem.items():
-                cats = rec.get('categories', '')
-                if cats and category_name.lower() in cats.lower():
-                    tech_counts[name] = tech_counts.get(name, 0) + 1
-            
+            for (_domain, name, _version), rec in mem.items():
+                cats = rec.get('categories')
+                tokens = []
+                if isinstance(cats, str) and cats.strip():
+                    tokens = [c.strip().lower() for c in cats.split(',') if c.strip()]
+                if normalized == 'uncategorized':
+                    if tokens:
+                        continue
+                elif not tokens or normalized not in tokens:
+                    continue
+                tech_counts[name] = tech_counts.get(name, 0) + 1
+
             techs = sorted(
-                [{'tech': k, 'count': v, 'category': category_name} for k,v in tech_counts.items()],
+                [{'tech': k, 'count': v, 'category': category_name} for k, v in tech_counts.items()],
                 key=lambda x: x['count'],
                 reverse=True
             )
-            return jsonify({'category': category_name, 'technologies': techs[:20]})
-        
+            return jsonify({'category': category_name, 'technologies': techs[:25]})
+
         from ..db import get_conn
         with get_conn() as conn:
             with conn.cursor() as cur:
-                # Search for category in comma-separated categories field
-                cur.execute("""
-                    SELECT tech_name, COUNT(*) as count
-                    FROM domain_techs
-                    WHERE LOWER(categories) LIKE LOWER(%s)
-                    GROUP BY tech_name
-                    ORDER BY count DESC
-                    LIMIT 20
-                """, (f'%{category_name}%',))
+                if normalized == 'uncategorized':
+                    cur.execute(
+                        """
+                        SELECT tech_name, COUNT(*) AS count
+                        FROM domain_techs
+                        WHERE categories IS NULL
+                           OR trim(categories) = ''
+                           OR LOWER(categories) = 'uncategorized'
+                        GROUP BY tech_name
+                        ORDER BY count DESC
+                        LIMIT 25
+                        """
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT tech_name, COUNT(*) AS count
+                        FROM (
+                            SELECT tech_name,
+                                   LOWER(trim(cat_val)) AS category_value
+                            FROM domain_techs
+                            CROSS JOIN LATERAL unnest(string_to_array(categories, ',')) AS cat(cat_val)
+                            WHERE categories IS NOT NULL AND trim(categories) <> ''
+                        ) t
+                        WHERE category_value = %s
+                        GROUP BY tech_name
+                        ORDER BY count DESC
+                        LIMIT 25
+                        """,
+                        (normalized,)
+                    )
                 techs = [{'tech': r[0], 'count': r[1], 'category': category_name} for r in cur.fetchall()]
                 return jsonify({'category': category_name, 'technologies': techs})
     except Exception as e:

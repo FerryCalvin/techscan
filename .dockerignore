@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pytest_cache/
+.eggs/
+*.egg-info/
+.venv/
+venv/
+
+# Node
+node_scanner/node_modules/
+.npm/
+
+# VCS & editor
+.git/
+.gitignore
+.gitattributes
+.vscode/
+
+# Logs & temp
+*.log
+logs/
+/tmp/
+/tmp/*
+/tmp/**
+
+# Data caches
+.tmp/
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db

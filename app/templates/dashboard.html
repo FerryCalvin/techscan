@@ -1,446 +1,2830 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="hero-intro" style="padding:1.1rem 0 0.4rem; text-align:center;">
-  <h1 class="hero-title" style="font-size:clamp(2.1rem,5.2vw,3.4rem); line-height:1.5; font-weight:700; letter-spacing:.5px; margin:0 0 .6rem; background:linear-gradient(92deg,#8b5cf6,#6366f1 55%,#60a5fa); -webkit-background-clip:text; background-clip:text; color:transparent;">Technology Lookup</h1>
-  <p class="hero-lead" style="max-width:860px; margin:0 auto; font-size:clamp(.78rem,1.6vw,.95rem); line-height:1.45; opacity:.92;">Masukkan satu domain untuk mendeteksi teknologi (CMS, framework, analytics, dll). Engine kini <strong>Unified</strong> (adaptif) tanpa perlu memilih mode. Panel di bawah bersifat real-time.</p>
+<script>
+  window.__DISABLE_GLOBAL_TECH_CARD_MODAL = true;
+</script>
+<section class="hero-intro page-centered">
+  <h1 class="hero-title">Technology Lookup</h1>
+  <p class="hero-lead">Enter a single domain to detect technologies (CMS, frameworks, analytics, and more). The engine
+    now runs the <strong>Unified</strong> adaptive pipeline, so you never have to pick a mode manually. Panels below
+    refresh in real time.</p>
 </section>
-<div class="dashboard-wrapper" style="display:flex; flex-direction:column; align-items:center; text-align:center; gap:1.35rem; margin-top:.35rem;">
-  <div class="glass-card compact" style="max-width:880px; width:100%; text-align:left;">
-  <div id="single-loader" style="display:none;"></div>
-    <div class="header-row" style="display:flex; align-items:center; gap:.65rem; margin-bottom:.55rem;">
-      <span class="badge-pill" style="font-size:.55rem; letter-spacing:.6px;">SINGLE SCAN</span>
-  <div class="status-line" id="status-line" style="flex:1 1 auto; font-size:.55rem; letter-spacing:.5px;"></div>
+<div class="dashboard-wrapper page-centered">
+  <div class="dashboard-columns dashboard-columns--split">
+    <div class="glass-card compact dashboard-card">
+      <!-- Top loader replaced by in-button progress -->
+      <div id="single-loader" class="scan-progress" aria-live="polite"></div>
+      <div id="phase-breakdown" class="phase-breakdown"></div>
+      <div class="header-row">
+        <span class="badge-pill">SINGLE SCAN</span>
+        <div class="status-line" id="status-line"></div>
+      </div>
+      <form id="single-scan-form" class="inline-form" autocomplete="off"
+        title="Enter one domain without http:// or https://">
+        <input type="text" name="domain" placeholder="example.com" required class="glass-input" />
+        <button type="submit" class="btn-glass" id="scan-btn">Scan</button>
+      </form>
+      <div class="results" id="results">
+        <h4>Results</h4>
+        <div class="flex-row small-note" id="meta-line"></div>
+        <div id="category-groups"></div>
+        <details>
+          <summary>Raw JSON</summary>
+          <pre class="result-raw" id="raw-json"></pre>
+        </details>
+      </div>
+      <div id="error-box" class="small"></div>
     </div>
-    <form id="single-scan-form" class="inline-form" autocomplete="off" title="Masukkan satu domain tanpa http:// atau https://" style="display:flex; flex-wrap:wrap; gap:.55rem; align-items:center;">
-      <input type="text" name="domain" placeholder="example.com" required class="glass-input" style="flex:1 1 230px; font-size:.75rem;" />
-      <button type="submit" class="btn-glass" id="scan-btn" style="min-width:84px;">Scan</button>
-    </form>
-    <div class="results" id="results" style="display:none; margin-top:.8rem;">
-      <h4 style="margin:.15rem 0 .55rem; font-size:.9rem; letter-spacing:.4px;">Hasil</h4>
-      <div class="flex-row small-note" id="meta-line" style="display:flex; gap:.8rem; flex-wrap:wrap; font-size:.55rem; letter-spacing:.4px;"></div>
-      <div id="category-groups" style="margin-top:.55rem;"></div>
-      <details style="margin-top:.85rem;">
-        <summary style="cursor:pointer; font-size:.6rem; letter-spacing:.4px;">Raw JSON</summary>
-        <pre class="result-raw" id="raw-json" style="max-height:320px; overflow:auto;"></pre>
+    <div class="glass-card compact dashboard-card">
+      <details id="bulk-section" open>
+        <summary>
+          <span class="badge-pill">BULK</span>
+          Scan Multiple Domains
+        </summary>
+        <form id="bulk-scan-form" class="bulk-form" autocomplete="off"
+          title="One domain per line. Duplicates are removed automatically.">
+          <textarea name="domains" rows="6" placeholder="domain1.com\ndomain2.org\nsub.domain3.id"
+            class="glass-input"></textarea>
+          <div class="bulk-controls">
+            <label class="small-note btn-glass btn-glass-small">
+              Upload TXT
+              <input type="file" id="bulk-file" accept="text/plain" />
+            </label>
+            <span id="file-info" class="small-note"></span>
+            <label><input type="checkbox" name="sequential" value="1" checked /> queue sequential</label>
+            <span id="bulk-stats" class="small-note"></span>
+          </div>
+          <div class="bulk-actions">
+            <button type="submit" class="btn-glass btn-glass-small" id="bulk-btn">Scan</button>
+            <button type="button" class="btn-glass btn-glass-small is-hidden" id="bulk-cancel">Cancel</button>
+            <span id="bulk-error" class="small"></span>
+          </div>
+          <div class="progress-wrapper">
+            <div class="progress-track">
+              <div id="bulk-progress"></div>
+              <div id="bulk-progress-ind"></div>
+            </div>
+            <div id="bulk-progress-text" class="small-note">0%</div>
+          </div>
+        </form>
+        <div id="bulk-table-wrapper">
+          <table class="table-glass">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Domain</th>
+                <th>Status</th>
+                <th>Engine</th>
+                <th>Tech Count</th>
+                <th>Payload</th>
+                <th>Technologies (preview)</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody id="bulk-tbody"></tbody>
+          </table>
+          <div class="bulk-footer">
+            <button type="button" class="btn-glass btn-glass-small is-hidden" id="bulk-download-bottom">Download
+              CSV</button>
+          </div>
+          <div id="bulk-error-summary" class="small-note"></div>
+        </div>
       </details>
     </div>
-    <div id="error-box" class="small" style="color:#f87171; display:none; margin-top:.6rem;"></div>
   </div>
-  <div class="glass-card compact" style="max-width:880px; width:100%; text-align:left;">
-    <details id="bulk-section" open style="margin:0;">
-      <summary style="cursor:pointer; display:flex; align-items:center; gap:.55rem; font-weight:600; font-size:.7rem; letter-spacing:.5px; padding:.2rem 0;"> <span class="badge-pill" style="font-size:.55rem; letter-spacing:.6px;">BULK</span> Scan Banyak Domain</summary>
-      <form id="bulk-scan-form" class="bulk-form" autocomplete="off" title="Satu domain per baris. Duplikat akan dihapus otomatis." style="margin-top:.75rem; text-align:left;">
-        <textarea name="domains" rows="6" placeholder="domain1.com\ndomain2.org\nsub.domain3.id" class="glass-input" style="font-size:.63rem; width:100%; resize:vertical;"></textarea>
-        <div class="bulk-controls" style="margin-top:.6rem; display:flex; gap:.75rem; flex-wrap:wrap; align-items:center; font-size:.65rem;">
-          <label class="small-note btn-glass btn-glass-small" style="cursor:pointer;">Upload TXT
-            <input type="file" id="bulk-file" accept="text/plain" style="display:none;" />
-          </label>
-          <span id="file-info" class="small-note" style="opacity:.8;"></span>
-          
-          <label><input type="checkbox" name="sequential" value="1" checked /> queue sequential</label>
-          <span id="bulk-stats" class="small-note"></span>
-        </div>
-        <div style="display:flex; gap:.5rem; margin-top:.6rem; flex-wrap:wrap;">
-          <button type="submit" class="btn-glass btn-glass-small" id="bulk-btn">Scan</button>
-          <button type="button" class="btn-glass btn-glass-small is-hidden" id="bulk-cancel">Cancel</button>
-          
-          <span id="bulk-error" class="small" style="color:#f87171; display:none;"></span>
-        </div>
-        <div class="progress-wrapper" style="margin-top:.8rem; display:none;">
-          <div style="height:6px; border-radius:4px; overflow:hidden; position:relative;">
-            <div id="bulk-progress" style="height:100%; width:0%;"></div>
-            <div id="bulk-progress-ind" style="display:none; position:absolute; inset:0; animation: indeterm 1.2s linear infinite;"></div>
-          </div>
-          <div id="bulk-progress-text" class="small-note" style="margin-top:.3rem; text-align:left; font-size:.6rem; letter-spacing:.5px;">0%</div>
-        </div>
-      </form>
-      <div id="bulk-table-wrapper" style="margin-top:1rem; display:none; position:relative;">
-        <table class="table-glass" style="width:100%; font-size:.65rem; border-collapse:collapse;">
-          <thead>
-            <tr style="text-align:left;">
-              <th style="padding:4px 6px;">#</th>
-              <th style="padding:4px 6px;">Domain</th>
-              <th style="padding:4px 6px;">Status</th>
-              <th style="padding:4px 6px;">Engine</th>
-              <th style="padding:4px 6px;">Tech Count</th>
-              <th style="padding:4px 6px;">Technologies (preview)</th>
-              <th style="padding:4px 6px;">Error</th>
-            </tr>
-          </thead>
-          <tbody id="bulk-tbody"></tbody>
-        </table>
-        <div style="display:flex; justify-content:flex-end; margin-top:.5rem;">
-          <button type="button" class="btn-glass btn-glass-small is-hidden" id="bulk-download-bottom">Download CSV</button>
-        </div>
-        <div id="bulk-error-summary" class="small-note" style="margin-top:.6rem; text-align:left; display:none; font-size:.55rem;"></div>
+</div>
+
+<!-- Focused liquid-glass modal for dashboard evidence -->
+<div id="dash-tech-modal" class="dash-modal" aria-hidden="true">
+  <div id="dash-tech-overlay" class="dash-modal-overlay" data-dismiss="true"></div>
+  <div class="dash-modal-panel" role="dialog" aria-modal="true" aria-labelledby="dash-tech-name" tabindex="-1">
+    <header class="dash-modal-header">
+      <div>
+        <p class="dash-modal-label">Technology</p>
+        <h2 id="dash-tech-name">Technology</h2>
       </div>
-    </details>
+      <button id="dash-tech-close" type="button" class="dash-modal-close" aria-label="Close">&times;</button>
+    </header>
+    <section class="dash-modal-body">
+      <div class="dash-modal-section">
+        <div class="dash-section-head">
+          <h3>Detected Sites</h3>
+          <p>Domains recorded in the TechScan database for this technology.</p>
+        </div>
+        <div class="dash-sites-controls">
+          <input type="search" id="dash-tech-sites-filter" class="dash-sites-filter" placeholder="Filter domains…"
+            aria-label="Filter domains" autocomplete="off" />
+          <span id="dash-tech-sites-meta" class="dash-sites-meta" aria-live="polite"></span>
+        </div>
+        <ul id="dash-tech-sites" class="dash-sites-list"></ul>
+      </div>
+      <div class="dash-modal-section">
+        <div class="dash-section-head">
+          <h3>Evidence</h3>
+          <p>Snippet, headers, or matches we captured as proof of detection.</p>
+          <p id="dash-evidence-source" class="dash-evidence-source" aria-live="polite"></p>
+        </div>
+        <ul id="dash-tech-evidence" class="dash-evidence-list"></ul>
+      </div>
+    </section>
   </div>
 </div>
 {% endblock %}
+
 {% block scripts %}
 <script>
-const singleForm = document.getElementById('single-scan-form');
-const loader = document.getElementById('single-loader');
-const scanBtnOriginalText = 'Scan';
-const resultsBox = document.getElementById('results');
-const categoryGroups = document.getElementById('category-groups');
-const rawPre = document.getElementById('raw-json');
-const statusLine = document.getElementById('status-line');
-const metaLine = document.getElementById('meta-line');
-const errorBox = document.getElementById('error-box');
-const scanBtn = document.getElementById('scan-btn');
+  const singleForm = document.getElementById('single-scan-form');
+  const resultsBox = document.getElementById('results');
+  const categoryGroups = document.getElementById('category-groups');
+  const rawPre = document.getElementById('raw-json');
+  const statusLine = document.getElementById('status-line');
+  const metaLine = document.getElementById('meta-line');
+  const errorBox = document.getElementById('error-box');
+  const phaseBreakdownEl = document.getElementById('phase-breakdown');
+  const scanBtn = document.getElementById('scan-btn');
+  const scanBtnOriginalText = scanBtn && scanBtn.textContent ? scanBtn.textContent.trim() || 'Scan' : 'Scan';
 
-// Button progress loader: animate background fill
-let scanProgressRAF=null;
-function setLoading(flag){
-  if(flag){
-    scanBtn.classList.add('is-loading');
-    scanBtn.disabled = true;
-    scanBtn.dataset.progress='0';
-    scanBtn.style.position='relative';
-    scanBtn.innerHTML='<span class="btn-label">Scanning...</span>';
-    if(!scanBtn.querySelector('.btn-progress')){
-      const bar=document.createElement('span');
-      bar.className='btn-progress';
-      Object.assign(bar.style,{position:'absolute',inset:'0',width:'0%',background:'linear-gradient(90deg,#10b981,#4ade80)',borderRadius:'inherit',zIndex:'0',transition:'width .25s ease'});
-      scanBtn.prepend(bar);
-      const fg=document.createElement('span');
-      fg.className='btn-fg';
-      Object.assign(fg.style,{position:'relative',zIndex:'1'});
-      fg.innerHTML='Scanning...';
-      scanBtn.appendChild(fg);
+  let singleController = null;
+  let singleRequestToken = null;
+  let progressBarEl = null;
+  let progressLabelEl = null;
+  let progressEtaEl = null;
+  let progressState = null;
+  let progressResetTimer = null;
+
+  const dashModal = document.getElementById('dash-tech-modal');
+  const dashModalOverlay = document.getElementById('dash-tech-overlay');
+  const dashModalClose = document.getElementById('dash-tech-close');
+  const dashModalPanel = dashModal ? dashModal.querySelector('.dash-modal-panel') : null;
+  const dashTechName = document.getElementById('dash-tech-name');
+  const dashTechSites = document.getElementById('dash-tech-sites');
+  const dashTechSitesFilter = document.getElementById('dash-tech-sites-filter');
+  const dashTechSitesMeta = document.getElementById('dash-tech-sites-meta');
+  const dashTechEvidence = document.getElementById('dash-tech-evidence');
+  const dashEvidenceSource = document.getElementById('dash-evidence-source');
+  let dashModalEscHandlerAttached = false;
+  let dashModalLastFocus = null;
+  let dashHighlightEvidenceNext = false;
+  const dashDomainCache = new Map();
+  const dashDomainState = {
+    currentKey: '',
+    domains: [],
+    filtered: [],
+    total: 0
+  };
+  const dashEvidenceState = {
+    techKey: '',
+    currentDomain: '',
+    pendingDomain: '',
+    localFallback: null,
+    lastFetchToken: 0
+  };
+
+  function resetDashboardEvidenceState(techLabel, fallbackTech) {
+    dashEvidenceState.techKey = (techLabel || '').trim();
+    dashEvidenceState.currentDomain = '';
+    dashEvidenceState.pendingDomain = '';
+    dashEvidenceState.localFallback = fallbackTech || null;
+    dashEvidenceState.lastFetchToken++;
+    setDashboardEvidenceSource('Showing latest scan evidence while stored proof loads…', 'muted');
+    if (dashTechEvidence) {
+      dashTechEvidence.innerHTML = renderDashboardEvidenceEntries(fallbackTech);
     }
-    const bar=scanBtn.querySelector('.btn-progress');
-    let startTs=null;
-    const loop=(ts)=>{
-      if(!startTs) startTs=ts;
-      const elapsed=ts-startTs;
-      // Simulate progress up to 85% while waiting
-      const pct=Math.min(85, (elapsed/8000)*85); // 8s virtual fill to 85%
-      bar.style.width=pct+'%';
-      scanBtn.dataset.progress=pct.toFixed(0);
-      if(scanBtn.disabled) scanProgressRAF=requestAnimationFrame(loop);
-    };
-    scanProgressRAF=requestAnimationFrame(loop);
-    statusLine.textContent='Scanning...';
-  } else {
-    scanBtn.classList.remove('is-loading');
-    scanBtn.disabled = false;
-    const bar=scanBtn.querySelector('.btn-progress');
-    if(bar){ bar.style.width='100%'; setTimeout(()=>{ bar.style.transition='none'; bar.style.width='0%'; },600); }
-    cancelAnimationFrame(scanProgressRAF);
-    scanBtn.innerHTML=scanBtnOriginalText;
-    if(!statusLine.textContent) statusLine.textContent='';
   }
-}
 
-function techCard(t, outdated){
-  const catsArr = t.categories||[];
-  const primary = catsArr[0] || 'Other';
-  const cats = catsArr.join(', ');
-  const iconClass = mapTechToIcon(t.name); // returns a slug or null
-  const tooltip = `${t.name}${t.version? ' v'+t.version:''}\n${cats||''}`.replace(/"/g,'&quot;');
-  const innerIcon = iconClass
-    ? `<img src="${ICON_REMOTE_BASE}/${iconClass}.svg" alt="${t.name}" style="width:18px;height:18px;display:block;" onerror="this.parentElement.textContent='${(t.name||'').substring(0,2)}';" />`
-    : (t.name||'').substring(0,2);
-  return `<div class="tech-card${outdated? ' tech-outdated':''}" data-cat="${primary}" title="${tooltip}">`+
-    `<div class="tech-card-header">`+
-      `<span class="tech-icon" data-icon="${iconClass||''}">${innerIcon}</span>`+
-      `<h5>${t.name}${t.version? ' <span class=\"version-badge\">'+t.version+'</span>':''}</h5>`+
-    `</div>`+
-    `<div class="tech-meta">${cats||'(no categories)'}${t.confidence? ' • conf '+t.confidence:''}</div>`+
-  `</div>`;
-}
-
-// Minimal mapping (extend later)
-// Mapping tech names to tech-stack-icons slug (subset; can be expanded)
-const ICON_MAP = {
-  'WordPress':'wordpress',
-  'React':'react',
-  'Next.js':'nextjs',
-  'Nginx':'nginx',
-  'Apache':'apache',
-  'Laravel':'laravel',
-  'Django':'django',
-  'Tailwind CSS':'tailwind',
-  'Bootstrap':'bootstrap',
-  'jQuery':'jquery',
-  'Express':'express'
-};
-function mapTechToIcon(name){ if(!name) return null; return ICON_MAP[name] || null; }
-
-// Use CDN SVGs for icons; fallback to initials when unavailable
-const ICON_REMOTE_BASE = 'https://unpkg.com/tech-stack-icons@3.3.2/icons';
-
-singleForm.addEventListener('submit', async (e)=>{
-  e.preventDefault();
-  const fd = new FormData(singleForm);
-  const domain = (fd.get('domain')||'').trim();
-  if(!domain) return;
-  const fast_full = fd.get('fast_full') ? 1 : 0;
-  errorBox.style.display='none';
-  resultsBox.style.display='none';
-  categoryGroups.innerHTML=''; rawPre.textContent=''; metaLine.textContent='';
-  setLoading(true);
-  let data;
-  try {
-    const res = await fetch('/scan', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain, fast_full})});
-    data = await res.json();
-    if(!res.ok){ throw new Error(data.error||('HTTP '+res.status)); }
-  } catch(err){
-    errorBox.textContent = 'Error: '+err.message;
-    errorBox.style.display='block';
-    setLoading(false);
-    return;
+  function setDashboardEvidenceSource(text, variant) {
+    if (!dashEvidenceSource) {
+      return;
+    }
+    dashEvidenceSource.textContent = text || '';
+    dashEvidenceSource.classList.toggle('is-error', variant === 'error');
+    dashEvidenceSource.classList.toggle('is-muted', variant === 'muted');
   }
-  setLoading(false);
-  statusLine.textContent='Selesai';
-  // Meta summary
-  const techs = data.technologies || [];
-  const outdatedMeta = (data.audit && data.audit.outdated) ? data.audit.outdated : [];
-  const outdatedNames = new Set(outdatedMeta.map(o=> o.name));
-  metaLine.innerHTML = `<span>Domain: <strong>${data.domain}</strong></span>`+
-    `<span>Tech: ${techs.length}</span>`+
-    `<span>Durasi: ${(data.duration||0).toFixed? (data.duration).toFixed(2): data.duration}s</span>`+
-    (data.cached? '<span>Cached</span>':'');
-  if(techs.length){
-    // Group by first category
-    const groups = {};
-    techs.forEach(t=>{
-      const cat = (t.categories && t.categories[0]) || 'Other';
-      (groups[cat] = groups[cat] || []).push(t);
-    });
-    const ordered = Object.keys(groups).sort();
-    categoryGroups.innerHTML = ordered.map(cat=>{
-      const cards = groups[cat].map(t=> techCard(t, outdatedNames.has(t.name))).join('');
-  return `<div class="category-group"><h4>${cat}</h4><div class="tech-grid">${cards}</div></div>`;
-    }).join('');
-  } else {
-    categoryGroups.innerHTML = '<div class="small-note">(Tidak ada teknologi terdeteksi)</div>';
+
+  function setDashboardEvidenceLoading(message) {
+    if (!dashTechEvidence) {
+      return;
+    }
+    const label = message || 'Loading evidence…';
+    dashTechEvidence.innerHTML = `<li class="dash-evidence-loading">${escapeHtml(label)}</li>`;
   }
-  rawPre.textContent = JSON.stringify(data, null, 2);
-  resultsBox.style.display='block';
-  resultsBox.classList.add('fade-in');
-});
 
-// Bulk handling (queue mode + validations + progress + table output)
-const bulkForm = document.getElementById('bulk-scan-form');
-const bulkBtn = document.getElementById('bulk-btn');
-const bulkCancel = document.getElementById('bulk-cancel');
-const bulkFile = document.getElementById('bulk-file');
-const fileInfo = document.getElementById('file-info');
-const bulkDownloadBottom = document.getElementById('bulk-download-bottom');
-const bulkError = document.getElementById('bulk-error');
-const bulkTableWrapper = document.getElementById('bulk-table-wrapper');
-const bulkTbody = document.getElementById('bulk-tbody');
-const bulkProgress = document.getElementById('bulk-progress');
-const bulkProgressText = document.getElementById('bulk-progress-text');
-const progressWrapper = document.querySelector('.progress-wrapper');
-const bulkProgressInd = document.getElementById('bulk-progress-ind');
-const bulkStats = document.getElementById('bulk-stats');
-const bulkErrorSummary = document.getElementById('bulk-error-summary');
-let lastBatchId = null;
-let queueAbort = false;
-let queueResults = [];
+  function setDashboardEvidenceEntries(entries) {
+    if (!dashTechEvidence) {
+      return;
+    }
+    dashTechEvidence.innerHTML = renderDashboardEvidenceList(entries);
+  }
 
-const MAX_DOMAINS = 500; // soft limit
-const MAX_FILE_KB = 200;  // warn threshold
+  function setDashboardEvidenceFallback(message, variant) {
+    const note = message || 'Showing evidence from the latest scan payload.';
+    setDashboardEvidenceSource(note, variant || 'muted');
+    if (dashEvidenceState.localFallback) {
+      dashTechEvidence.innerHTML = renderDashboardEvidenceEntries(dashEvidenceState.localFallback);
+    } else if (dashTechEvidence) {
+      const className = variant === 'error' ? 'dash-evidence-error' : 'dash-evidence-empty';
+      dashTechEvidence.innerHTML = `<li class="${className}">${escapeHtml(note)}</li>`;
+    }
+    dashEvidenceState.currentDomain = '';
+    dashEvidenceState.pendingDomain = '';
+    updateDashboardEvidenceActiveStyles();
+  }
 
-function updateProgress(done,total){
-  const pct = total? Math.round((done/total)*100):0;
-  bulkProgress.style.width = pct+'%';
-  bulkProgressText.textContent = pct+'%';
-}
-function addRow(idx, domain){
-  const tr = document.createElement('tr');
-  tr.innerHTML = `<td style="padding:3px 6px;">${idx+1}</td>`+
-    `<td style="padding:3px 6px; font-weight:500;">${domain}</td>`+
-    `<td style="padding:3px 6px;" data-field="status">queued</td>`+
-    `<td style="padding:3px 6px;" data-field="engine">-</td>`+
-    `<td style="padding:3px 6px;" data-field="count">-</td>`+
-    `<td style="padding:3px 6px; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" data-field="techs"></td>`+
-    `<td style="padding:3px 6px; color:#f87171;" data-field="error"></td>`;
-  bulkTbody.appendChild(tr);
-  return tr;
-}
-function rowUpdate(tr, data){
-  const statusCell = tr.querySelector('[data-field=status]');
-  statusCell.textContent = data.status || 'ok';
-  statusCell.style.color = (data.status && data.status !== 'ok')? '#f87171':'#10b981';
-  tr.querySelector('[data-field=engine]').textContent = data.engine || '-';
-  const techs = data.technologies||[];
-  tr.querySelector('[data-field=count]').textContent = techs.length;
-  const techPreview = techs.slice(0,8).map(t=> t.name+(t.version? '('+t.version+')':'' )).join(', ');
-  const techCell = tr.querySelector('[data-field=techs]');
-  techCell.textContent = techPreview;
-  techCell.title = techs.map(t=> t.name+(t.version? ' '+t.version:'' )).join(', ');
-  if(data.error){ tr.querySelector('[data-field=error]').textContent = data.error; }
-}
-function buildCSV(results){
-  const header = ['domain','status','engine','tech_count','technologies','error'];
-  const lines = [header.join(',')];
-  results.forEach(r=>{
-    const techList = (r.technologies||[]).map(t=> t.name+(t.version? ' '+t.version:''));
-    lines.push([
-      r.domain,
-      r.status||'',
-      r.engine||'',
-      (r.technologies||[]).length,
-      '"'+techList.join('; ')+'"',
-      '"'+(r.error||'')+'"'
-    ].join(','));
-  });
-  return lines.join('\n');
-}
+  function formatDashboardConfidence(value) {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    const num = Number(value);
+    if (Number.isFinite(num)) {
+      return `${Math.round(num)}%`;
+    }
+    return String(value);
+  }
 
-bulkFile.addEventListener('change', async ()=>{
-  const f = bulkFile.files && bulkFile.files[0];
-  if(!f){ fileInfo.textContent=''; return; }
-  const kb = Math.round(f.size/1024);
-  fileInfo.textContent = `${f.name} (${kb} KB)` + (kb>MAX_FILE_KB? ' ⚠ besar, proses bisa lambat':'');
-  const text = await f.text();
-  const textarea = bulkForm.querySelector('textarea[name=domains]');
-  const existing = textarea.value.trim();
-  textarea.value = (existing? existing+'\n':'') + text.trim();
-});
+  function extractDashboardCategories(tech) {
+    if (!tech || typeof tech !== 'object') {
+      return [];
+    }
+    const normalized = normalizeCategories(tech.categories);
+    if (normalized.length) {
+      return normalized;
+    }
+    if (typeof tech.category === 'string' && tech.category.trim()) {
+      return [tech.category.trim()];
+    }
+    return [];
+  }
 
-bulkForm.addEventListener('submit', async (e)=>{
-  e.preventDefault();
-  bulkError.style.display='none';
-  queueAbort = false;
-  const fd = new FormData(bulkForm);
-  let domains = (fd.get('domains')||'').split(/\n+/).map(s=> s.trim()).filter(Boolean);
-  domains = Array.from(new Set(domains));
-  if(!domains.length){ bulkError.textContent='Tidak ada domain.'; bulkError.style.display='inline'; return; }
-  if(domains.length > MAX_DOMAINS){ bulkError.textContent=`Terlalu banyak domain (${domains.length}) > ${MAX_DOMAINS}. Kurangi dulu.`; bulkError.style.display='inline'; return; }
-  const sequential = fd.get('sequential') ? true : false;
-  const fast_full = fd.get('fast_full') ? 1 : 0;
-  bulkBtn.disabled = true; bulkCancel.classList.add('is-hidden');
-  bulkDownloadBottom.classList.add('is-hidden');
-  bulkTableWrapper.style.display='block';
-  // Hide large track; we'll show progress inside the button instead
-  progressWrapper.style.display='none';
-  bulkTbody.innerHTML='';
-  updateProgress(0, domains.length);
-  bulkStats.textContent = `Queued: ${domains.length}`;
-  queueResults = [];
-  if(sequential){ bulkCancel.classList.remove('is-hidden'); }
-
-  if(sequential){
-    // Sequential queue loop
-    for(let i=0;i<domains.length;i++){
-      if(queueAbort){ break; }
-      const d = domains[i];
-      const tr = addRow(i, d);
-      tr.querySelector('[data-field=status]').textContent='scanning';
-      // Show progress inside the bulk button like single scan
-      if(!bulkBtn.disabled){
-        bulkBtn.disabled = true;
-        bulkBtn.classList.add('is-loading');
-        if(!bulkBtn.querySelector('.btn-progress')){
-          const bar=document.createElement('span');
-          bar.className='btn-progress';
-          Object.assign(bar.style,{position:'absolute',inset:'0',width:'0%',borderRadius:'inherit',zIndex:'0',transition:'width .25s ease'});
-          bulkBtn.style.position='relative';
-          bulkBtn.prepend(bar);
-          const fg=document.createElement('span');
-          fg.className='btn-fg';
-          Object.assign(fg.style,{position:'relative',zIndex:'1'});
-          fg.textContent='Scanning';
-          bulkBtn.appendChild(fg);
+  function formatDateTime(value) {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    let dateObj = null;
+    if (value instanceof Date) {
+      dateObj = value;
+    } else if (typeof value === 'number') {
+      const ms = value > 1e12 ? value : value * 1000;
+      dateObj = new Date(ms);
+    } else if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed) {
+        const parsed = Date.parse(trimmed);
+        if (!Number.isNaN(parsed)) {
+          dateObj = new Date(parsed);
         }
       }
-      try {
-        const res = await fetch('/scan', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain:d, fast_full})});
-        const data = await res.json();
-        if(!res.ok){ data.status='error'; data.error = data.error || ('HTTP '+res.status); }
-        rowUpdate(tr, data);
-        queueResults.push({domain:d, ...data});
-      } catch(err){
-        rowUpdate(tr, {domain:d,status:'error', error: err.message, technologies:[]});
-        queueResults.push({domain:d,status:'error', error: err.message, technologies:[]});
+    } else if (value && typeof value === 'object') {
+      if (typeof value.timestamp === 'function') {
+        try {
+          dateObj = new Date(value.timestamp() * 1000);
+        } catch (_) {
+          dateObj = null;
+        }
+      } else if (Number.isFinite(value.seconds)) {
+        dateObj = new Date(value.seconds * 1000);
       }
-  updateProgress(i+1, domains.length);
-  const pct = Math.round(((i+1)/domains.length)*100);
-      // Update internal progress fill
-      const bar=bulkBtn.querySelector('.btn-progress');
-      if(bar){ bar.style.width = Math.round(((i+1)/domains.length)*100)+'%'; }
-  bulkStats.textContent = `Progress: ${i+1}/${domains.length} (${pct}%)`;
     }
-    // Done
-  bulkBtn.disabled=false; bulkBtn.classList.remove('is-loading');
-  const bbar=bulkBtn.querySelector('.btn-progress'); if(bbar){ bbar.style.width='100%'; }
-  setTimeout(()=>{ const rm=bulkBtn.querySelector('.btn-progress'); if(rm) rm.remove(); const fg=bulkBtn.querySelector('.btn-fg'); if(fg){ fg.remove(); } },600);
-  } else {
-    // Parallel bulk endpoint
-    // Show indeterminate bar while waiting for server response
-    bulkProgress.style.width = '0%';
-    bulkProgressInd.style.display = 'block';
-    try {
-      const res = await fetch('/bulk', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domains, fast_full})});
-      const data = await res.json();
-      if(!res.ok){ throw new Error(data.error||('HTTP '+res.status)); }
-      const results = data.results || [];
-      // Switch off indeterminate, switch to determinate updates while rendering
-      bulkProgressInd.style.display = 'none';
-      // Prepare internal progress for parallel as render progresses
-      bulkBtn.disabled = true; bulkBtn.classList.add('is-loading');
-      if(!bulkBtn.querySelector('.btn-progress')){
-        const bar=document.createElement('span'); bar.className='btn-progress'; Object.assign(bar.style,{position:'absolute',inset:'0',width:'0%',borderRadius:'inherit',zIndex:'0',transition:'width .25s ease'});
-        bulkBtn.style.position='relative'; bulkBtn.prepend(bar);
-        const fg=document.createElement('span'); fg.className='btn-fg'; Object.assign(fg.style,{position:'relative',zIndex:'1'}); fg.textContent='Scanning'; bulkBtn.appendChild(fg);
-      }
-      results.forEach((r,idx)=>{
-        const tr = addRow(idx, r.domain || domains[idx]);
-        rowUpdate(tr, r||{});
-        queueResults.push({domain: r.domain || domains[idx], ...(r||{})});
-        updateProgress(idx+1, results.length);
-        const pct = Math.round(((idx+1)/results.length)*100);
-        const bar=bulkBtn.querySelector('.btn-progress'); if(bar){ bar.style.width = pct+'%'; }
-        const fg=bulkBtn.querySelector('.btn-fg'); if(fg){ fg.textContent = `Scanning ${pct}%`; }
-      });
-      // Done
-    bulkBtn.disabled=false; bulkBtn.classList.remove('is-loading');
-    const bbar=bulkBtn.querySelector('.btn-progress'); if(bbar){ bbar.style.width='100%'; }
-    setTimeout(()=>{ const rm=bulkBtn.querySelector('.btn-progress'); if(rm) rm.remove(); const fg=bulkBtn.querySelector('.btn-fg'); if(fg){ fg.remove(); } },600);
-      bulkStats.textContent = `Selesai: ${data.ok}/${data.count}`;
-    } catch(err){
-      bulkError.textContent = 'Bulk error: '+err.message; bulkError.style.display='inline';
+    if (!dateObj || Number.isNaN(dateObj.getTime())) {
+      return '';
     }
+    return dateObj.toLocaleString(undefined, { hour12: false });
   }
-  // Error summary after run
-  if(queueResults.length){
-    const buckets = {timeout:0,dns:0,ssl:0,connection:0,other:0};
-    queueResults.forEach(r=>{
-      if(!r || r.status==='ok') return;
-      const err = (r.error||'').toLowerCase();
-      if(/timeout|timed out|time out/.test(err)) buckets.timeout++;
-      else if(/dns|nodename/.test(err)) buckets.dns++;
-      else if(/ssl|cert/.test(err)) buckets.ssl++;
-      else if(/connection|refused|unreachable/.test(err)) buckets.connection++;
-      else buckets.other++;
-    });
-    bulkErrorSummary.style.display='block';
-    bulkErrorSummary.textContent = `Error Summary => timeout:${buckets.timeout} dns:${buckets.dns} ssl:${buckets.ssl} connection:${buckets.connection} other:${buckets.other}`;
-  }
-  bulkBtn.disabled=false; bulkCancel.classList.add('is-hidden');
-  if(queueResults.length){ bulkDownloadBottom.classList.remove('is-hidden'); }
-});
 
-bulkCancel.addEventListener('click', ()=>{ queueAbort=true; bulkCancel.disabled=true; });
-function doDownload(){
-  if(!queueResults.length) return;
-  const csv = buildCSV(queueResults);
-  const blob = new Blob([csv], {type:'text/csv'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'bulk_results.csv'; document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
-}
-bulkDownloadBottom.addEventListener('click', doDownload);
+  function formatDetectionWindow(tech) {
+    if (!tech) {
+      return 'Latest scan';
+    }
+    const last = formatDateTime(tech.last_seen || tech.last_detected);
+    const first = formatDateTime(tech.first_seen || tech.first_detected);
+    if (last && first && last !== first) {
+      return `${first}  ${last}`;
+    }
+    if (last || first) {
+      return last || first;
+    }
+    const scan = window._latestScan || {};
+    return formatDateTime(scan.finished_at || scan.completed_at || scan.timestamp) || 'Latest scan';
+  }
+
+  function buildDashboardHighlights(tech) {
+    const highlights = [];
+    const scan = window._latestScan || {};
+    const finishedLabel = formatDateTime(scan.finished_at || scan.completed_at || scan.timestamp);
+    if (finishedLabel) {
+      highlights.push(`Scan completed ${finishedLabel}`);
+    }
+    const durationMs = computeActualDurationMs(scan);
+    if (Number.isFinite(durationMs)) {
+      highlights.push(`Duration ${formatMs(durationMs)}`);
+    }
+    const payloadLabel = formatBytes(scan.payload_bytes);
+    if (payloadLabel) {
+      highlights.push(`Payload ${payloadLabel}`);
+    }
+    if (scan.cached) {
+      highlights.push('Served from cache');
+    }
+    if (tech && tech.name && scan.audit && Array.isArray(scan.audit.outdated)) {
+      const outdated = scan.audit.outdated.find(item => item && item.name === tech.name);
+      if (outdated) {
+        highlights.push('Version flagged in audit');
+      }
+    }
+    return highlights;
+  }
+
+  function collectTechEvidenceEntries(tech) {
+    if (!tech || typeof tech !== 'object') {
+      return [];
+    }
+    const evidence = tech.evidence;
+    if (Array.isArray(evidence)) {
+      return evidence.filter(entry => entry && typeof entry === 'object');
+    }
+    if (evidence && typeof evidence === 'object') {
+      return [evidence];
+    }
+    return [];
+  }
+
+  function normalizeEvidenceUrl(rawUrl, fallbackDomain) {
+    if (rawUrl === null || rawUrl === undefined) {
+      return null;
+    }
+    const text = String(rawUrl).trim();
+    if (!text) {
+      return null;
+    }
+    let href = text;
+    let hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(text);
+    if (text.startsWith('//')) {
+      href = `https:${text}`;
+      hasScheme = true;
+    } else if (!hasScheme && fallbackDomain) {
+      const cleanDomain = String(fallbackDomain).replace(/^https?:\/\//, '').split('/')[0];
+      const leadingSlash = text.startsWith('/') ? '' : '/';
+      href = `https://${cleanDomain}${leadingSlash}${text}`;
+      hasScheme = true;
+    }
+    let display = text.replace(/^https?:\/\//, '');
+    try {
+      const parsed = new URL(hasScheme ? href : text);
+      const pathPart = parsed.pathname && parsed.pathname !== '/' ? parsed.pathname : '';
+      const search = parsed.search && parsed.search !== '?' ? parsed.search : '';
+      display = `${parsed.hostname}${pathPart}${search}` || parsed.hostname;
+    } catch (_) {
+      display = text.replace(/^https?:\/\//, '');
+    }
+    const result = { display };
+    if (hasScheme) {
+      result.href = href;
+    }
+    return result;
+  }
+
+  function collectTechSiteEntries(tech) {
+    const entries = collectTechEvidenceEntries(tech);
+    const scanDomain = window._latestScan && window._latestScan.domain ? window._latestScan.domain : '';
+    const seen = new Set();
+    const sites = [];
+    const pushSite = (raw) => {
+      if (raw === null || raw === undefined) {
+        return;
+      }
+      const normalized = normalizeEvidenceUrl(raw, scanDomain);
+      if (!normalized) {
+        return;
+      }
+      const key = normalized.href || normalized.display;
+      if (!key || seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      sites.push(normalized);
+    };
+    entries.forEach(entry => {
+      if (!entry || typeof entry !== 'object') {
+        return;
+      }
+      if (typeof entry.url === 'string' || typeof entry.url === 'number') {
+        pushSite(entry.url);
+      }
+      if (Array.isArray(entry.urls)) {
+        entry.urls.forEach(pushSite);
+      }
+      if (typeof entry.value === 'string' && looksLikeUrl(entry.value)) {
+        pushSite(entry.value);
+      }
+      if (Array.isArray(entry.matches)) {
+        entry.matches.forEach(match => {
+          if (match && typeof match.value === 'string' && looksLikeUrl(match.value)) {
+            pushSite(match.value);
+          }
+        });
+      }
+    });
+    if (!sites.length && scanDomain) {
+      const fallback = normalizeEvidenceUrl(`https://${scanDomain}`, scanDomain);
+      if (fallback) {
+        sites.push(fallback);
+      }
+    }
+    return sites;
+  }
+
+  function renderDashboardSiteEntries(tech) {
+    const sites = collectTechSiteEntries(tech);
+    if (!sites.length) {
+      return '<li class="dash-sites-empty">Only detected on the current scan target.</li>';
+    }
+    const limit = 6;
+    const slice = sites.slice(0, limit);
+    let html = slice.map(renderDashboardSiteEntry).join('');
+    if (sites.length > limit) {
+      html += `<li class="dash-sites-more">+${sites.length - limit} more entries available in raw payload.</li>`;
+    }
+    return html;
+  }
+
+  function renderDashboardSiteEntry(site) {
+    if (!site) {
+      return '';
+    }
+    const label = site.display || site.href || '';
+    if (site.href) {
+      return `<li><a class="dash-site-link" href="${attrEscape(site.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a></li>`;
+    }
+    return `<li><span class="dash-site-link">${escapeHtml(label)}</span></li>`;
+  }
+
+  function normalizeDomainFromApi(entry) {
+    if (entry === null || entry === undefined) {
+      return '';
+    }
+    if (typeof entry === 'string') {
+      return entry.trim();
+    }
+    if (typeof entry === 'object' && entry.domain) {
+      return String(entry.domain).trim();
+    }
+    return '';
+  }
+
+  function renderDashboardDbDomainEntry(domain) {
+    if (!domain) {
+      return '';
+    }
+    const trimmed = domain.trim();
+    const bare = trimmed.replace(/^https?:\/\//, '');
+    const hrefSource = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed) ? trimmed : `https://${bare}`;
+    const evidenceKey = normalizeEvidenceDomain(trimmed) || bare.toLowerCase();
+    return `<li class="dash-sites-item" data-domain="${attrEscape(evidenceKey)}">
+    <div class="dash-site-entry">
+      <a class="dash-site-link" href="${attrEscape(hrefSource)}" target="_blank" rel="noopener noreferrer">${escapeHtml(trimmed)}</a>
+      <button type="button" class="dash-site-evidence-btn" data-domain="${attrEscape(evidenceKey)}" title="Load stored evidence for this domain">Evidence</button>
+    </div>
+  </li>`;
+  }
+
+  function normalizeDashboardDomainPayload(payload) {
+    const rawDomains = Array.isArray(payload && payload.domains) ? payload.domains : [];
+    const rawSites = Array.isArray(payload && payload.sites) ? payload.sites : [];
+    const raw = rawDomains.length ? rawDomains : rawSites;
+    const seen = new Set();
+    const domains = [];
+    raw.forEach(entry => {
+      const normalized = normalizeDomainFromApi(entry);
+      if (!normalized) {
+        return;
+      }
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      domains.push(normalized);
+    });
+    let total = domains.length;
+    if (payload && typeof payload.count === 'number') {
+      total = payload.count;
+    } else if (payload && typeof payload.total === 'number') {
+      total = payload.total;
+    }
+    return { domains, total };
+  }
+
+  function normalizeEvidenceDomain(domain) {
+    const normalized = normalizeDomainFromApi(domain);
+    if (!normalized) {
+      return '';
+    }
+    return normalized.replace(/^https?:\/\//, '').replace(/\/+$/, '').toLowerCase();
+  }
+
+  function maybeAutoSelectDashboardEvidenceDomain() {
+    if (dashEvidenceState.currentDomain || dashEvidenceState.pendingDomain) {
+      return;
+    }
+    const source = (dashDomainState.filtered && dashDomainState.filtered.length)
+      ? dashDomainState.filtered
+      : dashDomainState.domains;
+    if (source && source.length) {
+      fetchDashboardEvidenceForDomain(source[0]);
+    } else {
+      setDashboardEvidenceFallback('Showing evidence from the latest scan payload.', 'muted');
+    }
+  }
+
+  function fetchDashboardEvidenceForDomain(domain) {
+    const techKey = dashEvidenceState.techKey;
+    const normalizedDomain = normalizeEvidenceDomain(domain);
+    if (!techKey || !normalizedDomain) {
+      setDashboardEvidenceFallback('Evidence unavailable for this technology.', 'muted');
+      return;
+    }
+    const token = ++dashEvidenceState.lastFetchToken;
+    dashEvidenceState.pendingDomain = normalizedDomain;
+    dashEvidenceState.currentDomain = '';
+    setDashboardEvidenceSource(`Loading evidence from ${normalizedDomain}…`, 'muted');
+    setDashboardEvidenceLoading();
+    fetch(`/api/domain/${encodeURIComponent(normalizedDomain)}/evidence_for_tech?tech=${encodeURIComponent(techKey)}`)
+      .then(res => {
+        if (!res.ok) {
+          throw new Error('http_error');
+        }
+        return res.json();
+      })
+      .then(payload => {
+        if (token !== dashEvidenceState.lastFetchToken) {
+          return;
+        }
+        const entries = Array.isArray(payload && payload.evidence)
+          ? payload.evidence.filter(entry => entry && typeof entry === 'object')
+          : [];
+        if (entries.length) {
+          dashEvidenceState.currentDomain = normalizedDomain;
+          dashEvidenceState.pendingDomain = '';
+          setDashboardEvidenceSource(`Evidence from ${normalizedDomain}`, '');
+          setDashboardEvidenceEntries(entries);
+          updateDashboardEvidenceActiveStyles();
+        } else {
+          setDashboardEvidenceFallback(`No stored evidence for ${normalizedDomain}.`, 'muted');
+        }
+      })
+      .catch(() => {
+        if (token !== dashEvidenceState.lastFetchToken) {
+          return;
+        }
+        setDashboardEvidenceFallback('Failed to load stored evidence. Showing latest scan payload instead.', 'error');
+      });
+  }
+
+  function updateDashboardEvidenceActiveStyles() {
+    if (!dashTechSites) {
+      return;
+    }
+    const active = dashEvidenceState.currentDomain;
+    const items = dashTechSites.querySelectorAll('.dash-sites-item');
+    items.forEach(item => {
+      const domainAttr = item.getAttribute('data-domain');
+      if (active && domainAttr && domainAttr.toLowerCase() === active) {
+        item.classList.add('is-active');
+      } else {
+        item.classList.remove('is-active');
+      }
+    });
+  }
+
+  function updateDashboardSitesMeta(visible, total) {
+    if (!dashTechSitesMeta) {
+      return;
+    }
+    if (!total && !visible) {
+      dashTechSitesMeta.textContent = 'No domains in database';
+      return;
+    }
+    if (visible === total) {
+      dashTechSitesMeta.textContent = `${visible} domains listed`;
+    } else {
+      dashTechSitesMeta.textContent = `${visible} of ${total} domains match`;
+    }
+  }
+
+  function renderDashboardDomainList() {
+    if (!dashTechSites) {
+      return;
+    }
+    const list = dashDomainState.filtered || [];
+    if (!list.length) {
+      dashTechSites.innerHTML = '<li class="dash-sites-empty">No domains recorded for this technology.</li>';
+      updateDashboardSitesMeta(0, dashDomainState.total || 0);
+      return;
+    }
+    dashTechSites.innerHTML = list.map(renderDashboardDbDomainEntry).join('');
+    updateDashboardSitesMeta(list.length, dashDomainState.total || list.length);
+    updateDashboardEvidenceActiveStyles();
+  }
+
+  function setDashboardDomainsFromCache(cacheKey, normalized) {
+    dashDomainState.currentKey = cacheKey;
+    dashDomainState.domains = normalized.domains.slice();
+    dashDomainState.filtered = normalized.domains.slice();
+    dashDomainState.total = normalized.total;
+    if (dashTechSitesFilter) {
+      dashTechSitesFilter.value = '';
+    }
+    renderDashboardDomainList();
+    maybeAutoSelectDashboardEvidenceDomain();
+  }
+
+  function applyDashboardDomainFilter(query) {
+    const base = dashDomainState.domains || [];
+    const q = (query || '').trim().toLowerCase();
+    if (!q) {
+      dashDomainState.filtered = base.slice();
+    } else {
+      dashDomainState.filtered = base.filter(domain => domain.toLowerCase().indexOf(q) !== -1);
+    }
+    renderDashboardDomainList();
+  }
+
+  function fetchDashboardDomains(techName) {
+    if (!dashTechSites) {
+      return;
+    }
+    const key = (techName || '').trim();
+    if (!key) {
+      dashDomainState.domains = [];
+      dashDomainState.filtered = [];
+      dashDomainState.total = 0;
+      dashTechSites.innerHTML = '<li class="dash-sites-empty">Technology name unavailable.</li>';
+      updateDashboardSitesMeta(0, 0);
+      setDashboardEvidenceFallback('Technology name unavailable for evidence lookup.', 'muted');
+      updateDashboardEvidenceActiveStyles();
+      return;
+    }
+    const cacheKey = key.toLowerCase();
+    if (dashDomainCache.has(cacheKey)) {
+      setDashboardDomainsFromCache(cacheKey, dashDomainCache.get(cacheKey));
+      return;
+    }
+    dashDomainState.domains = [];
+    dashDomainState.filtered = [];
+    dashDomainState.total = 0;
+    dashTechSites.innerHTML = '<li class="dash-sites-loading">Loading domains from database…</li>';
+    if (dashTechSitesMeta) {
+      dashTechSitesMeta.textContent = 'Fetching domains…';
+    }
+    const requestUrl = `/api/tech/${encodeURIComponent(key)}/sites?limit=250`;
+    fetch(requestUrl)
+      .then(res => {
+        if (!res.ok) {
+          throw new Error('HTTP ' + res.status);
+        }
+        return res.json();
+      })
+      .then(payload => {
+        const normalized = normalizeDashboardDomainPayload(payload || {});
+        dashDomainCache.set(cacheKey, normalized);
+        setDashboardDomainsFromCache(cacheKey, normalized);
+      })
+      .catch(() => {
+        dashDomainState.domains = [];
+        dashDomainState.filtered = [];
+        dashDomainState.total = 0;
+        dashTechSites.innerHTML = '<li class="dash-sites-error">Failed to load domain list from database.</li>';
+        updateDashboardSitesMeta(0, 0);
+        setDashboardEvidenceFallback('Failed to load domain list. Showing latest scan evidence.', 'error');
+        updateDashboardEvidenceActiveStyles();
+      });
+  }
+
+  if (dashTechSitesFilter) {
+    dashTechSitesFilter.addEventListener('input', function () {
+      applyDashboardDomainFilter(this.value);
+    });
+  }
+
+  if (dashTechSites) {
+    dashTechSites.addEventListener('click', function (event) {
+      const target = event.target && event.target.closest ? event.target.closest('.dash-site-evidence-btn') : null;
+      if (!target) {
+        return;
+      }
+      const domain = target.getAttribute('data-domain');
+      if (!domain) {
+        return;
+      }
+      event.preventDefault();
+      fetchDashboardEvidenceForDomain(domain);
+    });
+  }
+
+  function highlightDashboardEvidence() {
+    if (!dashTechEvidence) {
+      return;
+    }
+    const highlightClass = 'dash-evidence-highlight';
+    dashTechEvidence.classList.add(highlightClass);
+    try {
+      dashTechEvidence.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (_) {
+      dashTechEvidence.scrollIntoView();
+    }
+    setTimeout(() => {
+      dashTechEvidence.classList.remove(highlightClass);
+    }, 1600);
+  }
+
+  function renderDashboardEvidenceEntries(tech) {
+    return renderDashboardEvidenceList(collectTechEvidenceEntries(tech));
+  }
+
+  function renderDashboardEvidenceList(entries) {
+    const normalizedEntries = Array.isArray(entries)
+      ? entries.filter(entry => entry && typeof entry === 'object')
+      : [];
+    if (!normalizedEntries.length) {
+      return '<li class="dash-evidence-empty">No evidence captured for this technology.</li>';
+    }
+    const limit = 10;
+    const slice = normalizedEntries.slice(0, limit);
+    let html = slice.map(entry => renderDashboardEvidenceEntry(entry)).join('');
+    if (normalizedEntries.length > limit) {
+      html += `<li class="dash-evidence-more">+${normalizedEntries.length - limit} more evidence entries are available in the raw payload.</li>`;
+    }
+    return html;
+  }
+
+  function renderDashboardEvidenceEntry(entry) {
+    if (!entry || typeof entry !== 'object') {
+      return '';
+    }
+    const handledKeys = {
+      kind: true,
+      source: true,
+      url: true,
+      urls: true,
+      snippet: true,
+      match: true,
+      value: true,
+      pattern: true,
+      note: true,
+      headers: true,
+      matches: true,
+      confidence: true
+    };
+    const chips = [];
+    if (entry.kind) {
+      chips.push(`<span class="dash-evidence-chip">${escapeHtml(String(entry.kind))}</span>`);
+    }
+    if (entry.source) {
+      chips.push(`<span class="dash-evidence-chip dash-evidence-chip-muted">${escapeHtml(String(entry.source))}</span>`);
+    }
+    const header = chips.length ? `<div class="dash-evidence-meta">${chips.join('')}</div>` : '';
+    const details = [];
+    const scanDomain = window._latestScan && window._latestScan.domain ? window._latestScan.domain : '';
+    if (entry.url) {
+      const normalizedUrl = normalizeEvidenceUrl(entry.url, scanDomain);
+      if (normalizedUrl && normalizedUrl.href) {
+        details.push(`<a class="dash-evidence-link" href="${attrEscape(normalizedUrl.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(normalizedUrl.display)}</a>`);
+      } else {
+        details.push(`<span class="dash-evidence-link">${escapeHtml(String(entry.url))}</span>`);
+      }
+    }
+    if (Array.isArray(entry.urls)) {
+      const previewUrls = entry.urls
+        .map(urlVal => normalizeEvidenceUrl(urlVal, scanDomain))
+        .filter(Boolean)
+        .slice(0, 3)
+        .map(urlObj => {
+          if (!urlObj) {
+            return '';
+          }
+          if (urlObj.href) {
+            return `<a class="dash-evidence-link" href="${attrEscape(urlObj.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(urlObj.display)}</a>`;
+          }
+          return `<span class="dash-evidence-link">${escapeHtml(urlObj.display || '')}</span>`;
+        })
+        .filter(Boolean);
+      if (previewUrls.length) {
+        details.push(`<div class="dash-evidence-links">${previewUrls.join('')}</div>`);
+      }
+    }
+    if (entry.snippet) {
+      details.push(`<code class="dash-evidence-snippet">${escapeHtml(String(entry.snippet))}</code>`);
+    }
+    ['match', 'value', 'pattern', 'note'].forEach(key => {
+      if (entry[key] || entry[key] === 0) {
+        const rawValue = entry[key];
+        if (rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)) {
+          return;
+        }
+        const val = typeof rawValue === 'string' ? rawValue : JSON.stringify(rawValue);
+        details.push(`<code class="dash-evidence-attr"><span>${escapeHtml(key)}:</span> ${escapeHtml(String(val))}</code>`);
+      }
+    });
+    if (entry.headers && typeof entry.headers === 'object') {
+      details.push(`<code class="dash-evidence-attr"><span>headers:</span> ${escapeHtml(JSON.stringify(entry.headers))}</code>`);
+    }
+    if (Array.isArray(entry.matches)) {
+      const preview = entry.matches
+        .map(match => (match && typeof match.value === 'string') ? match.value : null)
+        .filter(Boolean)
+        .slice(0, 2);
+      if (preview.length) {
+        details.push(`<code class="dash-evidence-attr"><span>matches:</span> ${escapeHtml(preview.join(', '))}</code>`);
+      }
+    }
+    Object.keys(entry).forEach(key => {
+      if (handledKeys[key]) {
+        return;
+      }
+      const raw = entry[key];
+      if (raw === null || raw === undefined) {
+        return;
+      }
+      let formatted = '';
+      if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
+        formatted = String(raw);
+      } else {
+        try {
+          formatted = JSON.stringify(raw);
+        } catch (_) {
+          formatted = String(raw);
+        }
+      }
+      if (formatted) {
+        details.push(`<code class="dash-evidence-attr"><span>${escapeHtml(key)}:</span> ${escapeHtml(formatted)}</code>`);
+      }
+    });
+    if (!details.length) {
+      details.push('<span class="dash-evidence-fallback">Additional details available in the raw JSON panel.</span>');
+    }
+    return `<li>${header}<div class="dash-evidence-body">${details.join('')}</div></li>`;
+  }
+
+  function populateDashboardModal(tech) {
+    if (!tech) {
+      return;
+    }
+    const techLabel = tech.name || tech.tech || tech.slug || '';
+    resetDashboardEvidenceState(techLabel, tech);
+    if (dashTechName) {
+      dashTechName.textContent = techLabel || 'Technology';
+    }
+    if (dashTechSites) {
+      dashTechSites.innerHTML = '<li class="dash-sites-loading">Loading domains from database…</li>';
+      fetchDashboardDomains(techLabel);
+    }
+  }
+
+  function handleDashModalEsc(event) {
+    if (event.key === 'Escape' || event.key === 'Esc') {
+      event.preventDefault();
+      closeDashboardTechModal();
+    }
+  }
+
+  function openDashboardTechModalByIndex(idx) {
+    const techs = window._latestTechs || [];
+    if (!Array.isArray(techs) || idx < 0 || idx >= techs.length) {
+      return;
+    }
+    openDashboardTechModal(techs[idx]);
+  }
+
+  function openDashboardTechModal(tech) {
+    if (!dashModal || !tech) {
+      return;
+    }
+    dashModalLastFocus = document.activeElement;
+    populateDashboardModal(tech);
+    dashModal.classList.add('is-visible');
+    dashModal.setAttribute('aria-hidden', 'false');
+    document.body && document.body.classList.add('dash-modal-open');
+    if (dashModalPanel && typeof dashModalPanel.focus === 'function') {
+      requestAnimationFrame(() => {
+        try {
+          dashModalPanel.focus();
+        } catch (_) { /* ignore */ }
+      });
+    }
+    if (!dashModalEscHandlerAttached) {
+      document.addEventListener('keydown', handleDashModalEsc, true);
+      dashModalEscHandlerAttached = true;
+    }
+    if (dashHighlightEvidenceNext) {
+      setTimeout(() => { highlightDashboardEvidence(); }, 140);
+      dashHighlightEvidenceNext = false;
+    }
+  }
+
+  function closeDashboardTechModal() {
+    if (!dashModal || !dashModal.classList.contains('is-visible')) {
+      return;
+    }
+    dashModal.classList.remove('is-visible');
+    dashModal.setAttribute('aria-hidden', 'true');
+    document.body && document.body.classList.remove('dash-modal-open');
+    if (dashModalEscHandlerAttached) {
+      document.removeEventListener('keydown', handleDashModalEsc, true);
+      dashModalEscHandlerAttached = false;
+    }
+    if (dashModalLastFocus && typeof dashModalLastFocus.focus === 'function') {
+      try { dashModalLastFocus.focus(); } catch (_) { /* ignore */ }
+    }
+    dashModalLastFocus = null;
+  }
+
+  function activateTechCard(card) {
+    if (!card) {
+      return false;
+    }
+    const idxAttr = card.getAttribute('data-idx');
+    const idx = idxAttr !== null ? parseInt(idxAttr, 10) : NaN;
+    if (Number.isNaN(idx)) {
+      return false;
+    }
+    openDashboardTechModalByIndex(idx);
+    return true;
+  }
+
+  function onTechCardClick(event) {
+    const card = event.target && event.target.closest ? event.target.closest('.tech-card') : null;
+    if (!card) {
+      return;
+    }
+    const pillClicked = event.target.closest ? event.target.closest('.tech-confidence-pill') : null;
+    dashHighlightEvidenceNext = Boolean(pillClicked);
+    event.preventDefault();
+    const opened = activateTechCard(card);
+    if (!opened) {
+      dashHighlightEvidenceNext = false;
+    }
+  }
+
+  function onTechCardKeydown(event) {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+    const target = event.target;
+    const card = target && target.closest ? target.closest('.tech-card') : null;
+    if (!card) {
+      return;
+    }
+    const pillFocused = target && target.closest ? target.closest('.tech-confidence-pill') : null;
+    dashHighlightEvidenceNext = Boolean(pillFocused);
+    event.preventDefault();
+    const opened = activateTechCard(card);
+    if (!opened) {
+      dashHighlightEvidenceNext = false;
+    }
+  }
+
+  if (categoryGroups) {
+    categoryGroups.addEventListener('click', onTechCardClick);
+    categoryGroups.addEventListener('keydown', onTechCardKeydown);
+  }
+  if (dashModalOverlay) {
+    dashModalOverlay.addEventListener('click', closeDashboardTechModal);
+  }
+  if (dashModalClose) {
+    dashModalClose.addEventListener('click', closeDashboardTechModal);
+  }
+
+
+  function formatMs(value) {
+    const ms = Number(value);
+    if (!Number.isFinite(ms) || ms < 0) {
+      return '';
+    }
+    if (ms < 1000) {
+      return `${Math.round(ms)} ms`;
+    }
+    const seconds = ms / 1000;
+    if (seconds < 60) {
+      return seconds < 10 ? `${seconds.toFixed(1)} s` : `${Math.round(seconds)} s`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.round(seconds % 60);
+    if (minutes < 60) {
+      if (!remainingSeconds) {
+        return `${minutes} m`;
+      }
+      return `${minutes} m ${remainingSeconds} s`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    if (!remainingMinutes) {
+      return `${hours} h`;
+    }
+    return `${hours} h ${remainingMinutes} m`;
+  }
+
+  function formatBytes(value) {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    let bytes = Number(value);
+    if (!Number.isFinite(bytes) || bytes < 0) {
+      return '';
+    }
+    if (bytes === 0) {
+      return '0 B';
+    }
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let unitIndex = 0;
+    while (bytes >= 1024 && unitIndex < units.length - 1) {
+      bytes /= 1024;
+      unitIndex += 1;
+    }
+    const precision = bytes >= 10 ? 1 : 2;
+    return `${bytes.toFixed(precision)} ${units[unitIndex]}`;
+  }
+
+  function renderPhaseBreakdown(phases) {
+    if (!phaseBreakdownEl) { return; }
+    const defs = [
+      { key: 'heuristic_ms', label: 'Heuristic' },
+      { key: 'engine_ms', label: 'Fingerprint' },
+      { key: 'synthetic_ms', label: 'Synthetic' },
+      { key: 'micro_ms', label: 'Micro fallback' },
+      { key: 'node_full_ms', label: 'Node fallback' },
+      { key: 'version_audit_ms', label: 'Version audit' }
+    ];
+    const chips = [];
+    if (phases && typeof phases === 'object') {
+      defs.forEach(def => {
+        const rawVal = phases[def.key];
+        const val = Number.isFinite(rawVal) ? rawVal : parseInt(rawVal, 10);
+        if (Number.isFinite(val) && val > 0) {
+          chips.push(`<span class="phase-chip"><strong>${def.label}</strong><span class="phase-meta">${formatMs(val)}</span></span>`);
+        }
+      });
+    }
+    if (!chips.length) {
+      phaseBreakdownEl.style.display = 'none';
+      phaseBreakdownEl.innerHTML = '';
+      return;
+    }
+    phaseBreakdownEl.innerHTML = chips.join('');
+    phaseBreakdownEl.style.display = 'flex';
+  }
+
+  function resetScanProgress() {
+    if (progressResetTimer) {
+      clearTimeout(progressResetTimer);
+      progressResetTimer = null;
+    }
+    if (progressState && progressState.rafId) {
+      cancelAnimationFrame(progressState.rafId);
+    }
+    progressState = null;
+    if (progressBarEl) {
+      progressBarEl.style.width = '0%';
+    }
+    if (progressLabelEl) {
+      progressLabelEl.textContent = scanBtnOriginalText;
+    }
+    if (progressEtaEl) {
+      progressEtaEl.textContent = '';
+    }
+  }
+
+  function ensureButtonProgressShell() {
+    if (!scanBtn.querySelector('.btn-progress-shell')) {
+      scanBtn.innerHTML = '';
+      const shell = document.createElement('span');
+      shell.className = 'btn-progress-shell';
+      const bar = document.createElement('span');
+      bar.className = 'btn-inner-bar';
+      const text = document.createElement('span');
+      text.className = 'btn-progress-text';
+      const eta = document.createElement('span');
+      eta.className = 'btn-progress-eta';
+      shell.append(bar, text, eta);
+      scanBtn.append(shell);
+      progressBarEl = bar;
+      progressLabelEl = text;
+      progressEtaEl = eta;
+    }
+  }
+
+  function updateScanProgressVisual(fraction) {
+    if (!progressBarEl) { return; }
+    const clamped = Math.max(0.03, Math.min(1, fraction));
+    progressBarEl.style.width = `${(clamped * 100).toFixed(2)}%`;
+    if (progressState && progressLabelEl) {
+      const steps = progressState.steps;
+      let active = steps[steps.length - 1];
+      for (const step of steps) {
+        if (clamped <= step.threshold) {
+          active = step;
+          break;
+        }
+      }
+      // keep text short inside button
+      progressLabelEl.textContent = active.label;
+    }
+    if (progressState && progressEtaEl) {
+      const elapsed = performance.now() - progressState.startedAt;
+      const remaining = Math.max(0, progressState.estimatedMs - elapsed);
+      const remainingSeconds = Math.max(0, Math.round(Math.max(remaining, 400) / 1000));
+      progressEtaEl.textContent = clamped < 0.92 && remainingSeconds > 0 ? `~${remainingSeconds}s` : '';
+    }
+  }
+
+  function startScanProgress() {
+    resetScanProgress();
+    ensureButtonProgressShell();
+    if (!progressBarEl) { return; }
+    const steps = [
+      { threshold: 0.2, label: 'Heuristic fingerprinting' },
+      { threshold: 0.5, label: 'Fingerprint engine' },
+      { threshold: 0.7, label: 'Synthetic enrichment' },
+      { threshold: 0.9, label: 'Fallback checks' },
+      { threshold: 1, label: 'Finalizing' }
+    ];
+    progressState = {
+      startedAt: performance.now(),
+      estimatedMs: 8000,
+      rafId: null,
+      steps,
+      done: false
+    };
+    const tick = () => {
+      if (!progressState || progressState.done) { return; }
+      const elapsed = performance.now() - progressState.startedAt;
+      const fraction = Math.min(0.94, elapsed / progressState.estimatedMs);
+      updateScanProgressVisual(fraction);
+      progressState.rafId = requestAnimationFrame(tick);
+    };
+    progressState.rafId = requestAnimationFrame(tick);
+  }
+
+  function completeScanProgress(result) {
+    if (progressState && progressState.rafId) {
+      cancelAnimationFrame(progressState.rafId);
+    }
+    progressState = null;
+    if (progressBarEl) {
+      progressBarEl.style.width = '100%';
+    }
+    if (progressLabelEl) {
+      progressLabelEl.textContent = 'Done';
+    }
+    const durationMs = computeActualDurationMs(result);
+    if (progressEtaEl) {
+      progressEtaEl.textContent = durationMs ? `${(durationMs / 1000).toFixed(1)}s` : '';
+    }
+    renderPhaseBreakdown(result && result.phases);
+    progressResetTimer = setTimeout(() => { resetScanProgress(); }, 6000);
+  }
+
+  function failScanProgress(message) {
+    if (progressState && progressState.rafId) {
+      cancelAnimationFrame(progressState.rafId);
+    }
+    progressState = null;
+    if (progressBarEl) {
+      progressBarEl.style.width = '100%';
+    }
+    if (progressLabelEl) {
+      progressLabelEl.textContent = message || 'Scan failed';
+    }
+    if (progressEtaEl) {
+      progressEtaEl.textContent = '';
+    }
+    if (phaseBreakdownEl) {
+      phaseBreakdownEl.style.display = 'none';
+      phaseBreakdownEl.innerHTML = '';
+    }
+    progressResetTimer = setTimeout(() => { resetScanProgress(); }, 4000);
+  }
+
+  function resetScanButtonVisual() {
+    scanBtn.classList.remove('is-loading');
+    scanBtn.disabled = false;
+    scanBtn.removeAttribute('aria-busy');
+    scanBtn.textContent = scanBtnOriginalText;
+  }
+
+  function setLoading(flag) {
+    if (flag) {
+      scanBtn.classList.add('is-loading');
+      scanBtn.disabled = true;
+      scanBtn.setAttribute('aria-busy', 'true');
+      ensureButtonProgressShell();
+      progressLabelEl.textContent = 'Init';
+      progressEtaEl.textContent = '';
+      statusLine.textContent = 'Scanning...';
+      startScanProgress();
+    } else {
+      resetScanButtonVisual();
+      if (statusLine.textContent === 'Scanning...') {
+        statusLine.textContent = '';
+      }
+    }
+  }
+
+  function techCard(t, outdated, idx) {
+    const catsArr = normalizeCategories(t.categories);
+    const primary = getPrimaryCategory(t);
+    const fallbackCategory = typeof t.category === 'string' ? t.category.trim() : '';
+    const categoryList = catsArr.length ? catsArr : (fallbackCategory ? [fallbackCategory] : []);
+    const cats = categoryList.join(', ');
+    const primaryAttr = attrEscape(primary || 'Other');
+    const iconSlug = mapTechToIcon(t.name);
+    const readableName = (t.name || '').trim();
+    const tooltip = attrEscape(`${readableName}${t.version ? ' v' + t.version : ''}\n${cats || ''}`);
+    const safeNameAttr = attrEscape(readableName);
+    const fallback = fallbackInitials(readableName).replace(/"/g, '');
+    const safeAlt = attrEscape(readableName);
+    const innerIcon = iconSlug
+      ? `<img src="${ICON_BASES[0]}/${iconSlug}.svg" alt="${safeAlt}" loading="lazy" style="width:18px;height:18px;display:block;" data-fallback="${fallback}" data-slug="${iconSlug}" data-icon-source-index="0" onerror="window.handleTechIconError && window.handleTechIconError(this);" />`
+      : fallback;
+    let confidenceVal = null;
+    if (typeof t.confidence === 'number' && Number.isFinite(t.confidence)) {
+      confidenceVal = Math.round(t.confidence);
+    } else {
+      const parsed = parseInt(t.confidence, 10);
+      if (Number.isFinite(parsed)) {
+        confidenceVal = parsed;
+      }
+    }
+    const idxAttr = typeof idx === 'number' && Number.isFinite(idx) ? ` data-idx="${idx}"` : '';
+    const confidencePill = confidenceVal !== null
+      ? `<span class="tech-confidence-pill" aria-label="Confidence ${confidenceVal}%" role="button" tabindex="0" data-evidence-trigger="true" title="Click to view detection evidence"><span class="tech-pill-label">Confidence</span><span class="tech-pill-value">${confidenceVal}%</span></span>`
+      : '';
+    const catsDisplay = cats ? escapeHtml(cats) : '(no categories)';
+    const metaPieces = [catsDisplay];
+    if (confidencePill) { metaPieces.push(confidencePill); }
+    const metaInner = metaPieces.join('<span class="tech-meta-sep" aria-hidden="true">&bull;</span>');
+    const ariaLabel = attrEscape(readableName ? `View ${readableName} details` : 'View technology details');
+    return `<div class="tech-card${outdated ? ' tech-outdated' : ''}" data-cat="${primaryAttr}" data-tech="${safeNameAttr}"${idxAttr} role="button" tabindex="0" aria-label="${ariaLabel}" title="${tooltip}">` +
+      `<div class="tech-card-header">` +
+      `<span class="tech-icon" data-icon="${iconSlug || ''}">${innerIcon}</span>` +
+      `<h5>${t.name}${t.version ? ' <span class="version-badge">' + t.version + '</span>' : ''}</h5>` +
+      `</div>` +
+      `<div class="tech-meta">${metaInner}</div>` +
+      `</div>`;
+  }
+
+
+
+
+
+
+
+  // Mapping tech names (lowercase) to tech-stack-icons slug
+  const ICON_BASES = [
+    'https://unpkg.com/tech-stack-icons@3.3.2/icons',
+    '/assets/tech-icons'
+  ];
+
+  const ICON_MAP = {
+    'wordpress': 'wordpress',
+    'react': 'react',
+    'next.js': 'nextjs',
+    'nextjs': 'nextjs',
+    'nginx': 'nginx',
+    'apache': 'apache',
+    'laravel': 'laravel',
+    'django': 'django',
+    'tailwind css': 'tailwindcss',
+    'tailwindcss': 'tailwindcss',
+    'bootstrap': 'bootstrap',
+    'jquery': 'jquery',
+    'express': 'express',
+    'express.js': 'express',
+    'vue.js': 'vue',
+    'vue.js framework': 'vue',
+    'angularjs': 'angularjs',
+    'angular.js': 'angularjs',
+    'nuxt.js': 'nuxtjs',
+    'nuxt': 'nuxtjs',
+    'svelte': 'svelte',
+    'php': 'php',
+    'python': 'python',
+    'node.js': 'nodejs',
+    'nodejs': 'nodejs',
+    'mysql': 'mysql',
+    'postgresql': 'postgresql',
+    'mongodb': 'mongodb',
+    'redis': 'redis',
+    'firebase': 'firebase',
+    'google analytics': 'google-analytics',
+    'google analytics (ua)': 'google-analytics',
+    'google analytics (ga4)': 'google-analytics',
+    'google tag manager': 'google-tag-manager',
+    'google font api': 'google-fonts',
+    'google fonts': 'google-fonts',
+    'font awesome': 'fontawesome',
+    'rss': 'rss',
+    'yoast seo': 'yoastseo',
+    'google site kit': 'sitekit',
+    'site kit': 'sitekit',
+    'moment.js': 'momentjs',
+    'momentjs': 'momentjs',
+    'swiper': 'swiper',
+    'swiper slider': 'swiper',
+    'onesignal': 'onesignal',
+    'google optimize': 'google-optimize',
+    'twemoji': 'twemoji',
+    'twitter emoji (twemoji)': 'twemoji',
+    'core-js': 'corejs',
+    'corejs': 'corejs',
+    'wpml': 'wpml',
+    'elementor': 'elementor',
+    'priority hints': 'priorityhints',
+    'hsts': 'hsts',
+    'userway': 'userway'
+  };
+
+  function sanitizeIconSlug(name) {
+    return name
+      .toLowerCase()
+      .replace(/&/g, 'and')
+      .replace(/\s*\(.*?\)\s*/g, ' ')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+  }
+
+  function mapTechToIcon(name) {
+    if (!name) return null;
+    const raw = String(name).trim();
+    if (!raw) return null;
+    const lower = raw.toLowerCase();
+    if (ICON_MAP[lower]) return ICON_MAP[lower];
+    const sanitized = sanitizeIconSlug(raw);
+    if (ICON_MAP[sanitized]) return ICON_MAP[sanitized];
+    return sanitized || null;
+  }
+
+  function fallbackInitials(name) {
+    const letters = (name || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase();
+    if (letters) return letters;
+    const first = (name || '').trim().slice(0, 1).toUpperCase();
+    return first || '•';
+  }
+
+  function normalizeCategories(value) {
+    if (Array.isArray(value)) {
+      return value
+        .map(item => typeof item === 'string' ? item.trim() : '')
+        .filter(Boolean);
+    }
+    if (typeof value === 'string') {
+      return value
+        .split(/[;,]/)
+        .map(item => item.trim())
+        .filter(Boolean);
+    }
+    return [];
+  }
+
+  function getPrimaryCategory(tech) {
+    if (!tech || typeof tech !== 'object') {
+      return 'Other';
+    }
+    const categories = normalizeCategories(tech.categories);
+    if (categories.length) {
+      return categories[0];
+    }
+    if (typeof tech.category === 'string' && tech.category.trim()) {
+      return tech.category.trim();
+    }
+    return 'Other';
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, function (ch) {
+      switch (ch) {
+        case '&': return '&amp;';
+        case '<': return '&lt;';
+        case '>': return '&gt;';
+        case '"': return '&quot;';
+        case "'": return '&#39;';
+        default: return ch;
+      }
+    });
+  }
+
+  function attrEscape(value) {
+    return escapeHtml(value).replace(/\n/g, '&#10;');
+  }
+
+  function unescapeHtml(value) {
+    return String(value ?? '').replace(/&(amp|lt|gt|quot|#39);/g, function (match) {
+      switch (match) {
+        case '&amp;': return '&';
+        case '&lt;': return '<';
+        case '&gt;': return '>';
+        case '&quot;': return '"';
+        case '&#39;': return "'";
+        default: return match;
+      }
+    }).replace(/&#10;/g, '\n');
+  }
+
+  function looksLikeUrl(value) {
+    try {
+      return /^https?:\/\//i.test(String(value || ''));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function buildSnippetForUrl(rawUrl) {
+    const url = (rawUrl || '').toString().trim();
+    if (!url) { return null; }
+    if (/\.css(\?|$)/i.test(url)) {
+      return `<link rel="stylesheet" href="${url}">`;
+    }
+    if (/\.js(\?|$)/i.test(url)) {
+      return `<script src="${url}" defer><\/script>`;
+    }
+    if (/\.(woff2?|woff|ttf|otf|eot)(\?|$)/i.test(url)) {
+      const ext = (url.split('?')[0].split('.').pop() || '').toLowerCase();
+      const fontMimeMap = {
+        'woff2': 'font/woff2',
+        'woff': 'font/woff',
+        'ttf': 'font/ttf',
+        'otf': 'font/otf',
+        'eot': 'application/vnd.ms-fontobject'
+      };
+      const mime = fontMimeMap[ext] || 'font/woff2';
+      return `<link rel="preload" href="${url}" as="font" type="${mime}" crossorigin>`;
+    }
+    return `<link rel="preload" href="${url}" as="fetch">`;
+  }
+
+  function createClientRequestToken(prefix = 'req') {
+    const base = typeof prefix === 'string' && prefix.trim() ? prefix.trim() : 'req';
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `${base}-${crypto.randomUUID()}`;
+    }
+    const ts = Date.now().toString(36);
+    const rand = Math.random().toString(36).slice(2, 10);
+    return `${base}-${ts}-${rand}`;
+  }
+
+  function uniqueList(values) {
+    if (!Array.isArray(values)) {
+      if (values === undefined || values === null) {
+        return [];
+      }
+      values = [values];
+    }
+    const seen = new Set();
+    const out = [];
+    values.forEach(item => {
+      if (item === null || item === undefined) {
+        return;
+      }
+      const text = String(item).trim();
+      if (!text || seen.has(text)) {
+        return;
+      }
+      seen.add(text);
+      out.push(text);
+    });
+    return out;
+  }
+
+  function computeActualDurationMs(result) {
+    if (!result || typeof result !== 'object') {
+      return null;
+    }
+    const durationMs = Number(result.duration_ms);
+    if (Number.isFinite(durationMs) && durationMs >= 0) {
+      return durationMs;
+    }
+    const durationSeconds = Number(result.duration);
+    if (Number.isFinite(durationSeconds) && durationSeconds >= 0) {
+      return durationSeconds * 1000;
+    }
+    const started = normaliseTimestamp(result.started_at ?? result.startedAt ?? result.timestamp);
+    const finished = normaliseTimestamp(result.finished_at ?? result.finishedAt ?? result.completed_at ?? result.completedAt);
+    if (started !== null && finished !== null && finished >= started) {
+      return finished - started;
+    }
+    return null;
+
+    function normaliseTimestamp(value) {
+      if (value === null || value === undefined) {
+        return null;
+      }
+      let num = Number(value);
+      if (!Number.isFinite(num)) {
+        return null;
+      }
+      if (num > 1e12) {
+        return Math.round(num);
+      }
+      if (num > 1e9) {
+        return Math.round(num * 1000);
+      }
+      if (num >= 1e6) {
+        return Math.round(num);
+      }
+      return Math.round(num * 1000);
+    }
+  }
+
+  function logSingleCancel(domain, token) {
+    const payload = { reason: 'client_cancel' };
+    if (domain) {
+      payload.domain = String(domain).trim();
+    }
+    const tokens = uniqueList(token ? [token] : []);
+    if (tokens.length === 1) {
+      payload.token = tokens[0];
+    } else if (tokens.length > 1) {
+      payload.tokens = tokens;
+    }
+    fetch('/scan/cancelled', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(() => { });
+  }
+
+  singleForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(singleForm);
+    const domain = (fd.get('domain') || '').trim();
+    if (!domain) {
+      singleRequestToken = null;
+      return;
+    }
+    const fast_full = fd.get('fast_full') ? 1 : 0;
+    errorBox.style.display = 'none';
+    resultsBox.style.display = 'none';
+    categoryGroups.innerHTML = ''; rawPre.textContent = ''; metaLine.textContent = '';
+    const requestToken = createClientRequestToken('single');
+    singleRequestToken = requestToken;
+    setLoading(true);
+    let data;
+    try {
+      // Abort previous in-flight single scan if any
+      if (singleController) { try { singleController.abort(); } catch (_) { } }
+      singleController = new AbortController();
+      const res = await fetch('/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, fast_full, client_request_id: requestToken, client_context: 'single' }),
+        signal: singleController.signal
+      });
+      data = await res.json();
+      if (!res.ok) { throw new Error(data.error || ('HTTP ' + res.status)); }
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        failScanProgress('Cancelled');
+        setLoading(false);
+        errorBox.style.display = 'none';
+        statusLine.textContent = 'Cancelled';
+        logSingleCancel(domain, singleRequestToken);
+        singleRequestToken = null;
+        singleController = null;
+        return;
+      }
+      errorBox.textContent = 'Error: ' + err.message;
+      errorBox.style.display = 'block';
+      failScanProgress('Scan failed');
+      setLoading(false);
+      singleRequestToken = null;
+      singleController = null;
+      return;
+    }
+    const durationMs = computeActualDurationMs(data);
+    completeScanProgress(data);
+    setLoading(false);
+    statusLine.textContent = 'Completed';
+    singleRequestToken = null;
+    singleController = null;
+    // Meta summary
+    const techs = data.technologies || [];
+    // Store latest scan payload so the dashboard modal can read it
+    try {
+      window._latestScan = data;
+      window._latestTechs = techs;
+    } catch (_) { }
+    const techIndexMap = new Map();
+    techs.forEach((tech, idx) => {
+      if (!tech || typeof tech !== 'object') {
+        return;
+      }
+      try {
+        tech.__dashIdx = idx;
+      } catch (_) { /* ignore assignment failures */ }
+      techIndexMap.set(tech, idx);
+    });
+    const outdatedMeta = (data.audit && data.audit.outdated) ? data.audit.outdated : [];
+    const outdatedNames = new Set(outdatedMeta.map(o => o.name));
+    const durationSeconds = (typeof data.duration === 'number' && Number.isFinite(data.duration))
+      ? data.duration
+      : (typeof durationMs === 'number' && Number.isFinite(durationMs) ? (durationMs / 1000) : null);
+    const durationText = durationSeconds !== null && durationSeconds !== undefined
+      ? `${durationSeconds.toFixed(2)}s`
+      : 'n/a';
+    const payloadText = formatBytes(data.payload_bytes);
+    metaLine.innerHTML = `<span>Domain: <strong>${data.domain}</strong></span>` +
+      `<span>Technologies: ${techs.length}</span>` +
+      `<span>Duration: ${durationText}</span>` +
+      `<span>Payload: ${payloadText || 'n/a'}</span>` +
+      (data.cached ? '<span>Cached</span>' : '');
+    if (techs.length) {
+      // Group by first category (normalized)
+      const groups = {};
+      techs.forEach(t => {
+        const cat = getPrimaryCategory(t);
+        const key = cat || 'Other';
+        (groups[key] = groups[key] || []).push(t);
+      });
+      const ordered = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+      const otherIndex = ordered.indexOf('Other');
+      if (otherIndex > -1 && otherIndex !== ordered.length - 1) {
+        ordered.splice(otherIndex, 1);
+        ordered.push('Other');
+      }
+      categoryGroups.innerHTML = ordered.map(cat => {
+        const cards = groups[cat].map(t => {
+          const idx = techIndexMap.has(t)
+            ? techIndexMap.get(t)
+            : (typeof t.__dashIdx === 'number' ? t.__dashIdx : techs.indexOf(t));
+          return techCard(t, outdatedNames.has(t.name), idx);
+        }).join('');
+        const safeCat = escapeHtml(cat);
+        return `<div class="category-group"><h4>${safeCat}</h4><div class="tech-grid">${cards}</div></div>`;
+      }).join('');
+    } else {
+      categoryGroups.innerHTML = '<div class="small-note">(No technologies detected)</div>';
+    }
+    rawPre.textContent = JSON.stringify(data, null, 2);
+    resultsBox.style.display = 'block';
+    resultsBox.classList.add('fade-in');
+  });
+
+  // Bulk handling (queue mode + validations + progress + table output)
+  const bulkForm = document.getElementById('bulk-scan-form');
+  const bulkBtn = document.getElementById('bulk-btn');
+  const bulkCancel = document.getElementById('bulk-cancel');
+  const bulkFile = document.getElementById('bulk-file');
+  const fileInfo = document.getElementById('file-info');
+  const bulkDownloadBottom = document.getElementById('bulk-download-bottom');
+  const bulkError = document.getElementById('bulk-error');
+  const bulkTableWrapper = document.getElementById('bulk-table-wrapper');
+  const bulkTbody = document.getElementById('bulk-tbody');
+  const bulkProgress = document.getElementById('bulk-progress');
+  const bulkProgressText = document.getElementById('bulk-progress-text');
+  const progressWrapper = document.querySelector('.progress-wrapper');
+  const bulkProgressInd = document.getElementById('bulk-progress-ind');
+  const bulkStats = document.getElementById('bulk-stats');
+  const bulkErrorSummary = document.getElementById('bulk-error-summary');
+  let lastBatchId = null;
+  let queueAbort = false;
+  let queueResults = [];
+  let bulkController = null;
+  let bulkPctSpan = null;
+  let bulkLabelSpan = null;
+  let currentBulkDomains = [];
+  let bulkProcessedCount = 0;
+  let currentBulkTokens = [];
+  let bulkRunToken = null;
+
+  function setupBulkButton(label, { gradient = 'linear-gradient(90deg,#10b981,#4ade80)', showPercent = true, indeterminate = false } = {}) {
+    bulkBtn.style.position = 'relative';
+    bulkBtn.innerHTML = '';
+    const bar = document.createElement('span');
+    bar.className = 'btn-progress';
+    Object.assign(bar.style, { position: 'absolute', inset: '0', width: '0%', background: gradient, borderRadius: 'inherit', zIndex: '0', transition: 'width .2s ease' });
+    const fg = document.createElement('span');
+    fg.className = 'btn-fg';
+    Object.assign(fg.style, { position: 'relative', zIndex: '1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '.4rem', width: '100%' });
+    const lbl = document.createElement('span');
+    lbl.className = 'bulk-btn-label';
+    lbl.textContent = label;
+    const pct = document.createElement('span');
+    pct.className = 'bulk-btn-pct';
+    if (showPercent) {
+      pct.textContent = '0%';
+      pct.style.visibility = 'visible';
+    } else {
+      pct.textContent = '';
+      pct.style.visibility = 'hidden';
+    }
+    fg.append(lbl, pct);
+    bulkBtn.append(bar, fg);
+    bulkPctSpan = pct;
+    bulkLabelSpan = lbl;
+    if (indeterminate) {
+      const shimmer = document.createElement('span');
+      shimmer.className = 'bulk-btn-indeterminate';
+      Object.assign(shimmer.style, { position: 'absolute', inset: '0', animation: 'indeterm 1.2s linear infinite', background: 'linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent)', zIndex: '0' });
+      bulkBtn.prepend(shimmer);
+    }
+    return bar;
+  }
+
+  function updateBulkButton(label, pctValue) {
+    if (bulkLabelSpan) {
+      bulkLabelSpan.textContent = label;
+    }
+    if (bulkPctSpan) {
+      if (pctValue === undefined || pctValue === null) {
+        bulkPctSpan.style.visibility = 'hidden';
+        bulkPctSpan.textContent = '';
+      } else {
+        bulkPctSpan.style.visibility = 'visible';
+        bulkPctSpan.textContent = `${pctValue}%`;
+      }
+    }
+  }
+
+  function resetBulkButton() {
+    bulkBtn.classList.remove('is-loading');
+    bulkBtn.disabled = false;
+    bulkBtn.innerHTML = 'Scan';
+    bulkPctSpan = null;
+    bulkLabelSpan = null;
+  }
+
+  function logBulkCancel(domains, tokens) {
+    const payload = {};
+    const doms = uniqueList(domains);
+    const toks = uniqueList(tokens);
+    if (doms.length) { payload.domains = doms; }
+    if (toks.length) { payload.tokens = toks; }
+    if (!payload.domains && !payload.tokens) { return; }
+    payload.reason = 'client_cancel';
+    fetch('/bulk/cancelled', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(() => { });
+  }
+
+  const MAX_DOMAINS = 500; // soft limit
+  const MAX_FILE_KB = 200;  // warn threshold
+
+  function updateProgress(done, total) {
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    bulkProgress.style.width = pct + '%';
+    bulkProgressText.textContent = pct + '%';
+  }
+  function addRow(idx, domain) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style="padding:3px 6px;">${idx + 1}</td>` +
+      `<td style="padding:3px 6px; font-weight:500;">${domain}</td>` +
+      `<td style="padding:3px 6px;" data-field="status">queued</td>` +
+      `<td style="padding:3px 6px;" data-field="engine">-</td>` +
+      `<td style="padding:3px 6px;" data-field="count">-</td>` +
+      `<td style="padding:3px 6px;" data-field="payload">-</td>` +
+      `<td style="padding:3px 6px; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" data-field="techs"></td>` +
+      `<td style="padding:3px 6px; color:#f87171;" data-field="error"></td>`;
+    bulkTbody.appendChild(tr);
+    return tr;
+  }
+  function rowUpdate(tr, data) {
+    const statusCell = tr.querySelector('[data-field=status]');
+    statusCell.textContent = data.status || 'ok';
+    statusCell.style.color = (data.status && data.status !== 'ok') ? '#f87171' : '#10b981';
+    tr.querySelector('[data-field=engine]').textContent = data.engine || '-';
+    const techs = data.technologies || [];
+    tr.querySelector('[data-field=count]').textContent = techs.length;
+    const payloadCell = tr.querySelector('[data-field=payload]');
+    const payloadBytes = data.payload_bytes;
+    const payloadLabel = formatBytes(payloadBytes);
+    payloadCell.textContent = payloadLabel || '-';
+    payloadCell.title = payloadBytes != null ? `${payloadBytes} bytes` : '';
+    const techPreview = techs.slice(0, 8).map(t => t.name + (t.version ? '(' + t.version + ')' : '')).join(', ');
+    const techCell = tr.querySelector('[data-field=techs]');
+    techCell.textContent = techPreview;
+    techCell.title = techs.map(t => t.name + (t.version ? ' ' + t.version : '')).join(', ');
+    const errorCell = tr.querySelector('[data-field=error]');
+    if (data.error) {
+      errorCell.textContent = data.error;
+    } else {
+      errorCell.textContent = '';
+    }
+  }
+  function buildCSV(results) {
+    const header = ['domain', 'status', 'engine', 'tech_count', 'payload_bytes', 'technologies', 'error'];
+    const lines = [header.join(',')];
+    results.forEach(r => {
+      const techList = (r.technologies || []).map(t => t.name + (t.version ? ' ' + t.version : ''));
+      lines.push([
+        r.domain,
+        r.status || '',
+        r.engine || '',
+        (r.technologies || []).length,
+        r.payload_bytes != null ? r.payload_bytes : '',
+        '"' + techList.join('; ') + '"',
+        '"' + (r.error || '') + '"'
+      ].join(','));
+    });
+    return lines.join('\n');
+  }
+
+  bulkFile.addEventListener('change', async () => {
+    const f = bulkFile.files && bulkFile.files[0];
+    if (!f) { fileInfo.textContent = ''; return; }
+    const kb = Math.round(f.size / 1024);
+    fileInfo.textContent = `${f.name} (${kb} KB)` + (kb > MAX_FILE_KB ? ' ⚠ large file, processing might be slow' : '');
+    const text = await f.text();
+    const textarea = bulkForm.querySelector('textarea[name=domains]');
+    const existing = textarea.value.trim();
+    textarea.value = (existing ? existing + '\n' : '') + text.trim();
+  });
+
+  bulkForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    bulkError.style.display = 'none';
+    queueAbort = false;
+    const fd = new FormData(bulkForm);
+    let domains = (fd.get('domains') || '').split(/\n+/).map(s => s.trim()).filter(Boolean);
+    domains = Array.from(new Set(domains));
+    if (!domains.length) { bulkError.textContent = 'No domains provided.'; bulkError.style.display = 'inline'; return; }
+    if (domains.length > MAX_DOMAINS) { bulkError.textContent = `Too many domains (${domains.length}) > ${MAX_DOMAINS}. Reduce the list first.`; bulkError.style.display = 'inline'; return; }
+    const sequential = fd.get('sequential') ? true : false;
+    const fast_full = fd.get('fast_full') ? 1 : 0;
+    bulkBtn.disabled = true; bulkCancel.classList.add('is-hidden');
+    bulkDownloadBottom.classList.add('is-hidden');
+    bulkTableWrapper.style.display = 'block';
+    // Hide large track; we'll show progress inside the button instead
+    progressWrapper.style.display = 'none';
+    bulkTbody.innerHTML = '';
+    updateProgress(0, domains.length);
+    bulkStats.textContent = `Queued: ${domains.length}`;
+    queueResults = [];
+    currentBulkDomains = domains.slice();
+    bulkProcessedCount = 0;
+    currentBulkTokens = [];
+    bulkRunToken = null;
+    if (sequential) { bulkCancel.classList.remove('is-hidden'); }
+
+    if (sequential) {
+      bulkRunToken = createClientRequestToken('bulk');
+      currentBulkTokens = domains.map((_, idx) => `${bulkRunToken}-${idx}`);
+      // Sequential queue loop
+      bulkBtn.classList.add('is-loading');
+      bulkBtn.disabled = true;
+      const progressBar = setupBulkButton('Scanning', { gradient: 'linear-gradient(90deg,#10b981,#4ade80)', showPercent: true });
+      for (let i = 0; i < domains.length; i++) {
+        if (queueAbort) { break; }
+        const d = domains[i];
+        const tr = addRow(i, d);
+        tr.querySelector('[data-field=status]').textContent = 'scanning';
+        const requestToken = currentBulkTokens[i] || `${createClientRequestToken('bulk')}-${i}`;
+        currentBulkTokens[i] = requestToken;
+        try {
+          // Allow cancellation of the current fetch
+          if (bulkController) { try { bulkController.abort(); } catch (_) { } }
+          bulkController = new AbortController();
+          const res = await fetch('/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain: d, fast_full, client_request_id: requestToken, client_context: 'bulk-sequential' }),
+            signal: bulkController.signal
+          });
+          const data = await res.json();
+          if (!res.ok) { data.status = 'error'; data.error = data.error || ('HTTP ' + res.status); }
+          rowUpdate(tr, data);
+          queueResults.push({ domain: d, ...data });
+          currentBulkTokens[i] = null;
+        } catch (err) {
+          if (err.name === 'AbortError') {
+            rowUpdate(tr, { domain: d, status: 'canceled', technologies: [] });
+            queueResults.push({ domain: d, status: 'canceled', technologies: [] });
+            logBulkCancel([d], [requestToken]);
+            currentBulkTokens[i] = null;
+            bulkProcessedCount = i + 1;
+            break;
+          }
+          rowUpdate(tr, { domain: d, status: 'error', error: err.message, technologies: [] });
+          queueResults.push({ domain: d, status: 'error', error: err.message, technologies: [] });
+          currentBulkTokens[i] = null;
+        }
+        bulkProcessedCount = i + 1;
+        updateProgress(i + 1, domains.length);
+        const pct = Math.round(((i + 1) / domains.length) * 100);
+        if (progressBar) { progressBar.style.width = pct + '%'; }
+        updateBulkButton('Scanning', pct);
+        bulkStats.textContent = `Progress: ${i + 1}/${domains.length} (${pct}%)`;
+      }
+      // Done
+      const barEnd = bulkBtn.querySelector('.btn-progress');
+      if (barEnd) {
+        barEnd.style.transition = 'width .18s ease-out';
+        barEnd.style.width = '100%';
+        setTimeout(() => { resetBulkButton(); }, 220);
+      } else {
+        resetBulkButton();
+      }
+      if (queueAbort) {
+        const remaining = currentBulkDomains.slice(bulkProcessedCount);
+        const remainingTokens = currentBulkTokens.slice(bulkProcessedCount).filter(Boolean);
+        if (remaining.length || remainingTokens.length) { logBulkCancel(remaining, remainingTokens); }
+      }
+      currentBulkTokens = [];
+      bulkRunToken = null;
+    } else {
+      // Parallel bulk endpoint
+      // Show indeterminate bar while waiting for server response
+      bulkProgress.style.width = '0%';
+      bulkProgressInd.style.display = 'block';
+      bulkBtn.classList.add('is-loading');
+      bulkBtn.disabled = true;
+      const bar = setupBulkButton('Processing', { gradient: 'linear-gradient(90deg,#10b981,#4ade80)', showPercent: false, indeterminate: true });
+      try {
+        if (bulkController) { try { bulkController.abort(); } catch (_) { } }
+        bulkController = new AbortController();
+        const res = await fetch('/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ domains, fast_full }), signal: bulkController.signal });
+        const data = await res.json();
+        if (!res.ok) { throw new Error(data.error || ('HTTP ' + res.status)); }
+        const results = data.results || [];
+        // Switch off indeterminate, switch to determinate updates while rendering
+        bulkProgressInd.style.display = 'none';
+        const shimmer = bulkBtn.querySelector('.bulk-btn-indeterminate'); if (shimmer) { shimmer.remove(); }
+        const pbar = bulkBtn.querySelector('.btn-progress'); if (pbar) { pbar.style.transition = 'width .2s ease'; }
+        updateBulkButton('Rendering', results.length ? 0 : undefined);
+        results.forEach((r, idx) => {
+          const tr = addRow(idx, r.domain || domains[idx]);
+          rowUpdate(tr, r || {});
+          queueResults.push({ domain: r.domain || domains[idx], ...(r || {}) });
+          updateProgress(idx + 1, results.length);
+          const pct = Math.round(((idx + 1) / results.length) * 100);
+          if (pbar) { pbar.style.width = pct + '%'; }
+          updateBulkButton('Rendering', pct);
+          bulkProcessedCount = idx + 1;
+        });
+        bulkProcessedCount = results.length;
+        // Done
+        const bbar = bulkBtn.querySelector('.btn-progress');
+        if (bbar) {
+          bbar.style.transition = 'width .18s ease-out';
+          bbar.style.width = '100%';
+          setTimeout(() => { resetBulkButton(); }, 220);
+        } else {
+          resetBulkButton();
+        }
+        bulkStats.textContent = `Completed: ${data.ok}/${data.count}`;
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          bulkError.textContent = 'Cancelled';
+          bulkError.style.display = 'inline';
+          const remaining = currentBulkDomains.slice(bulkProcessedCount);
+          if (remaining.length) { logBulkCancel(remaining); }
+        } else {
+          bulkError.textContent = 'Bulk error: ' + err.message;
+          bulkError.style.display = 'inline';
+        }
+        resetBulkButton();
+      }
+    }
+    // Error summary after run
+    if (queueResults.length) {
+      const buckets = { timeout: 0, dns: 0, ssl: 0, connection: 0, other: 0 };
+      queueResults.forEach(r => {
+        if (!r || r.status === 'ok') return;
+        const err = (r.error || '').toLowerCase();
+        if (/timeout|timed out|time out/.test(err)) buckets.timeout++;
+        else if (/dns|nodename/.test(err)) buckets.dns++;
+        else if (/ssl|cert/.test(err)) buckets.ssl++;
+        else if (/connection|refused|unreachable/.test(err)) buckets.connection++;
+        else buckets.other++;
+      });
+      bulkErrorSummary.style.display = 'block';
+      bulkErrorSummary.textContent = `Error Summary => timeout:${buckets.timeout} dns:${buckets.dns} ssl:${buckets.ssl} connection:${buckets.connection} other:${buckets.other}`;
+    }
+    bulkBtn.disabled = false; bulkCancel.classList.add('is-hidden');
+    if (queueResults.length) { bulkDownloadBottom.classList.remove('is-hidden'); }
+  });
+
+  bulkCancel.addEventListener('click', () => {
+    queueAbort = true;
+    bulkCancel.disabled = true;
+    try { if (bulkController) bulkController.abort(); } catch (_) { }
+    const remaining = currentBulkDomains.slice(bulkProcessedCount);
+    const remainingTokens = currentBulkTokens.slice(bulkProcessedCount).filter(Boolean);
+    if (remaining.length || remainingTokens.length) { logBulkCancel(remaining, remainingTokens); }
+    currentBulkTokens = [];
+    bulkRunToken = null;
+  });
+  function doDownload() {
+    if (!queueResults.length) return;
+    const csv = buildCSV(queueResults);
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'bulk_results.csv'; document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+  bulkDownloadBottom.addEventListener('click', doDownload);
+
+  window.handleTechIconError = function (img) {
+    if (!img) return;
+    const slug = img.dataset.slug || '';
+    const currentIndex = parseInt(img.dataset.iconSourceIndex || '0', 10);
+    if (slug) {
+      const nextIndex = currentIndex + 1;
+      if (nextIndex < ICON_BASES.length) {
+        img.dataset.iconSourceIndex = String(nextIndex);
+        img.src = `${ICON_BASES[nextIndex]}/${slug}.svg`;
+        return;
+      }
+    }
+    const fallback = img.getAttribute('data-fallback') || '•';
+    const parent = img.parentElement;
+    if (parent) {
+      parent.textContent = fallback;
+    }
+  };
+
+
 </script>
 <style>
-@keyframes indeterm { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%);} }
+  @keyframes indeterm {
+    0% {
+      transform: translateX(-100%);
+    }
+
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes spin {
+    0% {
+      transform: rotate(0deg);
+    }
+
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+
+  .scan-progress {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: .55rem .65rem;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.78));
+    box-shadow: 0 12px 32px rgba(14, 23, 42, 0.35), inset 0 0 0 1px rgba(99, 102, 241, 0.18);
+    backdrop-filter: blur(18px);
+    gap: .45rem;
+  }
+
+  .scan-progress-track {
+    height: 10px;
+    width: 100%;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.18);
+    overflow: hidden;
+  }
+
+  .scan-progress-bar {
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #22d3ee, #60a5fa 52%, #a855f7);
+    box-shadow: 0 8px 18px rgba(56, 189, 248, 0.32);
+    transition: width .25s ease-out;
+  }
+
+  .scan-progress.is-complete .scan-progress-bar {
+    background: linear-gradient(90deg, #34d399, #10b981 55%, #34d399);
+    box-shadow: 0 10px 24px rgba(34, 197, 94, 0.35);
+  }
+
+  .scan-progress.is-error .scan-progress-bar {
+    background: linear-gradient(90deg, #f87171, #ef4444 50%, #f97316);
+    box-shadow: 0 10px 20px rgba(248, 113, 113, 0.32);
+  }
+
+  .scan-progress-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: .63rem;
+    letter-spacing: .4px;
+    color: #cbd5f5;
+  }
+
+  .scan-progress.is-complete .scan-progress-meta {
+    color: #bbf7d0;
+  }
+
+  .scan-progress.is-error .scan-progress-meta {
+    color: #fecaca;
+  }
+
+  .scan-progress-meta .mono {
+    font-family: "JetBrains Mono", "Fira Code", "SFMono-Regular", monospace;
+    color: #f8fafc;
+  }
+
+  .phase-breakdown {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .45rem;
+    margin-bottom: .55rem;
+    width: 100%;
+  }
+
+  .phase-chip {
+    display: flex;
+    flex-direction: column;
+    gap: .05rem;
+    padding: .38rem .55rem;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(76, 29, 149, 0.28), rgba(59, 7, 100, 0.2));
+    box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.22), 0 10px 24px rgba(79, 70, 229, 0.25);
+    font-size: .56rem;
+    letter-spacing: .35px;
+    color: #ede9fe;
+  }
+
+  .phase-chip strong {
+    font-size: .72rem;
+    letter-spacing: .25px;
+    color: #f5f3ff;
+  }
+
+  .phase-chip .phase-meta {
+    opacity: .85;
+    color: #d8b4fe;
+    font-size: .54rem;
+  }
+
+  .tech-meta .tech-confidence-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .28rem .65rem;
+    border-radius: 999px;
+    background: linear-gradient(140deg, rgba(15, 58, 95, 0.45), rgba(59, 130, 246, 0.35));
+    box-shadow: 0 12px 28px rgba(59, 130, 246, 0.26), inset 0 0 0 1px rgba(148, 197, 255, 0.28);
+    color: #e2f3ff;
+    font-size: .58rem;
+    letter-spacing: .35px;
+    backdrop-filter: blur(14px);
+  }
+
+  .tech-pill-label {
+    text-transform: uppercase;
+    font-size: .48rem;
+    letter-spacing: .5px;
+    opacity: .72;
+  }
+
+  .tech-pill-value {
+    font-weight: 600;
+    font-size: .66rem;
+    letter-spacing: .32px;
+    background: linear-gradient(90deg, #67e8f9, #a855f7);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  body.dash-modal-open {
+    overflow: hidden;
+  }
+
+  .dash-modal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 120;
+  }
+
+  .dash-modal.is-visible {
+    display: flex;
+  }
+
+  .dash-modal-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(14px);
+  }
+
+  .dash-modal-panel {
+    position: relative;
+    width: min(900px, calc(100% - 1.5rem));
+    max-height: 85vh;
+    border-radius: 20px;
+    padding: 1.25rem 1.5rem 1.5rem;
+    background: linear-gradient(140deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.9));
+    box-shadow: 0 28px 65px rgba(2, 6, 23, 0.45), inset 0 0 0 1px rgba(148, 163, 184, 0.15);
+    color: #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    overflow: hidden;
+  }
+
+  .dash-modal-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background: radial-gradient(circle at 20% 15%, rgba(94, 234, 212, 0.25), transparent 55%);
+    opacity: .35;
+  }
+
+  .dash-modal-panel>* {
+    position: relative;
+    z-index: 1;
+  }
+
+  .dash-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .6rem;
+  }
+
+  .dash-modal-label {
+    text-transform: uppercase;
+    font-size: .5rem;
+    letter-spacing: .45px;
+    color: #93c5fd;
+    margin: 0 0 .15rem;
+  }
+
+  .dash-modal-header h2 {
+    margin: 0;
+    font-size: 1.15rem;
+    letter-spacing: .12px;
+    color: #f8fafc;
+  }
+
+  .dash-modal-close {
+    border: 0;
+    border-radius: 50%;
+    background: rgba(15, 23, 42, 0.5);
+    color: #f8fafc;
+    width: 30px;
+    height: 30px;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: transform .2s ease, background .2s ease;
+  }
+
+  .dash-modal-close:hover {
+    transform: scale(1.05);
+    background: rgba(15, 23, 42, 0.7);
+  }
+
+  .dash-modal-body {
+    display: flex;
+    flex-direction: row;
+    gap: 1rem;
+    align-items: stretch;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .dash-modal-section {
+    padding: 1rem 1.15rem;
+    border-radius: 1.1rem;
+    background: linear-gradient(135deg, rgba(30, 58, 95, 0.22), rgba(59, 82, 117, 0.25));
+    box-shadow: inset 0 0 0 1px rgba(94, 106, 133, 0.32);
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+    flex: 1 1 50%;
+    min-height: 280px;
+    max-height: none;
+    overflow: hidden;
+  }
+
+  .dash-modal-section h3 {
+    margin: 0;
+    font-size: .78rem;
+    letter-spacing: .25px;
+    color: #c7d2fe;
+  }
+
+  .dash-section-head {
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+  }
+
+  .dash-section-head p {
+    margin: 0;
+    font-size: .72rem;
+    color: #94a3b8;
+  }
+
+  .dash-evidence-source {
+    margin: 0;
+    font-size: .65rem;
+    color: #94a3b8;
+  }
+
+  .dash-evidence-source.is-error {
+    color: #f87171;
+  }
+
+  .dash-evidence-source.is-muted {
+    color: #94a3b8;
+  }
+
+  .dash-sites-list,
+  .dash-evidence-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    flex: 1 1 0;
+    min-height: 80px;
+    max-height: none;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: .35rem;
+    scroll-behavior: smooth;
+  }
+
+
+
+  .dash-sites-list::-webkit-scrollbar,
+  .dash-evidence-list::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .dash-sites-list::-webkit-scrollbar-thumb,
+  .dash-evidence-list::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.35);
+    border-radius: 999px;
+  }
+
+  .dash-sites-list::-webkit-scrollbar-track,
+  .dash-evidence-list::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.25);
+    border-radius: 999px;
+  }
+
+  .dash-sites-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .dash-sites-filter {
+    flex: 1 1 200px;
+    min-width: 180px;
+    padding: .35rem .55rem;
+    border-radius: .7rem;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    background: rgba(15, 23, 42, 0.35);
+    color: #e2e8f0;
+    font-size: .76rem;
+  }
+
+  .dash-sites-filter:focus {
+    outline: 2px solid rgba(59, 130, 246, 0.6);
+    outline-offset: 2px;
+  }
+
+  .dash-sites-meta {
+    font-size: .65rem;
+    color: #94a3b8;
+  }
+
+  .dash-sites-list li {
+    padding: .5rem .65rem;
+    border-radius: .8rem;
+    background: rgba(59, 130, 246, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.25);
+  }
+
+  .dash-sites-item.is-active {
+    box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.75), 0 0 0 1px rgba(14, 165, 233, 0.32);
+    background: rgba(56, 189, 248, 0.25);
+  }
+
+  .dash-site-entry {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .45rem;
+  }
+
+  .dash-site-evidence-btn {
+    border: 0;
+    border-radius: 999px;
+    padding: .25rem .6rem;
+    font-size: .65rem;
+    letter-spacing: .25px;
+    text-transform: uppercase;
+    background: rgba(14, 165, 233, 0.22);
+    color: #e0f2fe;
+    cursor: pointer;
+    transition: background .2s ease, color .2s ease;
+  }
+
+  .dash-site-evidence-btn:hover,
+  .dash-site-evidence-btn:focus {
+    background: rgba(14, 165, 233, 0.35);
+    color: #f0f9ff;
+  }
+
+  .dash-site-evidence-btn:focus {
+    outline: 2px solid rgba(14, 165, 233, 0.6);
+    outline-offset: 2px;
+  }
+
+  .dash-evidence-highlight {
+    outline: 2px solid rgba(59, 130, 246, 0.55);
+    outline-offset: 4px;
+    border-radius: 1.2rem;
+    transition: outline .3s ease;
+  }
+
+  .dash-site-link {
+    color: #bfdbfe;
+    text-decoration: none;
+    font-size: .78rem;
+    word-break: break-all;
+  }
+
+  .dash-site-link:hover {
+    color: #e0f2fe;
+    text-decoration: underline;
+  }
+
+  .dash-sites-empty,
+  .dash-sites-more,
+  .dash-sites-loading,
+  .dash-sites-error {
+    text-align: center;
+    background: rgba(15, 23, 42, 0.35);
+    color: #cbd5f5;
+  }
+
+  .dash-evidence-list li {
+    padding: .55rem .65rem;
+    border-radius: .9rem;
+    background: rgba(15, 118, 168, 0.18);
+    box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.25);
+  }
+
+  .dash-evidence-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem;
+    margin-bottom: .35rem;
+  }
+
+  .dash-evidence-chip {
+    padding: .18rem .5rem;
+    border-radius: 999px;
+    font-size: .56rem;
+    letter-spacing: .3px;
+    background: rgba(125, 211, 252, 0.3);
+    color: #e0f2fe;
+  }
+
+  .dash-evidence-chip-muted {
+    background: rgba(148, 163, 184, 0.22);
+    color: #f1f5f9;
+  }
+
+  .dash-evidence-body {
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+    font-size: .72rem;
+    color: #e0f2fe;
+  }
+
+  .dash-evidence-link {
+    color: #99f6e4;
+    text-decoration: none;
+    word-break: break-all;
+  }
+
+  .dash-evidence-link:hover {
+    text-decoration: underline;
+  }
+
+  .dash-evidence-links {
+    display: flex;
+    flex-direction: column;
+    gap: .2rem;
+  }
+
+  .dash-evidence-snippet,
+  .dash-evidence-attr {
+    display: block;
+    padding: .28rem .35rem;
+    border-radius: .5rem;
+    background: rgba(15, 23, 42, 0.4);
+    font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', monospace;
+    font-size: .62rem;
+    color: #f8fafc;
+  }
+
+  .dash-evidence-attr span {
+    text-transform: uppercase;
+    font-size: .55rem;
+    letter-spacing: .3px;
+    color: #94a3b8;
+    margin-right: .35rem;
+  }
+
+  .dash-evidence-fallback {
+    font-size: .7rem;
+    color: #cbd5f5;
+  }
+
+  .dash-evidence-empty,
+  .dash-evidence-more,
+  .dash-evidence-loading,
+  .dash-evidence-error {
+    text-align: center;
+    background: rgba(15, 23, 42, 0.35);
+    color: #cbd5f5;
+  }
+
+  @media (max-width:640px) {
+    .dash-modal-panel {
+      width: calc(100% - .75rem);
+      padding: .8rem .85rem .9rem;
+    }
+  }
+
+  @media (min-width:900px) {
+    .dash-modal-body {
+      flex-direction: row;
+      gap: 1rem;
+    }
+
+    .dash-modal-section {
+      height: 100%;
+    }
+
+    .dash-sites-list {
+      max-height: none;
+    }
+
+    .dash-evidence-list {
+      max-height: none;
+    }
+  }
+
+  body.light .dash-modal-overlay {
+    background: rgba(148, 163, 184, 0.55);
+  }
+
+  body.light .dash-modal-panel {
+    background: linear-gradient(150deg, rgba(255, 255, 255, 0.97), rgba(236, 244, 255, 0.95));
+    color: #0f172a;
+    box-shadow: 0 25px 55px rgba(15, 23, 42, 0.2), inset 0 0 0 1px rgba(148, 163, 184, 0.25);
+  }
+
+  body.light .dash-modal-label {
+    color: #475569;
+  }
+
+  body.light .dash-modal-header h2 {
+    color: #0f172a;
+  }
+
+  body.light .dash-modal-close {
+    background: rgba(236, 241, 247, 0.9);
+    color: #0f172a;
+  }
+
+  body.light .dash-modal-section {
+    background: rgba(241, 245, 249, 0.92);
+    box-shadow: inset 0 0 0 1px rgba(203, 213, 225, 0.55);
+  }
+
+  body.light .dash-section-head p {
+    color: #475569;
+  }
+
+  body.light .dash-evidence-source {
+    color: #475569;
+  }
+
+  body.light .dash-evidence-source.is-error {
+    color: #b91c1c;
+  }
+
+  body.light .dash-sites-list li {
+    background: rgba(191, 219, 254, 0.65);
+    box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.3);
+  }
+
+  body.light .dash-sites-item.is-active {
+    background: rgba(125, 211, 252, 0.9);
+    box-shadow: inset 0 0 0 1px rgba(14, 165, 233, 0.5), 0 0 0 1px rgba(14, 165, 233, 0.25);
+  }
+
+  body.light .dash-sites-filter {
+    background: rgba(241, 245, 249, 0.95);
+    color: #0f172a;
+    border-color: rgba(148, 163, 184, 0.6);
+  }
+
+  body.light .dash-sites-meta {
+    color: #475569;
+  }
+
+  body.light .dash-site-evidence-btn {
+    background: rgba(14, 165, 233, 0.22);
+    color: #0369a1;
+  }
+
+  body.light .dash-site-evidence-btn:hover,
+  body.light .dash-site-evidence-btn:focus {
+    background: rgba(14, 165, 233, 0.35);
+    color: #0c4a6e;
+  }
+
+  body.light .dash-evidence-highlight {
+    outline-color: rgba(14, 165, 233, 0.6);
+  }
+
+  body.light .dash-site-link {
+    color: #1e3a8a;
+  }
+
+  body.light .dash-evidence-list li {
+    background: rgba(191, 219, 254, 0.65);
+    box-shadow: inset 0 0 0 1px rgba(14, 165, 233, 0.3);
+  }
+
+  body.light .dash-evidence-snippet,
+  body.light .dash-evidence-attr {
+    background: rgba(226, 232, 240, 0.92);
+    color: #0f172a;
+  }
+
+  body.light .dash-evidence-attr span {
+    color: #475569;
+  }
+
+  body.light .dash-evidence-link {
+    color: #0369a1;
+  }
+
+  body.light .dash-sites-empty,
+  body.light .dash-evidence-empty,
+  body.light .dash-sites-more,
+  body.light .dash-evidence-more,
+  body.light .dash-sites-loading,
+  body.light .dash-sites-error,
+  body.light .dash-evidence-loading,
+  body.light .dash-evidence-error {
+    background: rgba(236, 244, 255, 0.92);
+    color: #475569;
+  }
+
+  .tech-card .tech-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: rgba(16, 185, 129, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .63rem;
+    font-weight: 600;
+    color: #047857;
+  }
+
+  .tech-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .35rem;
+  }
+
+  .tech-meta-sep {
+    font-size: .7rem;
+    color: #64748b;
+  }
+
+  .scan-btn-content {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .4rem;
+  }
+
+  .scan-btn-spinner {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.25);
+    border-top-color: rgba(96, 165, 250, 0.9);
+    animation: spin 0.75s linear infinite;
+  }
+
+  /* In-button progress styles */
+  .btn-progress-shell {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .45rem;
+    padding: .1rem .4rem;
+    min-width: 96px;
+  }
+
+  .btn-inner-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #22d3ee, #60a5fa 52%, #a855f7);
+    opacity: .45;
+    transition: width .25s ease-out;
+  }
+
+  .btn-progress-text {
+    font-size: .65rem;
+    letter-spacing: .4px;
+  }
+
+  .btn-progress-eta {
+    font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', monospace;
+    font-size: .58rem;
+    opacity: .85;
+  }
+
+  /* Tech Card Responsive Styling */
+  .tech-card {
+    display: inline-flex !important;
+    flex-direction: column;
+    gap: .3rem;
+    padding: .55rem .75rem !important;
+    min-width: unset !important;
+    max-width: none !important;
+    width: max-content !important;
+    height: fit-content !important;
+    min-height: 0 !important;
+    max-height: fit-content !important;
+    flex: 0 0 auto !important;
+    flex-grow: 0 !important;
+    flex-shrink: 0 !important;
+    align-self: flex-start !important;
+    border-radius: .75rem;
+    box-sizing: border-box;
+  }
+
+  .tech-card-header {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    flex-wrap: nowrap;
+  }
+
+  .tech-card h5 {
+    margin: 0;
+    font-size: .8rem;
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.25;
+  }
+
+  .tech-meta {
+    margin-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  .cat-header+.cat-items,
+  .cat-box .tech-grid,
+  .category-group .tech-grid,
+  [class*="cat"]>[class*="tech"],
+  #category-groups>div>div:last-child {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: .5rem !important;
+    align-items: flex-start !important;
+    align-content: flex-start !important;
+  }
 </style>
 {% endblock %}

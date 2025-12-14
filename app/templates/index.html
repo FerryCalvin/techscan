@@ -287,9 +287,9 @@
     const REMOTE_ICON_MAP = {
       'wordpress':'wordpress',
       'react':'react',
-      'laravel':'laravel',
       'vue.js':'vue', 'vue':'vue',
       'angular':'angular',
+      'laravel':'laravel',
       'tailwind css':'tailwindcss', 'tailwind':'tailwindcss',
       'php':'php',
       'mysql':'mysql',
@@ -297,11 +297,26 @@
       'nginx':'nginx',
       'apache':'apache',
       'cloudflare':'cloudflare',
+      'django':'django',
+      'flask':'flask',
+      'fastapi':'fastapi',
+      'symfony':'symfony',
+      'spring':'springboot', 'spring boot':'springboot',
+      'magento':'magento',
+      'shopify':'shopify',
+      'prestashop':'prestashop',
       'express':'express',
       'drupal':'drupal',
       'joomla':'joomla',
       'woocommerce':'woocommerce',
       'jquery':'jquery',
+      'npm':'npm',
+      'pnpm':'pnpm',
+      'yarn':'yarn',
+      'vite':'vite',
+      'svelte':'svelte',
+      'astro':'astro',
+      'gatsby':'gatsby',
       'next.js':'nextjs','nextjs':'nextjs',
       'nuxt.js':'nuxtjs','nuxtjs':'nuxtjs'
     };
@@ -329,6 +344,12 @@
     }
 
     let failedRemoteIcons = new Set(); // simple session-level only now
+    try {
+      const storedFailed = localStorage.getItem('techscan_failed_remote_icons');
+      if(storedFailed){
+        JSON.parse(storedFailed).forEach(k=> failedRemoteIcons.add(k));
+      }
+    } catch(_err) { /* ignore storage errors */ }
     function techIconHTML(name, version){
       if(!name) return null;
       const key = name.toLowerCase();

@@ -158,13 +158,88 @@ def tech_invalidate(tech_key: str):
     cache_invalidate(f'tech:{tech_key}')
     return jsonify({'ok': True})
 from flask import Blueprint, request, jsonify, current_app, Response
-import json, logging, time
+import json, logging, time, re
 from .. import db as _db
 from .. import tech_cache
+from ..evidence_utils import (
+    infer_snippet as _infer_snippet,
+    normalize_evidence_entry as _normalize_evidence_entry,
+    pattern_to_evidence as _pattern_to_evidence,
+    extras_fallback_evidence as _extras_fallback_evidence,
+    extract_header_maps,
+    collect_header_evidence,
+    dedupe_evidence_entries,
+)
 
 bp = Blueprint('tech', __name__, url_prefix='/api')
 
 LOGGER = logging.getLogger('techscan.tech')
+
+
+def _tokenise_terms(names):
+    tokens: set[str] = set()
+    for name in names:
+        if not name or not isinstance(name, str):
+            continue
+        lowered = name.lower()
+        tokens.add(lowered)
+        tokens.add(re.sub(r'[^a-z0-9]+', '', lowered))
+        tokens.add(lowered.replace(' ', ''))
+    return {t for t in tokens if t}
+
+
+def _iter_text_sources(raw_blob):
+    if not isinstance(raw_blob, dict):
+        return []
+    sources: list[tuple[str, str]] = []
+    for key in ('html', 'body', 'text', 'content'):  # primary payloads
+        val = raw_blob.get(key)
+        if isinstance(val, str) and val.strip():
+            sources.append((key, val))
+    extras = raw_blob.get('extras')
+    if isinstance(extras, dict):
+        for key in ('errors', 'warnings', 'logs', 'messages', 'details'):
+            val = extras.get(key)
+            if isinstance(val, str) and val.strip():
+                sources.append((f'extras.{key}', val))
+            elif isinstance(val, list):
+                for idx, item in enumerate(val):
+                    if isinstance(item, str) and item.strip():
+                        sources.append((f'extras.{key}[{idx}]', item))
+    responses = raw_blob.get('responses') or raw_blob.get('httpResponses')
+    if isinstance(responses, list):
+        for idx, resp in enumerate(responses):
+            if not isinstance(resp, dict):
+                continue
+            body = resp.get('body') or resp.get('text') or resp.get('content')
+            if isinstance(body, str) and body.strip():
+                sources.append((f'responses[{idx}].body', body))
+    return sources
+
+
+def _textual_evidence_from_blob(tech_name: str | None, aliases: list[str] | None, raw_blob: dict, limit: int = 4):
+    tokens = _tokenise_terms([tech_name, *(aliases or [])])
+    if not tokens:
+        return []
+    entries: list[dict] = []
+    for source, text in _iter_text_sources(raw_blob):
+        lowered = text.lower()
+        for token in tokens:
+            idx = lowered.find(token)
+            if idx == -1:
+                continue
+            start = max(0, idx - 60)
+            end = min(len(text), idx + 90)
+            snippet = text[start:end].strip().replace('\n', ' ')
+            entries.append({
+                'kind': 'text',
+                'source': source,
+                'pattern': token,
+                'match': snippet
+            })
+            if len(entries) >= limit:
+                return entries
+    return entries
 
 
 def _ts_to_iso(ts):
@@ -174,6 +249,65 @@ def _ts_to_iso(ts):
         return datetime.datetime.fromtimestamp(ts, tz=datetime.UTC).isoformat()
     except Exception:
         return None
+
+
+def _coerce_object(value):
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except Exception:
+            return {}
+    return {}
+
+
+def _coerce_list(value):
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            data = json.loads(value)
+            return data if isinstance(data, list) else []
+        except Exception:
+            return []
+    if isinstance(value, dict):
+        return [value]
+    return []
+
+
+
+_EVIDENCE_KEYS = {'url','urls','snippet','value','match','pattern','headers','matches','note','key'}
+
+
+def _entry_has_meaningful_details(entry) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    for key in _EVIDENCE_KEYS:
+        if key not in entry:
+            continue
+        val = entry.get(key)
+        if val is None:
+            continue
+        if isinstance(val, (list, dict)):
+            if val:
+                return True
+        else:
+            text = str(val)
+            if text.strip():
+                return True
+    return False
+
+
+def _filter_meaningful_evidence(entries):
+    if not entries:
+        return []
+    filtered = []
+    for entry in entries:
+        if _entry_has_meaningful_details(entry):
+            filtered.append(entry)
+    return filtered
+
 
 
 @bp.route('/tech/<tech_key>', methods=['GET'])
@@ -392,29 +526,101 @@ def domain_evidence_for_tech(domain):
     tech = request.args.get('tech')
     if not tech:
         return jsonify({'error': 'missing tech param'}), 400
-    # Use get_latest_scan_raw to extract evidence if available
     raw = _db.get_latest_scan_raw(domain)
     if not raw:
         return jsonify({'domain': domain, 'tech': tech, 'evidence': []})
-    # Attempt to filter evidence by tech key if the raw JSON contains 'raw' extras or evidence map
-    evidence = []
-    r = raw.get('raw') or {}
+    tech_entries = _coerce_list(raw.get('technologies'))
+    target = None
+    for entry in tech_entries:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get('name')
+        if name and name.lower() == tech.lower():
+            target = entry
+            break
+    if not target:
+        return jsonify({'domain': domain, 'tech': tech, 'evidence': []})
+
+    evidence_payload: list[dict] = []
+    for ev in _coerce_list(target.get('evidence')):
+        normalized = _normalize_evidence_entry(ev)
+        if normalized:
+            evidence_payload.append(normalized)
+    evidence_payload = _filter_meaningful_evidence(evidence_payload)
+
+    raw_blob = _coerce_object(raw.get('raw'))
+    hint_meta = raw_blob.get('_tiered_hint_meta') if isinstance(raw_blob, dict) else None
+    patterns_map = _coerce_object(raw_blob.get('patterns')) if raw_blob else {}
+    if patterns_map:
+        candidates = []
+        if target.get('name'):
+            candidates.append(target['name'])
+        if tech:
+            candidates.append(tech)
+        if isinstance(target.get('aliases'), list):
+            candidates.extend([alias for alias in target['aliases'] if isinstance(alias, str)])
+        seen_keys = {c.lower() for c in candidates if isinstance(c, str)}
+        if seen_keys:
+            for key, entries in patterns_map.items():
+                if key.lower() not in seen_keys:
+                    continue
+                for item in _coerce_list(entries):
+                    normalized = _pattern_to_evidence(item if isinstance(item, dict) else {})
+                    if not normalized:
+                        continue
+                    normalized = _normalize_evidence_entry(normalized)
+                    if normalized:
+                        evidence_payload.append(normalized)
+                # avoid scanning other keys once matched
+                break
+    evidence_payload = _filter_meaningful_evidence(evidence_payload)
+
+    if raw_blob:
+        header_maps = extract_header_maps(raw_blob)
+        if header_maps:
+            aliases = target.get('aliases') if isinstance(target.get('aliases'), list) else []
+            header_entries = collect_header_evidence(target.get('name') or tech, header_maps, aliases)
+            for entry in header_entries:
+                normalized = _normalize_evidence_entry(entry)
+                if normalized:
+                    evidence_payload.append(normalized)
+    evidence_payload = _filter_meaningful_evidence(evidence_payload)
+
+    if raw_blob and not evidence_payload:
+        extras = raw_blob.get('extras') if isinstance(raw_blob, dict) else {}
+        fallback = _extras_fallback_evidence(tech, extras)
+        for entry in fallback:
+            normalized = _normalize_evidence_entry(entry)
+            if normalized:
+                evidence_payload.append(normalized)
+        evidence_payload = _filter_meaningful_evidence(evidence_payload)
+
+    if raw_blob and not evidence_payload:
+        alias_values = target.get('aliases') if isinstance(target.get('aliases'), list) else []
+        text_matches = _textual_evidence_from_blob(target.get('name') or tech, alias_values, raw_blob)
+        for entry in text_matches:
+            normalized = _normalize_evidence_entry(entry)
+            if normalized:
+                evidence_payload.append(normalized)
+        evidence_payload = _filter_meaningful_evidence(evidence_payload)
+
+    evidence_payload = dedupe_evidence_entries(evidence_payload)
+
+    finished_at = raw.get('finished_at')
     try:
-        # heuristics: scripts, meta, globals in raw extras
-        if isinstance(r, dict):
-            extras = r.get('extras') or {}
-            scripts = extras.get('scripts') or []
-            for s in scripts:
-                if tech.lower() in (s or '').lower():
-                    evidence.append({'type': 'script', 'value': s, 'location': 'scripts'})
-            metas = extras.get('meta') or {}
-            for k, v in metas.items():
-                if tech.lower() in (str(k)+str(v)).lower():
-                    evidence.append({'type': 'meta', 'value': f'{k}:{v}', 'location': 'meta'})
-            globals_map = extras.get('globals') or {}
-            for gk, gv in globals_map.items():
-                if tech.lower() in gk.lower() or tech.lower() in str(gv).lower():
-                    evidence.append({'type': 'global', 'value': f'{gk}={gv}', 'location': 'globals'})
+        finished_at = float(finished_at) if finished_at is not None else None
     except Exception:
-        pass
-    return jsonify({'domain': domain, 'tech': tech, 'evidence': evidence})
+        finished_at = None
+
+    response = {
+        'domain': domain,
+        'tech': target.get('name') or tech,
+        'evidence': evidence_payload,
+        'version': target.get('version'),
+        'confidence': target.get('confidence')
+    }
+    if finished_at is not None:
+        response['finished_at'] = finished_at
+    if hint_meta:
+        response['hint_meta'] = hint_meta
+    return jsonify(response)

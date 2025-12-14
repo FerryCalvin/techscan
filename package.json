@@ -4,6 +4,7 @@
   "description": "Tech stack scanning UI (icons via CDN)",
   "license": "MIT",
   "dependencies": {
+    "chart.js": "^4.4.4",
     "tech-stack-icons": "^3.3.2"
   }
 }

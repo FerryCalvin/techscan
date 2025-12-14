@@ -1,0 +1,370 @@
+openapi: 3.1.0
+info:
+  title: TechScan API
+  version: "1.0.0"
+  description: |
+    REST endpoints for TechScan. Some aggregates fall back to in-memory mirrors when DB is disabled.
+servers:
+  - url: http://localhost:5000
+    description: Local development
+paths:
+  /:
+    get:
+      summary: Dashboard redirect
+      responses:
+        "200": { description: Dashboard page }
+  /dashboard:
+    get:
+      summary: Dashboard page
+      responses:
+        "200": { description: Dashboard HTML }
+  /websites:
+    get:
+      summary: Websites page
+      responses:
+        "200": { description: Websites HTML }
+  /technology:
+    get:
+      summary: Tech search page
+      responses:
+        "200": { description: Tech search HTML }
+  /history:
+    get:
+      summary: History page
+      responses:
+        "200": { description: History HTML }
+  /stats:
+    get:
+      summary: Stats page
+      responses:
+        "200": { description: Stats HTML }
+  /_routes:
+    get:
+      summary: List registered routes (diagnostic)
+      responses:
+        "200":
+          description: Route list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  count: { type: integer }
+                  routes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        rule: { type: string }
+                        endpoint: { type: string }
+                        methods:
+                          type: array
+                          items: { type: string }
+  /_debug/report:
+    post:
+      summary: Submit UI debug payload
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200": { description: Acknowledged }
+  /api/stats:
+    get:
+      summary: Aggregated stats
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scans_total: { type: integer, nullable: true }
+                  last_scan:
+                    type: object
+                    nullable: true
+                    properties:
+                      finished_at: { type: number }
+                  avg_duration_ms: { type: number, nullable: true }
+                  avg_version_audit_ms: { type: number, nullable: true }
+                  avg_duration_ms_24h: { type: number, nullable: true }
+                  avg_evidence_ms_24h: { type: number, nullable: true }
+                  unique_domains: { type: integer, nullable: true }
+                  top_technologies:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        tech: { type: string }
+                        categories: { type: string, nullable: true }
+                        count: { type: integer }
+                  top_categories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        category: { type: string }
+                        count: { type: integer }
+  /api/performance_timeseries:
+    get:
+      summary: Performance timeseries (last 24h)
+      responses:
+        "200":
+          description: Timeseries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamps: { type: array, items: { type: string } }
+                  scans: { type: array, items: { type: integer } }
+                  avg_conf: { type: array, items: { type: number } }
+                  success: { type: integer }
+                  timeout: { type: integer }
+                  error: { type: integer }
+  /api/domains:
+    get:
+      summary: Domain metadata list
+      responses:
+        "200":
+          description: Domain list grouped
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups: { type: object }
+  /api/domain/{domain}/detail:
+    get:
+      summary: Latest and previous scan details for a domain
+      parameters:
+        - in: path
+          name: domain
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Domain detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domain: { type: string }
+                  latest: { type: object }
+                  previous: { type: object, nullable: true }
+                  diff:
+                    type: object
+                    properties:
+                      added: { type: array, items: { type: object } }
+                      removed: { type: array, items: { type: object } }
+                      changed: { type: array, items: { type: object } }
+                  technologies:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        version: { type: string, nullable: true }
+                        categories: { type: array, items: { type: string } }
+                        confidence: { type: number, nullable: true }
+  /api/domain/{domain}/history:
+    get:
+      summary: Scan history for a domain
+      parameters:
+        - in: path
+          name: domain
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: History page data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domain: { type: string }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                  total: { type: integer }
+                  scans: { type: array, items: { type: object } }
+  /api/top_technologies:
+    get:
+      summary: Top technologies (last 30 days)
+      responses:
+        "200":
+          description: Top tech list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name: { type: string }
+                    categories: { type: string }
+                    count: { type: integer }
+                    avg_conf: { type: number, nullable: true }
+  /api/tech/{tech_name}/domains:
+    get:
+      summary: Domains using a technology
+      parameters:
+        - in: path
+          name: tech_name
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Tech domains
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tech: { type: string }
+                  count: { type: integer, nullable: true }
+                  domains: { type: array, items: { type: string } }
+  /api/category/{category_name}/technologies:
+    get:
+      summary: Technologies in a category
+      parameters:
+        - in: path
+          name: category_name
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Category technologies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  category: { type: string }
+                  technologies:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        tech: { type: string }
+                        count: { type: integer }
+                        category: { type: string }
+  /admin/domain_groups/reload:
+    post:
+      summary: Reload domain groups file
+      responses:
+        "200": { description: Reloaded }
+  /api/domain_groups:
+    get:
+      summary: Get domain groups
+      responses:
+        "200": { description: Groups JSON }
+    post:
+      summary: Add domain group
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                group: { type: string }
+      responses:
+        "200": { description: Added group }
+  /api/domain_groups/{group}:
+    delete:
+      summary: Delete domain group
+      parameters:
+        - in: path
+          name: group
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Deleted }
+  /api/domain_groups/{group}/assign:
+    post:
+      summary: Assign domain to group
+      parameters:
+        - in: path
+          name: group
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                domain: { type: string }
+      responses:
+        "200": { description: Assigned }
+  /api/domain_groups/{group}/rename:
+    post:
+      summary: Rename a group
+      parameters:
+        - in: path
+          name: group
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                new: { type: string }
+      responses:
+        "200": { description: Renamed }
+  /api/domain_groups/{group}/remove:
+    post:
+      summary: Remove domain from group
+      parameters:
+        - in: path
+          name: group
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                domain: { type: string }
+      responses:
+        "200": { description: Removed }
+  /api/domain_groups/_diag:
+    get:
+      summary: Domain group diagnostics
+      responses:
+        "200": { description: Diagnostics JSON }
+  /api/domain_groups/_raw:
+    get:
+      summary: Raw domain groups file content
+      responses:
+        "200": { description: Raw content JSON }
+  /assets/tech-icons/{filename}:
+    get:
+      summary: Serve tech icon (SVG)
+      parameters:
+        - in: path
+          name: filename
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: SVG icon }
+        "404": { description: Not found }
+components: {}

@@ -1,0 +1,10 @@
+[tool.ruff]
+line-length = 120
+select = ["E", "F"]
+exclude = [
+  ".git",
+  ".venv",
+  "venv",
+  "node_scanner",
+  "__pycache__",
+]

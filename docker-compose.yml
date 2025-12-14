@@ -1,0 +1,59 @@
+version: "3.9"
+
+services:
+  web:
+    build: .
+    image: techscan-web:latest
+    ports:
+      - "8000:8000"
+    environment:
+      # App behavior
+      TECHSCAN_LOG_LEVEL: INFO
+      TECHSCAN_PERSIST_BROWSER: "1"
+      TECHSCAN_DISABLE_PERSIST_AUTOSTART: "0"
+      TECHSCAN_UNIFIED: "1"
+      TECHSCAN_FORCE_FULL: "1"
+      # Database & Redis
+      TECHSCAN_DB_URL: postgres://techscan:techscan@db:5432/techscan
+      TECHSCAN_REDIS_URL: redis://redis:6379/0
+      # Optional: start DB pool monitor
+      TECHSCAN_DB_POOL_MONITOR: "1"
+      # Admin token (set a strong value in real deployments)
+      # TECHSCAN_ADMIN_TOKEN: "changeme-strong-token"
+    depends_on:
+      - db
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/identify"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: techscan
+      POSTGRES_PASSWORD: techscan
+      POSTGRES_DB: techscan
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  redisdata:

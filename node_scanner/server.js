@@ -26,6 +26,7 @@ async function init() {
     maxUrls: 1,
     maxWait: 10000,
     probe: true,
+    extended: true,
     userAgent: 'Mozilla/5.0 (TechScan-Persist)'
   }
   wappalyzerInstance = new Wappalyzer(options)
@@ -100,6 +101,7 @@ async function performScan(targetUrl, full) {
     }
   } catch {}
   const results = await site.analyze()
+  const patterns = results.patterns || {}
   // Attempt to collect lightweight extras (meta/scripts/links) and runtime globals for version evidence
   let extras = null
   try {
@@ -141,23 +143,65 @@ async function performScan(targetUrl, full) {
               if (vers.length) globals['react'] = vers.sort().pop()
             }
           } catch {}
-          return { metas, scripts, links, globals, url: location.href }
+          let bodyClasses = []
+          try {
+            if (document.body && document.body.className) {
+              bodyClasses = document.body.className.split(/\s+/).filter(Boolean)
+            }
+          } catch {}
+          return { metas, scripts, links, globals, url: location.href, bodyClasses }
         } catch (e) {
           return null
         }
       })
       if (domInfo) {
-        extras = { meta: domInfo.metas || {}, scripts: domInfo.scripts || [], links: domInfo.links || [], url: domInfo.url || targetUrl, globals: domInfo.globals || {} }
+        extras = {
+          meta: domInfo.metas || {},
+          scripts: domInfo.scripts || [],
+          links: domInfo.links || [],
+          url: domInfo.url || targetUrl,
+          globals: domInfo.globals || {},
+          body_classes: domInfo.bodyClasses || []
+        }
       }
     }
   } catch (e) {
     if (DEBUG) process.stderr.write('[daemon] extras collection failed: ' + (e && e.message ? e.message : String(e)) + '\n')
   }
+  const evidenceFromPatterns = {}
+  try {
+    Object.entries(patterns).forEach(([techName, arr]) => {
+      if (!Array.isArray(arr)) return
+      evidenceFromPatterns[techName] = arr.map(item => {
+        const value = typeof item.value === 'string' ? item.value : null
+        const ev = {
+          kind: 'pattern',
+          source: item.type || null,
+          pattern: item.regex || null,
+          match: item.match || null,
+          value,
+          confidence: Number.isFinite(item.confidence) ? item.confidence : null,
+          version: item.version || null,
+          implies: Array.isArray(item.implies) && item.implies.length ? item.implies : undefined,
+          excludes: Array.isArray(item.excludes) && item.excludes.length ? item.excludes : undefined
+        }
+        if (value && /^https?:\/\//i.test(value)) {
+          ev.url = value
+          ev.snippet = inferSnippetFromUrl(value)
+        }
+        return ev
+      })
+    })
+  } catch (err) {
+    if (DEBUG) process.stderr.write('[daemon] evidence mapping failed: ' + (err && err.message ? err.message : String(err)) + '\n')
+  }
+
   const techs = (results.technologies || []).map(t => ({
     name: t.name,
     version: t.version || null,
     categories: (t.categories || []).map(c => c.name || c),
-    confidence: t.confidence || null
+    confidence: t.confidence || null,
+    evidence: evidenceFromPatterns[t.name] || []
   }))
   const categories = {}
   for (const t of techs) {
@@ -170,7 +214,32 @@ async function performScan(targetUrl, full) {
   await recycleIfNeeded()
   const out = { url: results.url || targetUrl, technologies: techs, categories, scan_mode: full ? 'full' : 'fast', engine: 'wappalyzer-persist' }
   if (extras) out.extras = extras
+  if (patterns && Object.keys(patterns).length) out.patterns = patterns
   return out
+}
+
+function inferSnippetFromUrl(url) {
+  if (!url) return null
+  const clean = url.split('#')[0]
+  if (/\.css(\?|$)/i.test(clean)) {
+    return `<link rel="stylesheet" href="${clean}">`
+  }
+  if (/\.js(\?|$)/i.test(clean)) {
+    return `<script src="${clean}" defer></script>`
+  }
+  if (/\.(woff2?|woff|ttf|otf|eot)(\?|$)/i.test(clean)) {
+    const ext = (clean.split('.').pop() || '').toLowerCase()
+    const fontMimeMap = {
+      woff2: 'font/woff2',
+      woff: 'font/woff',
+      ttf: 'font/ttf',
+      otf: 'font/otf',
+      eot: 'application/vnd.ms-fontobject'
+    }
+    const mime = fontMimeMap[ext] || 'font/woff2'
+    return `<link rel="preload" href="${clean}" as="font" type="${mime}" crossorigin>`
+  }
+  return `<link rel="preload" href="${clean}" as="fetch">`
 }
 
 function normalizeUrl(input) {

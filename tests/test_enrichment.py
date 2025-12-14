@@ -13,12 +13,35 @@ def test_infer_tech_from_urls_detects_basic_libs():
         'https://cdn.example.com/tailwind.min.css',
         'https://assets.example.com/fontawesome/6.0.0/css/all.min.css',
         'https://cdn.example.com/vue.runtime.min.js',
+        'https://www.googletagmanager.com/gtag/js?id=G-ABCD1234',
+        'https://fonts.googleapis.com/css2?family=Inter',
     ]
     hints = scan_utils.infer_tech_from_urls(urls)
     names = {h['name'] for h in hints}
     # Expect at least a few core libraries recognized
     assert 'jQuery' in names
     assert 'Bootstrap' in names or 'Tailwind CSS' in names
+    assert 'Google Analytics' in names
+    assert 'Google Font API' in names
+
+
+def test_infer_tech_from_urls_detects_extended_libs():
+    urls = [
+        'https://cdn.jsdelivr.net/npm/requirejs@2.3.6/dist/require.js',
+        'https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js',
+        'https://cdn.jsdelivr.net/npm/core-js@3.37.1/minified.js',
+        'https://yui.yahooapis.com/3.18.1/build/yui/yui-min.js',
+        'https://yui.yahooapis.com/3.18.1/build/yuidoc/yuidoc-parser-min.js',
+        'https://vjs.zencdn.net/8.5.2/video.min.js',
+        'https://www.googletagmanager.com/gtm.js?id=GTM-ABCDE',
+        'https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/tailwind.min.css',
+        'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css?ver=5.3.2',
+        'https://cdn.example.edu/assets/index.php?ver=1.0',
+    ]
+    hints = scan_utils.infer_tech_from_urls(urls)
+    names = {h['name'] for h in hints}
+    assert {'RequireJS','MathJax','core-js','YUI','YUI Doc','Video.js','Google Tag Manager','Tailwind CSS','Bootstrap','PHP'} <= names
+    assert 'jsDelivr' in names  # because multiple cdn.jsdelivr.net URLs appear
 
 
 def test_enrichment_merges_into_unified(monkeypatch):

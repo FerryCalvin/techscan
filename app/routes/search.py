@@ -26,32 +26,44 @@ def search_tech():
 
 @search_bp.route('/tech_suggest', methods=['GET'])
 def tech_suggest():
-    """Return distinct technology names starting with a given prefix.
-    Params: prefix (required, min length 1), limit (default 10, max 50)
+    """Return distinct technology names containing the given fragment.
+    Params: prefix (required, min length 2), limit (default 10, max 50)
     Response: {suggestions: ["WordPress", "WooCommerce", ...]}
     """
     prefix = (request.args.get('prefix') or '').strip()
     if not prefix:
         return jsonify({'suggestions': []})
-    # simple safeguard: avoid wildcard abuse
     if len(prefix) > 64:
         prefix = prefix[:64]
+    prefix = prefix.replace('%', '').replace('_', '')
+    min_length = 2
+    if len(prefix) < min_length:
+        return jsonify({'suggestions': []})
     try:
         limit = int(request.args.get('limit', 10))
     except ValueError:
         limit = 10
     limit = max(1, min(limit, 50))
-    # If DB disabled, return empty quickly
     if getattr(_db, '_DB_DISABLED', False):
         return jsonify({'suggestions': []})
+    like_any = f'%{prefix}%'
+    like_prefix = f'{prefix}%'
     try:
         with _db.get_conn() as conn:  # type: ignore[attr-defined]
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT DISTINCT tech_name FROM domain_techs
-                           WHERE LOWER(tech_name) LIKE LOWER(%s)
-                           ORDER BY tech_name ASC LIMIT %s""",
-                    (prefix + '%', limit)
+                    """
+                    SELECT tech_name FROM (
+                        SELECT DISTINCT tech_name
+                        FROM domain_techs
+                        WHERE tech_name ILIKE %s
+                    ) AS uniq
+                    ORDER BY
+                        CASE WHEN tech_name ILIKE %s THEN 0 ELSE 1 END,
+                        tech_name ASC
+                    LIMIT %s
+                    """,
+                    (like_any, like_prefix, limit)
                 )
                 rows = cur.fetchall()
         suggestions = [r[0] for r in rows if r and r[0]]
@@ -264,7 +276,7 @@ def scan_history():
       domain (optional) - if provided, filter to that domain; else global recent scans
       limit (default 20, max 200)
       offset (default 0)
-      sort (finished_at|started_at|duration_ms|domain) default finished_at
+    sort (finished_at|started_at|duration_ms|domain|payload_bytes) default finished_at
       dir (asc|desc) default desc
     Response: {count, results:[{domain,mode,started_at,finished_at,duration_ms,from_cache,adaptive_timeout,retries,timeout_used}], offset, limit, total}
     """
@@ -285,7 +297,8 @@ def scan_history():
         'finished_at': 'finished_at',
         'started_at': 'started_at',
         'duration_ms': 'duration_ms',
-        'domain': 'domain'
+        'domain': 'domain',
+        'payload_bytes': 'payload_bytes'
     }
     col = valid_cols.get(sort_key, 'finished_at')
     dir_sql = 'ASC' if sort_dir == 'asc' else 'DESC'
@@ -296,7 +309,7 @@ def scan_history():
         where = ' WHERE domain=%s'
         params.append(domain)
     count_sql = 'SELECT COUNT(*) ' + base + where
-    sql = f'''SELECT domain, mode, started_at, finished_at, duration_ms, from_cache, adaptive_timeout, retries, timeout_used
+    sql = f'''SELECT domain, mode, started_at, finished_at, duration_ms, from_cache, adaptive_timeout, retries, timeout_used, payload_bytes
               {base}{where} ORDER BY {col} {dir_sql} LIMIT %s OFFSET %s'''
     params.extend([limit, offset])
     try:
@@ -308,16 +321,31 @@ def scan_history():
                 rows = cur.fetchall()
         out = []
         for r in rows:
+            started_dt = r[2]
+            finished_dt = r[3]
+            duration_ms = r[4]
+            needs_recalc = duration_ms is None
+            if not needs_recalc:
+                try:
+                    needs_recalc = float(duration_ms) <= 0
+                except Exception:
+                    needs_recalc = True
+            if needs_recalc and started_dt and finished_dt:
+                try:
+                    duration_ms = max(0, int((finished_dt - started_dt).total_seconds() * 1000))
+                except Exception:
+                    duration_ms = None
             out.append({
                 'domain': r[0],
                 'mode': r[1],
-                'started_at': r[2].timestamp(),
-                'finished_at': r[3].timestamp(),
-                'duration_ms': r[4],
+                'started_at': started_dt.timestamp() if started_dt else None,
+                'finished_at': finished_dt.timestamp() if finished_dt else None,
+                'duration_ms': duration_ms,
                 'from_cache': r[5],
                 'adaptive_timeout': r[6],
                 'retries': r[7],
-                'timeout_used': r[8]
+                'timeout_used': r[8],
+                'payload_bytes': r[9]
             })
         return jsonify({'count': len(out), 'results': out, 'offset': offset, 'limit': limit, 'total': total, 'sort': col, 'dir': dir_sql.lower(), 'domain': domain or None})
     except Exception as e:

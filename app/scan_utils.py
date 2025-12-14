@@ -5,6 +5,15 @@ from collections import deque
 from typing import Dict, Any, List
 from . import version_audit
 from . import safe_subprocess as sproc
+from .evidence_utils import (
+    normalize_evidence_entry,
+    pattern_to_evidence,
+    extras_fallback_evidence,
+    extract_header_maps,
+    collect_header_evidence,
+    dedupe_evidence_entries,
+    infer_snippet,
+)
 
 DOMAIN_RE = re.compile(r'^(?!-)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$')
 CACHE_TTL = 300  # default seconds
@@ -58,6 +67,28 @@ STATS: Dict[str, Any] = {
         'inflight': 0       # current number of active leader scans
     }
 }
+
+TECH_NAME_REWRITES = {
+    'WPML': 'WordPress Multilingual Plugin (WPML)',
+    'Hello Elementor': 'Hello Elementor Theme'
+}
+
+_ASSET_VERSION_QUERY_RE = re.compile(r'[?&](?:ver|v|version)=([0-9]+(?:\.[0-9]+){0,3})', re.I)
+_JQUERY_FILENAME_RE = re.compile(r'jquery(?:\.min)?[-_.]?([0-9]+(?:\.[0-9]+){0,3})', re.I)
+_JQUERY_MIGRATE_FILENAME_RE = re.compile(r'jquery-migrate(?:\.min)?-([0-9]+(?:\.[0-9]+){0,3})', re.I)
+_BOOTSTRAP_FILENAME_RE = re.compile(r'bootstrap(?:\.bundle)?(?:\.min)?[-_.]?([0-9]+(?:\.[0-9]+){0,3})', re.I)
+_CORE_JS_FILENAME_RE = re.compile(r'core-js(?:\.legacy)?(?:\.min)?[-_.]?([0-9]+(?:\.[0-9]+){0,3})', re.I)
+_REQUIREJS_FILENAME_RE = re.compile(r'require(?:\.min)?(?:\.js)?[-_.]?([0-9]+(?:\.[0-9]+){0,3})', re.I)
+_VIDEOJS_FILENAME_RE = re.compile(r'video(?:\.min)?(?:\.js)?[-_.]?([0-9]+(?:\.[0-9]+){0,3})', re.I)
+_MATHJAX_FILENAME_RE = re.compile(r'mathjax(?:\.min)?[-_.]?([0-9]+(?:\.[0-9]+){0,3})', re.I)
+_YUI_FILENAME_RE = re.compile(r'yui(?:doc)?(?:\.min)?[-_.]?([0-9]+(?:\.[0-9]+){0,3})', re.I)
+_TAILWIND_FILENAME_RE = re.compile(r'tailwind(?:\.min)?[-_.]?([0-9]+(?:\.[0-9]+){0,3})', re.I)
+
+
+def canonicalize_tech_name(name: str | None) -> str | None:
+    if not name:
+        return name
+    return TECH_NAME_REWRITES.get(name, name)
 
 # Failure tracking & quarantine (domain-level)
 _fail_lock = threading.Lock()
@@ -246,6 +277,55 @@ def _classify_error(err: Exception) -> str:
         return 'conn'
     return 'other'
 
+
+def _persist_failure_scan(
+    domain: str,
+    *,
+    mode: str,
+    timeout_used: int,
+    retries: int,
+    error: Exception | str,
+    started_at: float | None = None,
+    finished_at: float | None = None,
+    engine: str = 'scan-error',
+    raw: dict | None = None
+) -> bool:
+    """Record failed scan attempts so UI can display them like successes."""
+    if not domain:
+        return False
+    msg = str(error)
+    err_class = _classify_error(error) if isinstance(error, Exception) else 'other'
+    stop_ts = finished_at or time.time()
+    start_ts = started_at or stop_ts
+    if stop_ts < start_ts:
+        stop_ts = start_ts
+    payload = {
+        'domain': domain,
+        'scan_mode': mode,
+        'engine': engine,
+        'status': 'error',
+        'started_at': start_ts,
+        'finished_at': stop_ts,
+        'timestamp': stop_ts,
+        'duration': round(max(0.0, stop_ts - start_ts), 3),
+        'technologies': [],
+        'categories': {},
+        'retries': retries,
+        'error': msg,
+        'raw': {
+            'error': msg,
+            'error_class': err_class,
+            **(raw or {})
+        }
+    }
+    try:
+        from . import db as _db  # local import to avoid circulars
+        _db.save_scan(payload, from_cache=False, timeout_used=timeout_used)
+        return True
+    except Exception as db_ex:
+        logging.getLogger('techscan.db').debug('save_scan failure stub failed domain=%s err=%s', domain, db_ex)
+        return False
+
 def extract_host(value: str) -> str:
     """Normalize input that may be a full URL (with scheme/path) into just the hostname.
     - Strips protocol (http/https)
@@ -323,9 +403,13 @@ def load_categories(wappalyzer_path: str) -> Dict[int, str]:
     return out
 
 def normalize_result(domain: str, raw: Dict[str, Any], categories_map: Dict[int,str]) -> Dict[str, Any]:
-    techs = raw.get('technologies') or raw.get('applications') or []
+    raw_dict = raw if isinstance(raw, dict) else {}
+    techs = raw_dict.get('technologies') or raw_dict.get('applications') or []
     norm_techs = []
     category_bucket: Dict[str, List[Dict[str, Any]]] = {}
+    patterns_map = raw_dict.get('patterns') if isinstance(raw_dict.get('patterns'), dict) else {}
+    header_maps = extract_header_maps(raw_dict)
+    extras_map = raw_dict.get('extras') if isinstance(raw_dict.get('extras'), dict) else {}
     for t in techs:
         # categories might be list of objects, ids, or already names (strings)
         cats = t.get('categories') or []
@@ -337,13 +421,106 @@ def normalize_result(domain: str, raw: Dict[str, Any], categories_map: Dict[int,
                 names.append(categories_map.get(c) or str(c))
             elif isinstance(c, str):
                 names.append(c)
-        names = list(dict.fromkeys(names))  # dedupe preserving order
+        cleaned_names: List[str] = []
+        for n in names:
+            text = str(n).strip()
+            if text:
+                cleaned_names.append(text)
+        names = list(dict.fromkeys(cleaned_names))  # dedupe preserving order
+        raw_evidence = t.get('evidence')
+        if isinstance(raw_evidence, dict):
+            raw_evidence = [raw_evidence]
+        elif not isinstance(raw_evidence, list):
+            raw_evidence = []
+        normalized_evidence: List[dict] = []
+        for ev in raw_evidence:
+            normalized = normalize_evidence_entry(ev)
+            if normalized:
+                normalized_evidence.append(normalized)
+
+        tech_patterns = t.get('patterns')
+        if isinstance(tech_patterns, dict):
+            tech_patterns = [tech_patterns]
+        if isinstance(tech_patterns, list):
+            for pattern_entry in tech_patterns:
+                normalized = pattern_to_evidence(pattern_entry if isinstance(pattern_entry, dict) else {})
+                if not normalized:
+                    continue
+                normalized = normalize_evidence_entry(normalized)
+                if normalized:
+                    normalized_evidence.append(normalized)
+
+        raw_name = t.get('name')
+        tech_name = canonicalize_tech_name(raw_name)
+        tech_slug = t.get('slug')
+        alias_values = []
+        if isinstance(t.get('aliases'), list):
+            alias_values = [alias for alias in t['aliases'] if isinstance(alias, str)]
+
+        if patterns_map:
+            candidate_keys = {k.lower() for k in [raw_name, tech_slug] if isinstance(k, str)}
+            candidate_keys.update(alias.lower() for alias in alias_values)
+            if candidate_keys:
+                for key, entries in patterns_map.items():
+                    if key.lower() not in candidate_keys:
+                        continue
+                    sequence = entries if isinstance(entries, list) else [entries]
+                    for item in sequence:
+                        normalized = pattern_to_evidence(item if isinstance(item, dict) else {})
+                        if not normalized:
+                            continue
+                        normalized = normalize_evidence_entry(normalized)
+                        if normalized:
+                            normalized_evidence.append(normalized)
+                    break
+
+        if header_maps:
+            header_entries = collect_header_evidence(tech_name or tech_slug or '', header_maps, alias_values)
+            for entry in header_entries:
+                normalized = normalize_evidence_entry(entry)
+                if normalized:
+                    normalized_evidence.append(normalized)
+
+        if not normalized_evidence and extras_map:
+            fallback_entries = extras_fallback_evidence(tech_name or tech_slug or '', extras_map)
+            for entry in fallback_entries:
+                normalized = normalize_evidence_entry(entry)
+                if normalized:
+                    normalized_evidence.append(normalized)
+
+        script_sources: List[str] = []
+        script_field = t.get('scriptSrc') or t.get('scripts')
+        if isinstance(script_field, list):
+            script_sources.extend([s for s in script_field if isinstance(s, str)])
+        elif isinstance(script_field, str):
+            script_sources.append(script_field)
+        if script_sources:
+            for src in script_sources:
+                entry_evidence = {
+                    'kind': 'asset',
+                    'source': 'scriptSrc',
+                    'url': src,
+                    'snippet': infer_snippet(src)
+                }
+                normalized = normalize_evidence_entry(entry_evidence)
+                if normalized:
+                    normalized_evidence.append(normalized)
+
+        normalized_evidence = dedupe_evidence_entries(normalized_evidence)
+
+        entry_name = tech_name or raw_name or t.get('name')
         entry = {
-            'name': t.get('name'),
+            'name': entry_name,
             'version': t.get('version'),
             'categories': names,
-            'confidence': t.get('confidence')
+            'confidence': t.get('confidence'),
+            'evidence': normalized_evidence,
+            'detection_raw': t
         }
+        if tech_slug:
+            entry['slug'] = tech_slug
+        if alias_values:
+            entry['aliases'] = alias_values
         norm_techs.append(entry)
         for n in names:
             category_bucket.setdefault(n, []).append({'name': entry['name'], 'version': entry['version']})
@@ -360,29 +537,326 @@ def normalize_result(domain: str, raw: Dict[str, Any], categories_map: Dict[int,
 
 def infer_tech_from_urls(urls: List[str]) -> List[Dict[str, Any]]:
     """Lightweight inference from asset URLs (js/css/fonts) to provide hints when full JS execution isn't available.
-    Returns list of tech dicts: {'name':..., 'version': None, 'categories': [...], 'confidence': 10}
+    Returns list of tech dicts compatible with normalized entries.
     """
     hints: List[Dict[str, Any]] = []
     if not urls:
         return hints
-    for u in urls:
-        try:
-            lu = (u or '').lower()
-        except Exception:
-            lu = ''
-        if 'jquery' in lu and not any(h.get('name')=='jQuery' for h in hints):
-            hints.append({'name': 'jQuery', 'version': None, 'categories': ['JavaScript libraries'], 'confidence': 10})
-        elif 'bootstrap' in lu and not any(h.get('name')=='Bootstrap' for h in hints):
-            hints.append({'name': 'Bootstrap', 'version': None, 'categories': ['UI frameworks'], 'confidence': 10})
-        elif ('vue' in lu or 'vue.runtime' in lu) and not any(h.get('name')=='Vue.js' for h in hints):
-            hints.append({'name': 'Vue.js', 'version': None, 'categories': ['JavaScript frameworks'], 'confidence': 10})
-        elif ('react' in lu or 'react-dom' in lu) and not any(h.get('name')=='React' for h in hints):
-            hints.append({'name': 'React', 'version': None, 'categories': ['JavaScript frameworks'], 'confidence': 10})
-        elif 'fontawesome' in lu and not any(h.get('name')=='Font Awesome' for h in hints):
-            hints.append({'name': 'Font Awesome', 'version': None, 'categories': ['Icon sets'], 'confidence': 8})
-        elif 'tailwind' in lu and not any(h.get('name')=='Tailwind CSS' for h in hints):
-            hints.append({'name': 'Tailwind CSS', 'version': None, 'categories': ['UI frameworks','CSS'], 'confidence': 8})
+
+    def _has_hint(name: str) -> bool:
+        return any(h.get('name') == name for h in hints)
+
+    def _add_hint(name: str, categories: List[str], confidence: int, *, url: str | None = None, pattern: re.Pattern | None = None, version: str | None = None) -> None:
+        if _has_hint(name):
+            return
+        resolved_version = version
+        if url and resolved_version is None:
+            resolved_version = _extract_asset_version(url, pattern)
+        entry = {
+            'name': name,
+            'version': resolved_version,
+            'categories': categories,
+            'confidence': confidence
+        }
+        hints.append(entry)
+
+    for raw_url in urls:
+        if not isinstance(raw_url, str) or not raw_url:
+            continue
+        lowered = raw_url.lower()
+
+        if 'jquery' in lowered:
+            _add_hint('jQuery', ['JavaScript libraries'], 20, url=raw_url, pattern=_JQUERY_FILENAME_RE)
+        if 'bootstrap' in lowered:
+            _add_hint('Bootstrap', ['UI frameworks'], 18, url=raw_url, pattern=_BOOTSTRAP_FILENAME_RE)
+        if 'tailwind' in lowered:
+            _add_hint('Tailwind CSS', ['UI frameworks','CSS'], 16, url=raw_url, pattern=_TAILWIND_FILENAME_RE)
+        if 'vue' in lowered or 'vue.runtime' in lowered:
+            _add_hint('Vue.js', ['JavaScript frameworks'], 18, url=raw_url)
+        if 'react' in lowered or 'react-dom' in lowered:
+            _add_hint('React', ['JavaScript frameworks'], 18, url=raw_url)
+        if 'require.js' in lowered or 'requirejs' in lowered:
+            _add_hint('RequireJS', ['JavaScript frameworks'], 25, url=raw_url, pattern=_REQUIREJS_FILENAME_RE)
+        if 'video.js' in lowered or 'video.min.js' in lowered or 'videojs' in lowered:
+            _add_hint('Video.js', ['Video players'], 22, url=raw_url, pattern=_VIDEOJS_FILENAME_RE)
+        if 'mathjax' in lowered:
+            _add_hint('MathJax', ['JavaScript graphics'], 24, url=raw_url, pattern=_MATHJAX_FILENAME_RE)
+        if 'core-js' in lowered:
+            _add_hint('core-js', ['JavaScript libraries'], 20, url=raw_url, pattern=_CORE_JS_FILENAME_RE)
+        if 'yuidoc' in lowered:
+            _add_hint('YUI Doc', ['Documentation tools'], 18, url=raw_url, pattern=_YUI_FILENAME_RE)
+        if 'yui' in lowered:
+            _add_hint('YUI', ['JavaScript libraries'], 18, url=raw_url, pattern=_YUI_FILENAME_RE)
+        if 'popper' in lowered:
+            _add_hint('Popper', ['JavaScript libraries'], 12, url=raw_url)
+        if 'fontawesome' in lowered or 'font-awesome' in lowered:
+            _add_hint('Font Awesome', ['Font scripts'], 14, url=raw_url)
+        if 'fonts.googleapis.com' in lowered:
+            _add_hint('Google Font API', ['Font scripts'], 14, url=raw_url)
+        if 'cdn.jsdelivr.net' in lowered:
+            _add_hint('jsDelivr', ['CDN'], 30, url=raw_url)
+        if 'gtag/js' in lowered:
+            _add_hint('Google Analytics', ['Analytics'], 25, url=raw_url)
+        if 'googletagmanager.com/gtm.js' in lowered or 'gtm.js' in lowered:
+            _add_hint('Google Tag Manager', ['Tag managers','Analytics'], 28, url=raw_url)
+        if 'analytics.js' in lowered or 'ga.js' in lowered:
+            _add_hint('Google Analytics', ['Analytics'], 20, url=raw_url)
+        if re.search(r'\.php(?:\b|\?)', lowered):
+            _add_hint('PHP', ['Programming languages'], 18, url=raw_url)
     return hints
+
+    def _has_hint(name: str) -> bool:
+        return any(h.get('name') == name for h in hints)
+
+    def _add_hint(name: str, categories: List[str], confidence: int, *, url: str | None = None, pattern: re.Pattern | None = None, version: str | None = None) -> None:
+        if _has_hint(name):
+            return
+        resolved_version = version
+        if url and resolved_version is None:
+            resolved_version = _extract_asset_version(url, pattern)
+        entry = {
+            'name': name,
+            'version': resolved_version,
+            'categories': categories,
+            'confidence': confidence
+        }
+        hints.append(entry)
+
+    for raw_url in urls:
+        if not isinstance(raw_url, str) or not raw_url:
+            continue
+        lowered = raw_url.lower()
+
+        if 'jquery' in lowered:
+            _add_hint('jQuery', ['JavaScript libraries'], 20, url=raw_url, pattern=_JQUERY_FILENAME_RE)
+        if 'bootstrap' in lowered:
+            _add_hint('Bootstrap', ['UI frameworks'], 18, url=raw_url, pattern=_BOOTSTRAP_FILENAME_RE)
+        if 'tailwind' in lowered:
+            _add_hint('Tailwind CSS', ['UI frameworks','CSS'], 16, url=raw_url, pattern=_TAILWIND_FILENAME_RE)
+        if 'vue' in lowered or 'vue.runtime' in lowered:
+            _add_hint('Vue.js', ['JavaScript frameworks'], 18, url=raw_url)
+        if 'react' in lowered or 'react-dom' in lowered:
+            _add_hint('React', ['JavaScript frameworks'], 18, url=raw_url)
+        if 'require.js' in lowered or 'requirejs' in lowered:
+            _add_hint('RequireJS', ['JavaScript frameworks'], 25, url=raw_url, pattern=_REQUIREJS_FILENAME_RE)
+        if 'video.js' in lowered or 'videojs' in lowered:
+            _add_hint('Video.js', ['Video players'], 22, url=raw_url, pattern=_VIDEOJS_FILENAME_RE)
+        if 'mathjax' in lowered:
+            _add_hint('MathJax', ['JavaScript graphics'], 24, url=raw_url, pattern=_MATHJAX_FILENAME_RE)
+        if 'core-js' in lowered:
+            _add_hint('core-js', ['JavaScript libraries'], 20, url=raw_url, pattern=_CORE_JS_FILENAME_RE)
+        if 'yuidoc' in lowered:
+            _add_hint('YUI Doc', ['Documentation tools'], 18, url=raw_url, pattern=_YUI_FILENAME_RE)
+        if 'yui' in lowered:
+            _add_hint('YUI', ['JavaScript libraries'], 18, url=raw_url, pattern=_YUI_FILENAME_RE)
+        if 'popper' in lowered:
+            _add_hint('Popper', ['JavaScript libraries'], 12, url=raw_url)
+        if 'fontawesome' in lowered or 'font-awesome' in lowered:
+            _add_hint('Font Awesome', ['Font scripts'], 14, url=raw_url)
+        if 'fonts.googleapis.com' in lowered:
+            _add_hint('Google Font API', ['Font scripts'], 14, url=raw_url)
+        if 'cdn.jsdelivr.net' in lowered:
+            _add_hint('jsDelivr', ['CDN'], 30, url=raw_url)
+        if 'gtag/js' in lowered:
+            _add_hint('Google Analytics', ['Analytics'], 25, url=raw_url)
+        if 'googletagmanager.com/gtm.js' in lowered or 'gtm.js' in lowered:
+            _add_hint('Google Tag Manager', ['Tag managers','Analytics'], 28, url=raw_url)
+        if 'analytics.js' in lowered or 'ga.js' in lowered:
+            _add_hint('Google Analytics', ['Analytics'], 20, url=raw_url)
+        if re.search(r'\.php(?:|\?)', lowered):
+            _add_hint('PHP', ['Programming languages'], 18, url=raw_url)
+    return hints
+
+
+def _merge_hint_meta(dest: Dict[str, Any], src: Dict[str, Any]) -> None:
+    """Recursively merge heuristic hint metadata dictionaries."""
+    for key, value in src.items():
+        if key not in dest:
+            dest[key] = value
+            continue
+        current = dest.get(key)
+        if isinstance(current, dict) and isinstance(value, dict):
+            _merge_hint_meta(current, value)
+        elif isinstance(current, list) and isinstance(value, list):
+            existing = current
+            for item in value:
+                if item not in existing:
+                    existing.append(item)
+        else:
+            dest[key] = value
+
+
+def _attach_raw_hint_meta(target: Dict[str, Any]) -> None:
+    """Copy browser/runtime hint metadata from raw payload into tiered block."""
+    if not isinstance(target, dict):
+        return
+    raw_block = target.get('raw')
+    if not isinstance(raw_block, dict):
+        return
+    node_hint_meta = raw_block.get('_techscan_hint_meta') or raw_block.get('techscan_hint_meta')
+    if not isinstance(node_hint_meta, dict) or not node_hint_meta:
+        return
+    tier_block = target.setdefault('tiered', {})
+    dest_hint = tier_block.setdefault('hint_meta', {})
+    if isinstance(dest_hint, dict):
+        _merge_hint_meta(dest_hint, node_hint_meta)
+    else:
+        tier_block['hint_meta'] = node_hint_meta
+    tier_block.setdefault('hint_meta_source', 'node-runtime')
+
+
+def _extract_asset_version(url: str | None, pattern: re.Pattern | None = None) -> str | None:
+    if not url or not isinstance(url, str):
+        return None
+    match = _ASSET_VERSION_QUERY_RE.search(url)
+    if match:
+        return match.group(1)
+    if pattern:
+        match = pattern.search(url)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _apply_hint_meta_detections(payload: Dict[str, Any]) -> None:
+    """Derive additional technologies from extras/hint metadata (runtime JS context)."""
+    if not isinstance(payload, dict):
+        return
+    techs = payload.setdefault('technologies', [])
+    if not isinstance(techs, list):
+        return
+    raw_block = payload.get('raw') if isinstance(payload.get('raw'), dict) else None
+    if not raw_block:
+        return
+    extras = raw_block.get('extras') if isinstance(raw_block.get('extras'), dict) else None
+    if not extras:
+        return
+    scripts = [s for s in extras.get('scripts') or [] if isinstance(s, str) and s]
+    links = [l for l in extras.get('links') or [] if isinstance(l, str) and l]
+    body_classes = [cls.lower() for cls in extras.get('body_classes') or [] if isinstance(cls, str)]
+    if not scripts and not links and not body_classes:
+        return
+    categories_bucket = payload.setdefault('categories', {})
+
+    def _find_entry(canon_name: str | None) -> dict | None:
+        if not canon_name:
+            return None
+        for entry in techs:
+            existing = canonicalize_tech_name(entry.get('name'))
+            if existing == canon_name:
+                return entry
+        return None
+
+    def _ensure_category_entry(name: str, version: str | None, cats: List[str]) -> None:
+        for cat in cats:
+            bucket = categories_bucket.setdefault(cat, [])
+            if not any(item.get('name') == name and item.get('version') == version for item in bucket):
+                bucket.append({'name': name, 'version': version})
+
+    def _add_hint_entry(name: str, cats: List[str], confidence: int, *, version: str | None = None, url: str | None = None, note: str | None = None) -> None:
+        canon = canonicalize_tech_name(name) or name
+        existing_entry = _find_entry(canon)
+        if existing_entry:
+            if version and not existing_entry.get('version'):
+                existing_entry['version'] = version
+            return
+        evidence: List[dict] = []
+        if url:
+            ev = {'kind': 'asset', 'source': 'hint-meta', 'url': url}
+            snippet = infer_snippet(url)
+            if snippet:
+                ev['snippet'] = snippet
+            if note:
+                ev['note'] = note
+            evidence.append(ev)
+        elif note:
+            evidence.append({'kind': 'hint', 'source': 'hint-meta', 'note': note})
+        entry = {
+            'name': name,
+            'version': version,
+            'categories': cats,
+            'confidence': confidence,
+            'evidence': evidence
+        }
+        techs.append(entry)
+        _ensure_category_entry(name, version, cats)
+
+    all_urls = scripts + links
+    jq_migrate_url = next((url for url in scripts if 'jquery-migrate' in url.lower()), None)
+    if jq_migrate_url:
+        jq_version = _extract_asset_version(jq_migrate_url, _JQUERY_MIGRATE_FILENAME_RE)
+        _add_hint_entry('jQuery Migrate', ['JavaScript libraries'], 45, version=jq_version, url=jq_migrate_url)
+
+    hello_url = next((url for url in all_urls if 'hello-elementor' in url.lower()), None)
+    hello_body = any('hello-elementor' in cls for cls in body_classes)
+    if hello_url or hello_body:
+        note = 'detected via body class' if hello_body and not hello_url else None
+        _add_hint_entry('Hello Elementor Theme', ['WordPress themes'], 40, url=hello_url, note=note)
+
+    wpml_url = None
+    for candidate in all_urls:
+        lowered = candidate.lower()
+        if 'wp-content' not in lowered:
+            continue
+        if 'sitepress-multilingual-cms' in lowered or ('wpml' in lowered and 'plugins' in lowered):
+            wpml_url = candidate
+            break
+    if wpml_url:
+        wpml_version = _extract_asset_version(wpml_url)
+        _add_hint_entry('WordPress Multilingual Plugin (WPML)', ['WordPress plugins','Localization'], 45, version=wpml_version, url=wpml_url)
+
+    multisite_url = next((url for url in all_urls if '/wp-content/uploads/sites/' in url.lower()), None)
+    if multisite_url:
+        _add_hint_entry('WordPress Multisite', ['Content management systems'], 35, url=multisite_url)
+
+
+def merge_heuristic_payload(target: Dict[str, Any], heuristic: Dict[str, Any], *, domain: str | None = None) -> None:
+    """Merge heuristic technologies/categories + metadata into the final scan result."""
+    if not heuristic:
+        return
+    try:
+        if not isinstance(target.get('technologies'), list):
+            target['technologies'] = []
+        ttechs = target.setdefault('technologies', [])
+        existing_names = {t.get('name') for t in ttechs if isinstance(t, dict) and t.get('name')}
+        for htech in heuristic.get('technologies') or []:
+            if not isinstance(htech, dict):
+                continue
+            name = canonicalize_tech_name(htech.get('name'))
+            if not name or name in existing_names:
+                continue
+            htech['name'] = name
+            ttechs.append(htech)
+            existing_names.add(name)
+        if not isinstance(target.get('categories'), dict):
+            target['categories'] = {}
+        rcats = target.setdefault('categories', {})
+        for cat, arr in (heuristic.get('categories') or {}).items():
+            if not isinstance(arr, list):
+                continue
+            bucket = rcats.setdefault(cat, [])
+            existing_pairs = {(b.get('name'), b.get('version')) for b in bucket if isinstance(b, dict)}
+            for item in arr:
+                if not isinstance(item, dict):
+                    continue
+                key = (item.get('name'), item.get('version'))
+                if key in existing_pairs:
+                    continue
+                bucket.append({'name': item.get('name'), 'version': item.get('version')})
+                existing_pairs.add(key)
+        tiered_src = heuristic.get('tiered') or {}
+        tiered_dest = target.setdefault('tiered', {})
+        if heuristic.get('duration') is not None:
+            tiered_dest['heuristic_duration'] = heuristic.get('duration')
+        if tiered_src.get('reason'):
+            tiered_dest['heuristic_reason'] = tiered_src.get('reason')
+        tiered_dest['used'] = True
+        hint_meta = tiered_src.get('hint_meta') if isinstance(tiered_src.get('hint_meta'), dict) else None
+        if hint_meta:
+            dest_hint = tiered_dest.setdefault('hint_meta', {})
+            _merge_hint_meta(dest_hint, hint_meta)
+    except Exception as exc:
+        logging.getLogger('techscan.tiered').debug('merge heuristic failed domain=%s err=%s', domain or target.get('domain'), exc)
 
 _heuristics_lock = threading.Lock()
 _heuristics_patterns: list[tuple[re.Pattern, int]] = []
@@ -628,6 +1102,7 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
             op_end = time.time()
             categories_map = load_categories(wappalyzer_path)
             result = normalize_result(domain, data, categories_map)
+            _apply_hint_meta_detections(result)
             # Synthetic header detection remains useful to add server/CDN hints
             synthetic_allowed = (os.environ.get('TECHSCAN_SYNTHETIC_HEADERS', '1') == '1' and os.environ.get('TECHSCAN_DISABLE_SYNTHETIC','0') != '1')
             synth_start = time.time()
@@ -777,6 +1252,8 @@ def scan_domain(domain: str, wappalyzer_path: str, timeout: int = 45, retries: i
             op_end = time.time()
             categories_map = load_categories(wappalyzer_path)
             result = normalize_result(domain, data, categories_map)
+            _attach_raw_hint_meta(result)
+            _apply_hint_meta_detections(result)
             # Synthetic header-based detection (optional + allow disable)
             synthetic_allowed = (os.environ.get('TECHSCAN_SYNTHETIC_HEADERS', '1') == '1' and os.environ.get('TECHSCAN_DISABLE_SYNTHETIC','0') != '1')
             synth_start = time.time()
@@ -943,6 +1420,7 @@ def get_cached_or_scan(domain: str, wappalyzer_path: str, timeout: int = 45, fre
     # Tiered heuristic pre-scan (only for fast mode, not full) if enabled
     tiered_enabled = (not full) and (os.environ.get('TECHSCAN_TIERED','0') == '1')
     heuristic_result: Dict[str, Any] | None = None
+
     if tiered_enabled:
         try:
             from . import heuristic_fast
@@ -1051,27 +1529,11 @@ def get_cached_or_scan(domain: str, wappalyzer_path: str, timeout: int = 45, fre
                             result_full = scan_domain(domain, wappalyzer_path, timeout=timeout, retries=retries, full=full)
                             # Merge heuristic content similar to later merge logic
                             if heuristic_result:
-                                try:
-                                    existing = {t['name'] for t in result_full.get('technologies', [])}
-                                    for t in heuristic_result.get('technologies', []):
-                                        if t['name'] not in existing:
-                                            result_full['technologies'].append(t)
-                                    rcats = result_full.setdefault('categories', {})
-                                    for cat, arr in (heuristic_result.get('categories') or {}).items():
-                                        bucket = rcats.setdefault(cat, [])
-                                        existing_pairs = {(b['name'], b.get('version')) for b in bucket}
-                                        for item in arr:
-                                            key = (item['name'], item.get('version'))
-                                            if key not in existing_pairs:
-                                                bucket.append(item)
-                                    result_full.setdefault('tiered', {})['heuristic_duration'] = heuristic_result.get('duration')
-                                    result_full['tiered']['heuristic_reason'] = heuristic_result.get('tiered',{}).get('reason')
-                                    result_full['tiered']['used'] = True
-                                    result_full['tiered']['deferred_full'] = False
-                                    result_full['tiered']['final'] = True
-                                    result_full['tiered']['from_deferred'] = True
-                                except Exception as me:
-                                    logging.getLogger('techscan.tiered').debug('deferred merge heuristic failed domain=%s err=%s', domain, me)
+                                merge_heuristic_payload(result_full, heuristic_result, domain=domain)
+                                tier_info = result_full.setdefault('tiered', {})
+                                tier_info['deferred_full'] = False
+                                tier_info['final'] = True
+                                tier_info['from_deferred'] = True
                             # Persist & update cache
                             try:
                                 from . import db as _db
@@ -1126,27 +1588,11 @@ def get_cached_or_scan(domain: str, wappalyzer_path: str, timeout: int = 45, fre
                             try:
                                 result_full = scan_domain(domain, wappalyzer_path, timeout=timeout, retries=retries, full=full)
                                 if heuristic_result:
-                                    try:
-                                        existing = {t['name'] for t in result_full.get('technologies', [])}
-                                        for t in heuristic_result.get('technologies', []):
-                                            if t['name'] not in existing:
-                                                result_full['technologies'].append(t)
-                                        rcats = result_full.setdefault('categories', {})
-                                        for cat, arr in (heuristic_result.get('categories') or {}).items():
-                                            bucket = rcats.setdefault(cat, [])
-                                            existing_pairs = {(b['name'], b.get('version')) for b in bucket}
-                                            for item in arr:
-                                                key = (item['name'], item.get('version'))
-                                                if key not in existing_pairs:
-                                                    bucket.append(item)
-                                        result_full.setdefault('tiered', {})['heuristic_duration'] = heuristic_result.get('duration')
-                                        result_full['tiered']['heuristic_reason'] = heuristic_result.get('tiered',{}).get('reason')
-                                        result_full['tiered']['used'] = True
-                                        result_full['tiered']['auto_trigger_full'] = True
-                                        result_full['tiered']['final'] = True
-                                        result_full['tiered']['from_auto_trigger'] = True
-                                    except Exception as me:
-                                        logging.getLogger('techscan.tiered').debug('auto-trigger merge heuristic failed domain=%s err=%s', domain, me)
+                                    merge_heuristic_payload(result_full, heuristic_result, domain=domain)
+                                    tier_info = result_full.setdefault('tiered', {})
+                                    tier_info['auto_trigger_full'] = True
+                                    tier_info['final'] = True
+                                    tier_info['from_auto_trigger'] = True
                                 try:
                                     from . import db as _db
                                     _db.save_scan(result_full, from_cache=False, timeout_used=timeout)
@@ -1185,6 +1631,7 @@ def get_cached_or_scan(domain: str, wappalyzer_path: str, timeout: int = 45, fre
             # Update inflight metric since we are effectively becoming a new leader
             with _stats_lock:
                 STATS['single_flight']['inflight'] += 1
+        scan_started_at = time.time()
         try:
             result = scan_domain(domain, wappalyzer_path, timeout=timeout, retries=retries, full=full)
         except Exception as e:
@@ -1209,32 +1656,24 @@ def get_cached_or_scan(domain: str, wappalyzer_path: str, timeout: int = 45, fre
                 except Exception:
                     pass
                 return heuristic_result
+            _persist_failure_scan(
+                domain,
+                mode='full' if full else 'fast',
+                timeout_used=timeout,
+                retries=retries,
+                error=e,
+                started_at=scan_started_at,
+                finished_at=time.time(),
+                engine='scan-error',
+                raw={'source': 'get_cached_or_scan'}
+            )
             raise
     finally:
         if is_leader:
             _single_flight_exit(cache_key)
     # Merge heuristic partial if exists and not early-return
     if heuristic_result and not heuristic_result.get('tiered',{}).get('early_return'):
-        try:
-            # Avoid duplicating technologies by name
-            existing = {t['name'] for t in result.get('technologies', [])}
-            for t in heuristic_result.get('technologies', []):
-                if t['name'] not in existing:
-                    result['technologies'].append(t)
-            # categories merge
-            rcats = result.setdefault('categories', {})
-            for cat, arr in (heuristic_result.get('categories') or {}).items():
-                bucket = rcats.setdefault(cat, [])
-                existing_pairs = {(b['name'], b.get('version')) for b in bucket}
-                for item in arr:
-                    key = (item['name'], item.get('version'))
-                    if key not in existing_pairs:
-                        bucket.append(item)
-            result.setdefault('tiered', {})['heuristic_duration'] = heuristic_result.get('duration')
-            result['tiered']['heuristic_reason'] = heuristic_result.get('tiered',{}).get('reason')
-            result['tiered']['used'] = True
-        except Exception as me:
-            logging.getLogger('techscan.tiered').debug('merge heuristic failed domain=%s err=%s', domain, me)
+        merge_heuristic_payload(result, heuristic_result, domain=domain)
     # Version audit on final full result (merged or pure)
     if os.environ.get('TECHSCAN_SKIP_VERSION_AUDIT','0') != '1' and os.environ.get('TECHSCAN_VERSION_AUDIT','1') == '1':
         va_start = time.time()
@@ -1389,6 +1828,11 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
         unified_min_tech = int(os.environ.get('TECHSCAN_UNIFIED_MIN_TECH', '15'))
     except ValueError:
         unified_min_tech = 15
+    # Allow minimum budget override before node fallbacks kick in (default 4000ms)
+    try:
+        fallback_min_budget_ms = int(os.environ.get('TECHSCAN_FALLBACK_MIN_BUDGET_MS', '4000') or '4000')
+    except ValueError:
+        fallback_min_budget_ms = 4000
     # Optional fast full timeout override in milliseconds (prefer this for short full fallback)
     try:
         fast_full_ms = int(os.environ.get('TECHSCAN_FAST_FULL_TIMEOUT_MS', '0') or '0')
@@ -1397,7 +1841,7 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
     micro_used = False
     node_full_used = False
     # Micro fallback is gated by TECHSCAN_ULTRA_FALLBACK_MICRO (default enabled)
-    if count_signal(techs) < unified_min_tech and os.environ.get('TECHSCAN_ULTRA_FALLBACK_MICRO', '1') == '1':
+    if count_signal(techs) < unified_min_tech and os.environ.get('TECHSCAN_ULTRA_FALLBACK_MICRO', '1') == '1' and fallback_min_budget_ms <= budget_ms:
         try:
             # One-shot micro: short cap, no adaptive retry, and resource blocking on
             micro_start = time.time()
@@ -1410,6 +1854,12 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
             # default 5s when persist, 8s when not persist (cold launch overhead)
             micro_default = 5 if persist else 8
             micro_timeout_s = micro_to_env if micro_to_env > 0 else micro_default
+            # Allow adaptive multiplier via env to shorten micro attempt without removing base default
+            try:
+                micro_scale = float(os.environ.get('TECHSCAN_MICRO_TIMEOUT_SCALE', '1.0') or '1.0')
+            except ValueError:
+                micro_scale = 1.0
+            micro_timeout_s = max(3, int(micro_timeout_s * micro_scale))
             # Respect remaining budget
             rem_ms = max(0, budget_ms - int((time.time() - t0) * 1000))
             if rem_ms > 0:
@@ -1449,7 +1899,7 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
         except Exception as e:
             logging.getLogger('techscan.unified').debug('micro fallback failed domain=%s err=%s', domain, e)
     # 6) Short full Node fallback if still below threshold and budget remains
-    if count_signal(techs) < unified_min_tech:
+    if count_signal(techs) < unified_min_tech and fallback_min_budget_ms <= budget_ms:
         try:
             remaining_ms = max(0, budget_ms - int((time.time() - t0) * 1000))
             # Require at least 3s remaining to attempt a short full
@@ -1578,6 +2028,30 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
                 return True
             return False
 
+        def _parse_version_tuple(v: str | None) -> tuple:
+            if not v:
+                return ()
+            nums = re.findall(r"\d+", str(v))
+            try:
+                return tuple(int(n) for n in nums)
+            except Exception:
+                return ()
+
+        def _choose_version(current: str | None, candidate: str | None) -> str | None:
+            """Prefer the higher semantic-ish version if both are present."""
+            if not candidate:
+                return current
+            if not current:
+                return candidate
+            if candidate == current:
+                return current
+            c1 = _parse_version_tuple(current)
+            c2 = _parse_version_tuple(candidate)
+            if c2 and c1:
+                return candidate if c2 > c1 else current
+            # Fallback: keep current
+            return current
+
         merged_list: List[Dict[str, Any]] = []
         for t in out.get('technologies', []) or []:
             name = (t.get('name') or '').strip()
@@ -1588,9 +2062,8 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
                 unorm = _normalize_name(uname)
                 if _should_merge(norm, unorm):
                     # merge t into u
-                    # prefer version from either one (prefer non-empty)
-                    if not u.get('version') and t.get('version'):
-                        u['version'] = t.get('version')
+                    # prefer version (pick higher if both exist)
+                    u['version'] = _choose_version(u.get('version'), t.get('version'))
                     # prefer the name that has a version or longer descriptive name
                     if (t.get('version') and not u.get('version')) or (len(name) > len(uname) and not u.get('version')):
                         u['name'] = t.get('name')
@@ -1658,8 +2131,7 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
                 if name not in aliases and name != found.get('name'):
                     aliases.append(name)
                 # prefer version
-                if not found.get('version') and t.get('version'):
-                    found['version'] = t.get('version')
+                found['version'] = _choose_version(found.get('version'), t.get('version'))
                 # max confidence
                 try:
                     found['confidence'] = max(int(found.get('confidence') or 0), int(t.get('confidence') or 0))
@@ -1773,12 +2245,119 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
     return out
 
 def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, timeout: int = 45, fresh: bool = False, retries: int = 0, ttl: int | None = None, full: bool = False) -> List[Dict[str, Any]]:
-    filtered = []
-    for d in domains:
-        d2 = extract_host((d or '').strip())
-        if DOMAIN_RE.match(d2):
-            filtered.append(d2.lower())
-    results: List[Dict[str, Any]] = [None] * len(filtered)  # type: ignore
+    log = logging.getLogger('techscan.bulk')
+    original_inputs = [(d or '').strip() for d in domains]
+    filtered: List[str] = []
+    index_map: List[int] = []
+    invalid_persisted: Dict[int, bool] = {}
+    prefilled_errors: Dict[int, Dict[str, Any]] = {}
+    for idx_raw, cleaned in enumerate(original_inputs):
+        host = extract_host(cleaned)
+        if not host:
+            prefilled_errors[idx_raw] = {
+                'status': 'error',
+                'domain': cleaned or (domains[idx_raw] or ''),
+                'input_value': cleaned,
+                'error': 'empty domain input',
+                'timestamp': int(time.time())
+            }
+            log.warning('bulk scan skipped empty domain input index=%d raw=%r', idx_raw, domains[idx_raw])
+            stub_domain = prefilled_errors[idx_raw]['domain']
+            if stub_domain:
+                if _persist_failure_scan(
+                    stub_domain,
+                    mode='bulk-precheck',
+                    timeout_used=timeout,
+                    retries=0,
+                    error='empty domain input',
+                    raw={'input_value': cleaned, 'source': 'bulk-precheck'}
+                ):
+                    prefilled_errors[idx_raw]['persisted_db'] = True
+            continue
+        if not DOMAIN_RE.match(host):
+            prefilled_errors[idx_raw] = {
+                'status': 'error',
+                'domain': host,
+                'input_value': cleaned,
+                'error': 'invalid domain format',
+                'timestamp': int(time.time())
+            }
+            log.warning('bulk scan invalid domain index=%d raw=%r normalized=%s', idx_raw, domains[idx_raw], host)
+            if _persist_failure_scan(
+                host,
+                mode='bulk-precheck',
+                timeout_used=timeout,
+                retries=0,
+                error='invalid domain format',
+                raw={'input_value': cleaned, 'source': 'bulk-precheck'}
+            ):
+                prefilled_errors[idx_raw]['persisted_db'] = True
+            continue
+        filtered.append(host.lower())
+        index_map.append(idx_raw)
+
+    results_filtered: List[Dict[str, Any]] = [None] * len(filtered)  # type: ignore
+
+    def assemble(filtered_payloads: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        final: List[Dict[str, Any]] = [None] * len(domains)  # type: ignore
+        for orig_idx, err_payload in prefilled_errors.items():
+            final[orig_idx] = dict(err_payload)
+        for filtered_idx, orig_idx in enumerate(index_map):
+            payload = filtered_payloads[filtered_idx]
+            if payload is None:
+                payload = {
+                    'status': 'error',
+                    'domain': filtered[filtered_idx],
+                    'input_value': original_inputs[orig_idx],
+                    'error': 'scan result missing',
+                    'timestamp': int(time.time())
+                }
+            else:
+                payload.setdefault('status', 'ok')
+                payload.setdefault('timestamp', int(time.time()))
+                payload.setdefault('domain', filtered[filtered_idx])
+                payload.setdefault('input_value', original_inputs[orig_idx])
+            final[orig_idx] = payload
+        for i in range(len(final)):
+            if final[i] is None:
+                raw_input = original_inputs[i]
+                final[i] = {
+                    'status': 'error',
+                    'domain': extract_host(raw_input) or raw_input or '',
+                    'input_value': raw_input,
+                    'error': 'scan result missing',
+                    'timestamp': int(time.time())
+                }
+        return final  # type: ignore
+
+    def finalize_results(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not items:
+            return items
+        for entry in items:
+            if not entry or entry.get('status') == 'ok' or entry.get('persisted_db'):
+                continue
+            dom = entry.get('domain')
+            if not dom:
+                continue
+            raw_meta = {
+                'source': 'bulk-result',
+                'error_payload': entry.get('error'),
+                'input_value': entry.get('input_value')
+            }
+            if _persist_failure_scan(
+                dom,
+                mode='bulk',
+                timeout_used=timeout,
+                retries=int(entry.get('retries') or 0),
+                error=entry.get('error') or 'bulk scan error',
+                raw=raw_meta
+            ):
+                entry['persisted_db'] = True
+        return items
+
+    if not filtered:
+        return finalize_results(assemble(results_filtered))
+
     idx = 0
     lock_i = threading.Lock()
     fast_first = (os.environ.get('TECHSCAN_BULK_FAST_FIRST','0') == '1') and not full
@@ -1806,6 +2385,7 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
                     res = get_cached_or_scan(dom, wappalyzer_path, timeout=timeout, fresh=fresh, retries=0, ttl=ttl, full=False)
                     phase1[i] = {'status':'ok', **res}
                 except Exception as e:
+                    log.warning('bulk scan phase1 error domain=%s err=%s', dom, e)
                     phase1[i] = {'status':'error','domain':dom,'error':str(e)}
         threads = [threading.Thread(target=worker_phase1) for _ in range(min(concurrency, len(filtered)))]
         for t in threads: t.start()
@@ -1816,26 +2396,27 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
             # Only run if not already cached full
             try:
                 full_res = get_cached_or_scan(dom, wappalyzer_path, timeout=timeout, fresh=fresh, retries=retries, ttl=ttl, full=True)
-                results[i] = {'status':'ok', **full_res}
+                results_filtered[i] = {'status':'ok', **full_res}
             except Exception as e:
+                log.warning('bulk scan phase2 error domain=%s err=%s', dom, e)
                 # fallback to phase1 result if exists
                 if phase1[i] and phase1[i].get('status')=='ok':
                     r = dict(phase1[i])
                     r.setdefault('tiered',{})['full_error']=str(e)
-                    results[i] = r
+                    results_filtered[i] = r
                 else:
-                    results[i] = {'status':'error','domain':dom,'error':str(e)}
+                    results_filtered[i] = {'status':'error','domain':dom,'error':str(e)}
         for i, r in enumerate(phase1):
             if not r or r.get('status')!='ok':
-                results[i] = r
+                results_filtered[i] = r
                 continue
             tiered_meta = r.get('tiered') or {}
             if tiered_meta.get('strong_cms_skip_full'):
-                results[i] = r  # Accept heuristic as final
+                results_filtered[i] = r  # Accept heuristic as final
                 continue
             # If deferred already scheduled we accept phase1 result (will fill cache later)
             if tiered_meta.get('deferred_full') or tiered_meta.get('auto_trigger_full'):
-                results[i] = r
+                results_filtered[i] = r
                 continue
             # Schedule explicit full scan thread
             th = threading.Thread(target=phase2_full, args=(i, r.get('domain')), daemon=True)
@@ -1846,10 +2427,10 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
         for th in phase2_threads:
             th.join()
         # Fill any still None with phase1 result
-        for i, r in enumerate(results):
+        for i, r in enumerate(results_filtered):
             if r is None:
-                results[i] = phase1[i]
-        return results
+                results_filtered[i] = phase1[i]
+        return finalize_results(assemble(results_filtered))
 
     # Adaptive path (if enabled and not two_phase) else legacy
     if not two_phase and adaptive:
@@ -1896,9 +2477,10 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
                         res = get_cached_or_scan(dom, wappalyzer_path, timeout=timeout, fresh=fresh, retries=0, ttl=ttl, full=False)
                     else:
                         res = get_cached_or_scan(dom, wappalyzer_path, timeout=timeout, fresh=fresh, retries=retries, ttl=ttl, full=full)
-                    results[i] = {'status':'ok', **res}
+                    results_filtered[i] = {'status':'ok', **res}
                 except Exception as e:
-                    results[i] = {'status':'error','domain':dom,'error':str(e)}
+                    log.warning('bulk scan adaptive error domain=%s err=%s', dom, e)
+                    results_filtered[i] = {'status':'error','domain':dom,'error':str(e)}
                     flag_err = 1
                 finally:
                     et = time.time()
@@ -1926,7 +2508,7 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
                 break
             ensure_threads()
             time.sleep(0.05)
-        return results
+        return finalize_results(assemble(results_filtered))
 
     # Legacy non-adaptive bulk worker path (fast_first or normal)
     def worker():
@@ -1942,13 +2524,14 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
                     res = get_cached_or_scan(dom, wappalyzer_path, timeout=timeout, fresh=fresh, retries=0, ttl=ttl, full=False)
                 else:
                     res = get_cached_or_scan(dom, wappalyzer_path, timeout=timeout, fresh=fresh, retries=retries, ttl=ttl, full=full)
-                results[i] = {'status': 'ok', **res}
+                results_filtered[i] = {'status': 'ok', **res}
             except Exception as e:
-                results[i] = {'status': 'error', 'domain': dom, 'error': str(e)}
+                log.warning('bulk scan error domain=%s err=%s', dom, e)
+                results_filtered[i] = {'status': 'error', 'domain': dom, 'error': str(e)}
     threads = [threading.Thread(target=worker) for _ in range(min(concurrency, len(filtered)))]
     for t in threads: t.start()
     for t in threads: t.join()
-    return results
+    return finalize_results(assemble(results_filtered))
 
 # --------------------------- BULK QUICK -> DEEP PIPELINE ---------------------------
 def bulk_quick_then_deep(domains: List[str], wappalyzer_path: str, concurrency: int = 6) -> List[Dict[str, Any]]:
@@ -1964,6 +2547,11 @@ def bulk_quick_then_deep(domains: List[str], wappalyzer_path: str, concurrency: 
 
         Returns list aligned to input order with merged results. Each item includes 'bulk_phases'.
     """
+    original_inputs = [(d or '').strip() for d in domains]
+    try:
+        bulk_timeout = int(os.environ.get('TECHSCAN_BULK_TIMEOUT','45'))
+    except ValueError:
+        bulk_timeout = 45
     try:
         min_tech = int(os.environ.get('TECHSCAN_BULK_DEEP_MIN_TECH','2'))
     except ValueError:
@@ -1978,11 +2566,23 @@ def bulk_quick_then_deep(domains: List[str], wappalyzer_path: str, concurrency: 
         max_pct = 0.0
     filtered: List[str] = []
     index_map: List[int] = []
-    for i, d in enumerate(domains):
-        d2 = extract_host((d or '').strip())
+    for i, raw_value in enumerate(original_inputs):
+        d2 = extract_host(raw_value)
         if DOMAIN_RE.match(d2):
             filtered.append(d2.lower())
             index_map.append(i)
+        else:
+            stripped = d2 or raw_value
+            if stripped:
+                if _persist_failure_scan(
+                    stripped,
+                    mode='bulk-precheck',
+                    timeout_used=bulk_timeout,
+                    retries=0,
+                    error='invalid domain',
+                    raw={'source': 'bulk-two-phase', 'input_value': raw_value}
+                ):
+                    invalid_persisted[i] = True
     results: List[Dict[str, Any]] = [None] * len(domains)  # type: ignore
     phase1: List[Dict[str, Any]] = [None] * len(filtered)  # type: ignore
     # Phase 1 quick scans
@@ -2058,6 +2658,31 @@ def bulk_quick_then_deep(domains: List[str], wappalyzer_path: str, concurrency: 
         threads2 = [threading.Thread(target=worker_d, daemon=True) for _ in range(min(concurrency, len(escalate_indices)))]
         for t in threads2: t.start()
         for t in threads2: t.join()
+    def finalize_bulk_results(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not entries:
+            return entries
+        for entry in entries:
+            if not entry or entry.get('status') == 'ok' or entry.get('persisted_db'):
+                continue
+            dom_key = entry.get('domain') or extract_host(entry.get('input_value') or '')
+            if not dom_key:
+                continue
+            raw_meta = {
+                'source': 'bulk-two-phase',
+                'input_value': entry.get('input_value'),
+                'error_payload': entry.get('error')
+            }
+            if _persist_failure_scan(
+                dom_key,
+                mode='bulk-two-phase',
+                timeout_used=bulk_timeout,
+                retries=int(entry.get('retries') or 0),
+                error=entry.get('error') or 'bulk two-phase error',
+                raw=raw_meta
+            ):
+                entry['persisted_db'] = True
+        return entries
+
     # Final assembly mapping back to original order
     for local_i, orig_i in enumerate(index_map):
         r = phase1[local_i]
@@ -2065,14 +2690,34 @@ def bulk_quick_then_deep(domains: List[str], wappalyzer_path: str, concurrency: 
             # ensure bulk_phases present
             bp = r.setdefault('bulk_phases', {})
             bp.setdefault('escalated', local_i in escalate_set)
+            r.setdefault('input_value', original_inputs[orig_i])
             results[orig_i] = r
         else:
-            results[orig_i] = r or {'status':'error','domain': filtered[local_i] if local_i < len(filtered) else None,'error':'unknown'}
+            fallback = r or {'status':'error','domain': filtered[local_i] if local_i < len(filtered) else None,'error':'unknown'}
+            fallback.setdefault('input_value', original_inputs[orig_i])
+            results[orig_i] = fallback
     # Fill None for invalid domains
-    for i, d in enumerate(domains):
+    for i, _ in enumerate(domains):
         if results[i] is None:
-            results[i] = {'status':'error','domain': d, 'error':'invalid domain'}
-    return results
+            raw_value = original_inputs[i]
+            dom_key = extract_host(raw_value) or raw_value
+            results[i] = {'status':'error','domain': dom_key or raw_value, 'error':'invalid domain', 'input_value': raw_value}
+            if dom_key and _persist_failure_scan(
+                dom_key,
+                mode='bulk-precheck',
+                timeout_used=bulk_timeout,
+                retries=0,
+                error='invalid domain',
+                raw={'source': 'bulk-two-phase', 'input_value': raw_value}
+            ):
+                results[i]['persisted_db'] = True
+            elif invalid_persisted.get(i):
+                results[i]['persisted_db'] = True
+        else:
+            results[i].setdefault('input_value', original_inputs[i])
+            if invalid_persisted.get(i):
+                results[i]['persisted_db'] = True
+    return finalize_bulk_results(results)
 
 def _targeted_version_enrichment(result: Dict[str, Any], timeout: float = 2.5) -> bool:
     """Attempt fast, technology-specific version lookups for popular CMS/frameworks.
@@ -2182,75 +2827,6 @@ def _targeted_version_enrichment(result: Dict[str, Any], timeout: float = 2.5) -
     return changed
 
 
-def infer_tech_from_urls(urls: List[str]) -> List[Dict[str, Any]]:
-    """Lightweight inference of common front-end libs from network resource URLs.
-    Returns list of technology dicts compatible with normalized entries.
-    """
-    out: List[Dict[str, Any]] = []
-    if not urls:
-        return out
-    for u in urls:
-        try:
-            s = (u or '')
-            sl = s.lower()
-        except Exception:
-            continue
-        # Detect jQuery with version if present in filename or path
-        try:
-            m = re.search(r'jquery(?:[\.-]|/)(?:jquery-)?(\d+\.\d+(?:\.\d+)?)', sl)
-            if m and not any(o['name'] == 'jQuery' for o in out):
-                out.append({'name': 'jQuery', 'version': m.group(1), 'categories': ['JavaScript libraries'], 'confidence': 20, 'evidence':[{'type':'url','value':s}]})
-                continue
-        except Exception:
-            pass
-        if 'jquery' in sl and not any(o['name'] == 'jQuery' for o in out):
-            out.append({'name': 'jQuery', 'version': None, 'categories': ['JavaScript libraries'], 'confidence': 15, 'evidence':[{'type':'url','value':s}]})
-            continue
-
-        # Detect Bootstrap, prefer version when present
-        try:
-            m = re.search(r'bootstrap(?:[\.-]|/)(?:bootstrap-)?(\d+\.\d+(?:\.\d+)?)', sl)
-            if m and not any(o['name'] == 'Bootstrap' for o in out):
-                out.append({'name': 'Bootstrap', 'version': m.group(1), 'categories': ['UI frameworks','CSS frameworks'], 'confidence': 18, 'evidence':[{'type':'url','value':s}]})
-                continue
-        except Exception:
-            pass
-        if 'bootstrap' in sl and not any(o['name'] == 'Bootstrap' for o in out):
-            out.append({'name': 'Bootstrap', 'version': None, 'categories': ['UI frameworks','CSS frameworks'], 'confidence': 15, 'evidence':[{'type':'url','value':s}]})
-            continue
-
-        # Popper.js detection
-        if 'popper' in sl and not any(o['name'] == 'Popper' for o in out):
-            out.append({'name': 'Popper', 'version': None, 'categories': ['Miscellaneous'], 'confidence': 12, 'evidence':[{'type':'url','value':s}]})
-            continue
-
-        # Google Analytics detection: GA4 uses gtag/js?id=G-..., UA uses analytics.js or ga.js
-        if 'gtag/js' in sl and 'id=g-' in sl and not any(o['name'] == 'Google Analytics' for o in out):
-            out.append({'name': 'Google Analytics', 'version': 'GA4', 'categories': ['Analytics'], 'confidence': 25, 'evidence':[{'type':'url','value':s}]})
-            continue
-        if ('analytics.js' in sl or 'ga.js' in sl or 'gtm.js' in sl) and not any(o['name'] == 'Google Analytics' for o in out):
-            # presence of gtm.js might be GTM; treat as Analytics with unknown version
-            out.append({'name': 'Google Analytics', 'version': None, 'categories': ['Analytics'], 'confidence': 18, 'evidence':[{'type':'url','value':s}]})
-            continue
-
-        # PHP detection - presence of .php in path or query
-        if re.search(r'\.php(\b|\?)', sl) and not any(o['name'] == 'PHP' for o in out):
-            out.append({'name': 'PHP', 'version': None, 'categories': ['Programming languages'], 'confidence': 25, 'evidence':[{'type':'url','value':s}]})
-            continue
-
-        # Frameworks / major libs
-        if 'vue' in sl and not any(o['name'] == 'Vue.js' for o in out):
-            out.append({'name': 'Vue.js', 'version': None, 'categories': ['JavaScript frameworks'], 'confidence': 15, 'evidence':[{'type':'url','value':s}]})
-            continue
-        if 'react' in sl and not any(o['name'] == 'React' for o in out):
-            out.append({'name': 'React', 'version': None, 'categories': ['JavaScript frameworks'], 'confidence': 15, 'evidence':[{'type':'url','value':s}]})
-            continue
-        if 'fontawesome' in sl and not any(o['name'] == 'Font Awesome' for o in out):
-            out.append({'name': 'Font Awesome', 'version': None, 'categories': ['Icon sets'], 'confidence': 12, 'evidence':[{'type':'url','value':s}]})
-            continue
-        if 'tailwind' in sl and not any(o['name'] == 'Tailwind CSS' for o in out):
-            out.append({'name': 'Tailwind CSS', 'version': None, 'categories': ['CSS frameworks'], 'confidence': 12, 'evidence':[{'type':'url','value':s}]})
-        return out
 
 def snapshot_cache(domains: List[str] | None = None) -> List[Dict[str, Any]]:
     """Return list of cached scan results (non-expired) optionally filtered by domains list.

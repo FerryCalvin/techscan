@@ -1,0 +1,1731 @@
+﻿{
+    "audit":  {
+                  "outdated":  [
+                                   {
+                                       "difference":  "minor",
+                                       "latest":  "1.27.1",
+                                       "name":  "Nginx",
+                                       "version":  "1.22.1"
+                                   },
+                                   {
+                                       "difference":  "major",
+                                       "latest":  "3.7.1",
+                                       "name":  "jQuery",
+                                       "version":  "1.13.3"
+                                   }
+                               ],
+                  "outdated_count":  2,
+                  "outdated_major":  1,
+                  "outdated_minor":  1,
+                  "outdated_patch":  0,
+                  "version_dataset":  "latest_versions.json"
+              },
+    "categories":  {
+                       "A/B Testing":  [
+                                           {
+                                               "name":  "OneSignal",
+                                               "version":  null
+                                           }
+                                       ],
+                       "Accessibility":  [
+                                             {
+                                                 "name":  "UserWay",
+                                                 "version":  null
+                                             }
+                                         ],
+                       "Analytics":  [
+                                         {
+                                             "name":  "Site Kit",
+                                             "version":  "1.167.0"
+                                         },
+                                         {
+                                             "name":  "MonsterInsights",
+                                             "version":  "9.10.1"
+                                         },
+                                         {
+                                             "name":  "Google Analytics",
+                                             "version":  null
+                                         }
+                                     ],
+                       "Blogs":  [
+                                     {
+                                         "name":  "WordPress",
+                                         "version":  null
+                                     }
+                                 ],
+                       "CMS":  [
+                                   {
+                                       "name":  "WordPress",
+                                       "version":  "1.0.0"
+                                   },
+                                   {
+                                       "name":  "WordPress",
+                                       "version":  null
+                                   }
+                               ],
+                       "Content management systems":  [
+                                                          {
+                                                              "name":  "WordPress",
+                                                              "version":  "1.0.0"
+                                                          }
+                                                      ],
+                       "Databases":  [
+                                         {
+                                             "name":  "MySQL",
+                                             "version":  null
+                                         }
+                                     ],
+                       "Font scripts":  [
+                                            {
+                                                "name":  "Google Font API",
+                                                "version":  null
+                                            },
+                                            {
+                                                "name":  "Twitter Emoji (Twemoji)",
+                                                "version":  null
+                                            },
+                                            {
+                                                "name":  "Font Awesome",
+                                                "version":  null
+                                            }
+                                        ],
+                       "JavaScript frameworks":  [
+                                                     {
+                                                         "name":  "Svelte",
+                                                         "version":  null
+                                                     }
+                                                 ],
+                       "JavaScript libraries":  [
+                                                    {
+                                                        "name":  "Moment.js",
+                                                        "version":  "2.29.4"
+                                                    },
+                                                    {
+                                                        "name":  "Marked",
+                                                        "version":  null
+                                                    },
+                                                    {
+                                                        "name":  "jQuery UI",
+                                                        "version":  "1.13.3"
+                                                    },
+                                                    {
+                                                        "name":  "jQuery Migrate",
+                                                        "version":  "3.4.1"
+                                                    },
+                                                    {
+                                                        "name":  "jQuery",
+                                                        "version":  "3.7.1"
+                                                    },
+                                                    {
+                                                        "name":  "core-js",
+                                                        "version":  "3.43.0"
+                                                    }
+                                                ],
+                       "Live chat":  [
+                                         {
+                                             "name":  "WhatsApp Business Chat",
+                                             "version":  null
+                                         }
+                                     ],
+                       "Marketing automation":  [
+                                                    {
+                                                        "name":  "OneSignal",
+                                                        "version":  null
+                                                    }
+                                                ],
+                       "Miscellaneous":  [
+                                             {
+                                                 "name":  "Swiper Slider",
+                                                 "version":  null
+                                             }
+                                         ],
+                       "Page builders":  [
+                                             {
+                                                 "name":  "Elementor",
+                                                 "version":  "3.33.4"
+                                             }
+                                         ],
+                       "Performance":  [
+                                           {
+                                               "name":  "Priority Hints",
+                                               "version":  null
+                                           }
+                                       ],
+                       "Programming languages":  [
+                                                     {
+                                                         "name":  "PHP",
+                                                         "version":  null
+                                                     }
+                                                 ],
+                       "Progressive web apps":  [
+                                                    {
+                                                        "name":  "Progressive Web App",
+                                                        "version":  null
+                                                    }
+                                                ],
+                       "Reverse proxies":  [
+                                               {
+                                                   "name":  "Nginx",
+                                                   "version":  "1.22.1"
+                                               }
+                                           ],
+                       "SEO":  [
+                                   {
+                                       "name":  "Yoast SEO",
+                                       "version":  "25.5"
+                                   }
+                               ],
+                       "Security":  [
+                                        {
+                                            "name":  "HSTS",
+                                            "version":  null
+                                        }
+                                    ],
+                       "Tag managers":  [
+                                            {
+                                                "name":  "Google Tag Manager",
+                                                "version":  null
+                                            }
+                                        ],
+                       "Web servers":  [
+                                           {
+                                               "name":  "Nginx",
+                                               "version":  "1.22.1"
+                                           }
+                                       ],
+                       "WordPress plugins":  [
+                                                 {
+                                                     "name":  "Elementor",
+                                                     "version":  "5.44.0"
+                                                 },
+                                                 {
+                                                     "name":  "Draftpress HFCM",
+                                                     "version":  null
+                                                 },
+                                                 {
+                                                     "name":  "Essential Addons for Elementor",
+                                                     "version":  null
+                                                 },
+                                                 {
+                                                     "name":  "Elementor Header \u0026 Footer Builder",
+                                                     "version":  null
+                                                 },
+                                                 {
+                                                     "name":  "Yoast SEO",
+                                                     "version":  "25.5"
+                                                 },
+                                                 {
+                                                     "name":  "Site Kit",
+                                                     "version":  "1.167.0"
+                                                 },
+                                                 {
+                                                     "name":  "MonsterInsights",
+                                                     "version":  "9.10.1"
+                                                 }
+                                             ],
+                       "WordPress themes":  [
+                                                {
+                                                    "name":  "Elementor",
+                                                    "version":  "5.44.0"
+                                                },
+                                                {
+                                                    "name":  "Hello Elementor Theme",
+                                                    "version":  "3.1.1"
+                                                }
+                                            ]
+                   },
+    "domain":  "unair.ac.id",
+    "duration":  16.16,
+    "engine":  "unified",
+    "finished_at":  1765512532.0,
+    "payload_bytes":  11212,
+    "phases":  {
+                   "heuristic_ms":  1457,
+                   "micro_ms":  10634,
+                   "py_local_ms":  2007,
+                   "synthetic_ms":  691
+               },
+    "raw":  {
+                "extras":  {
+                               "headers":  [
+                                               {
+                                                   "access-control-allow-headers":  "Content-Type, Authorization",
+                                                   "access-control-allow-methods":  "GET,POST",
+                                                   "connection":  "keep-alive",
+                                                   "content-length":  "362042",
+                                                   "content-security-policy":  "upgrade-insecure-requests",
+                                                   "content-type":  "text/html; charset=UTF-8",
+                                                   "cross-origin-embedder-policy":  "unsafe-none; report-to=\u0027default\u0027",
+                                                   "cross-origin-embedder-policy-report-only":  "unsafe-none; report-to=\u0027default\u0027",
+                                                   "cross-origin-opener-policy":  "unsafe-none",
+                                                   "cross-origin-opener-policy-report-only":  "unsafe-none; report-to=\u0027default\u0027",
+                                                   "cross-origin-resource-policy":  "cross-origin",
+                                                   "date":  "Fri, 12 Dec 2025 04:08:39 GMT",
+                                                   "link":  "\u003chttps://unair.ac.id/\u003e; rel=shortlink",
+                                                   "permissions-policy":  "interest-cohort=()",
+                                                   "referrer-policy":  "no-referrer-when-downgrade",
+                                                   "server":  "nginx/1.22.1",
+                                                   "strict-transport-security":  "max-age=31536000;  includeSubDomains ",
+                                                   "vary":  "Accept-Encoding",
+                                                   "x-content-security-policy":  "default-src \u0027self\u0027; img-src *; media-src * data:;",
+                                                   "x-content-type-options":  "nosniff",
+                                                   "x-frame-options":  "SAMEORIGIN",
+                                                   "x-permitted-cross-domain-policies":  "none",
+                                                   "x-xss-protection":  "1; mode=block"
+                                               }
+                                           ],
+                               "links":  [
+                                             "http://gmpg.org/xfn/11",
+                                             "https://unair.ac.id/xmlrpc.php",
+                                             "/superpwa-manifest.json",
+                                             "/superpwa-manifest.json",
+                                             "https://unair.ac.id/wp-content/uploads/2023/11/Logo-Branding-UNAIR-biru.png",
+                                             "https://unair.ac.id/wp-content/uploads/2023/11/Logo-Branding-UNAIR-biru.png",
+                                             "https://unair.ac.id/",
+                                             "https://unair.ac.id/en/",
+                                             "https://unair.ac.id/",
+                                             "https://unair.ac.id/",
+                                             "//www.googletagmanager.com",
+                                             "//fonts.googleapis.com",
+                                             "https://unair.ac.id/feed/",
+                                             "https://unair.ac.id/comments/feed/",
+                                             "https://unair.ac.id/wp-content/plugins/unair-chatbot/assets/index-CDN7IEcD.css?ver=1.0.0",
+                                             "https://unair.ac.id/wp-content/plugins/wp-event-manager/assets/css/frontend.min.css?ver=ac2035366515bd6c4ca75d3eb30a75c7",
+                                             "https://unair.ac.id/wp-content/plugins/wp-event-manager/assets/js/jquery-ui-daterangepicker/jquery.comiseo.daterangepicker.css?ver=ac2035366515bd6c4ca75d3eb30a75c7",
+                                             "https://unair.ac.id/wp-content/plugins/wp-event-manager/assets/js/jquery-ui-daterangepicker/styles.css?ver=ac2035366515bd6c4ca75d3eb30a75c7",
+                                             "https://unair.ac.id/wp-content/plugins/wp-event-manager/assets/js/jquery-ui/jquery-ui.css?ver=ac2035366515bd6c4ca75d3eb30a75c7",
+                                             "https://unair.ac.id/wp-content/plugins/wp-event-manager/assets/css/wpem-grid.min.css?ver=ac2035366515bd6c4ca75d3eb30a75c7",
+                                             "https://unair.ac.id/wp-content/plugins/wp-event-manager/assets/fonts/style.css?ver=ac2035366515bd6c4ca75d3eb30a75c7",
+                                             "https://unair.ac.id/wp-content/plugins/header-footer-elementor/inc/widgets-css/frontend.css?ver=2.7.0",
+                                             "https://unair.ac.id/wp-content/plugins/simple-floating-menu/assets/css/fontawesome-6.3.0.css?ver=1.3.2",
+                                             "https://unair.ac.id/wp-content/plugins/simple-floating-menu/assets/css/eleganticons.css?ver=1.3.2",
+                                             "https://unair.ac.id/wp-content/plugins/simple-floating-menu/assets/css/essentialicon.css?ver=1.3.2",
+                                             "https://unair.ac.id/wp-content/plugins/simple-floating-menu/assets/css/icofont.css?ver=1.3.2",
+                                             "https://unair.ac.id/wp-content/plugins/simple-floating-menu/assets/css/materialdesignicons.css?ver=1.3.2",
+                                             "https://unair.ac.id/wp-content/plugins/simple-floating-menu/assets/css/style.css?ver=1.3.2",
+                                             "https://fonts.googleapis.com/css?family=Open+Sans%3A300%2C400%2C500%2C600%2C700%2C800%2C300i%2C400i%2C500i%2C600i%2C700i%2C800i\u0026#038;subset=latin%2Clatin-ext\u0026#038;ver=1.3.2",
+                                             "https://unair.ac.id/wp-content/plugins/wp-event-manager/assets/js/jquery-timepicker/jquery.timepicker.min.css?ver=ac2035366515bd6c4ca75d3eb30a75c7",
+                                             "https://unair.ac.id/wp-content/plugins/sitepress-multilingual-cms/templates/language-switchers/legacy-dropdown/style.min.css?ver=1",
+                                             "https://unair.ac.id/wp-content/plugins/header-footer-elementor/assets/css/header-footer-elementor.css?ver=2.7.0",
+                                             "https://unair.ac.id/wp-content/themes/hello-elementor/theme.min.css?ver=3.1.1",
+                                             "https://unair.ac.id/wp-content/uploads/elementor/css/custom-frontend.min.css?ver=1765358816",
+                                             "https://unair.ac.id/wp-content/plugins/essential-addons-for-elementor-lite/assets/front-end/css/view/general.min.css?ver=6.5.3",
+                                             "https://unair.ac.id/wp-content/uploads/essential-addons-elementor/eael-323635.css?ver=1764060690",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/eicons/css/elementor-icons.min.css?ver=5.44.0",
+                                             "https://unair.ac.id/wp-content/uploads/elementor/css/post-7.css?ver=1765358812",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/font-awesome/css/all.min.css?ver=3.33.4",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/font-awesome/css/v4-shims.min.css?ver=3.33.4",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/animations/styles/fadeInUp.min.css?ver=3.33.4",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/swiper/v8/css/swiper.min.css?ver=8.4.5",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/css/conditionals/e-swiper.min.css?ver=3.33.4",
+                                             "https://unair.ac.id/wp-content/uploads/elementor/css/custom-pro-widget-slides.min.css?ver=1765358855",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/animations/styles/e-animation-pulse-grow.min.css?ver=3.33.4",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/css/widget-heading.min.css?ver=3.33.4",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/css/widget-image.min.css?ver=3.33.4",
+                                             "https://unair.ac.id/wp-content/plugins/elementor-pro/assets/css/modules/sticky.min.css?ver=3.33.2",
+                                             "https://unair.ac.id/wp-content/plugins/elementor-pro/assets/css/modules/motion-fx.min.css?ver=3.33.2",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/animations/styles/e-animation-grow.min.css?ver=3.33.4",
+                                             "https://unair.ac.id/wp-content/plugins/elementor-pro/assets/css/widget-search-form.min.css?ver=3.33.2",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/font-awesome/css/fontawesome.min.css?ver=5.15.3",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/font-awesome/css/solid.min.css?ver=5.15.3",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/css/conditionals/shapes.min.css?ver=3.33.4",
+                                             "https://unair.ac.id/wp-content/uploads/elementor/css/custom-widget-tabs.min.css?ver=1765358829",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/css/widget-spacer.min.css?ver=3.33.4",
+                                             "https://unair.ac.id/wp-content/plugins/elementor-pro/assets/css/widget-posts.min.css?ver=3.33.2",
+                                             "https://unair.ac.id/wp-content/uploads/elementor/css/custom-pro-widget-testimonial-carousel.min.css?ver=3.33.2",
+                                             "https://unair.ac.id/wp-content/plugins/elementor-pro/assets/css/widget-carousel-module-base.min.css?ver=3.33.2",
+                                             "https://unair.ac.id/wp-content/uploads/elementor/css/post-323635.css?ver=1765358869",
+                                             "https://unair.ac.id/wp-content/uploads/elementor/css/post-1154.css?ver=1765358813",
+                                             "https://unair.ac.id/wp-content/uploads/elementor/css/post-1055.css?ver=1765358813",
+                                             "https://unair.ac.id/wp-content/themes/hello-elementor/style.min.css?ver=3.1.1",
+                                             "https://unair.ac.id/wp-content/themes/hello-elementor/header-footer.min.css?ver=3.1.1",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/css/widget-divider.min.css?ver=3.33.4",
+                                             "https://unair.ac.id/wp-content/uploads/elementor/css/custom-pro-widget-nav-menu.min.css?ver=1765358858",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/animations/styles/fadeInRight.min.css?ver=3.33.4",
+                                             "https://unair.ac.id/wp-content/plugins/elementor-pro/assets/css/conditionals/popup.min.css?ver=3.33.2",
+                                             "https://unair.ac.id/wp-content/uploads/elementor/css/post-122318.css?ver=1765358813",
+                                             "https://unair.ac.id/wp-content/tablepress-combined.min.css?ver=42",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/eicons/css/elementor-icons.min.css?ver=5.34.0",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/css/widget-icon-list.min.css?ver=3.24.3",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/css/widget-social-icons.min.css?ver=3.24.0",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/font-awesome/css/brands.css?ver=5.15.3",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/font-awesome/css/fontawesome.css?ver=5.15.3",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/font-awesome/css/solid.css?ver=5.15.3",
+                                             "https://unair.ac.id/wp-content/plugins/elementor-pro/assets/css/widget-blockquote.min.css?ver=3.25.0",
+                                             "https://unair.ac.id/wp-content/plugins/elementor-pro/assets/css/widget-mega-menu.min.css?ver=3.26.2",
+                                             "https://unair.ac.id/wp-content/plugins/elementor-pro/assets/css/widget-nav-menu.min.css?ver=3.26.0",
+                                             "https://unair.ac.id/wp-content/uploads/elementor/google-fonts/css/montserrat.css?ver=1742285495",
+                                             "https://unair.ac.id/wp-content/uploads/elementor/google-fonts/css/robotoslab.css?ver=1742285518",
+                                             "https://unair.ac.id/wp-content/uploads/elementor/google-fonts/css/roboto.css?ver=1742285271",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/font-awesome/css/brands.min.css?ver=5.15.3",
+                                             "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/font-awesome/css/regular.min.css?ver=5.15.3",
+                                             "https://unair.ac.id/wp-json/",
+                                             "https://unair.ac.id/wp-json/wp/v2/pages/323635",
+                                             "https://unair.ac.id/xmlrpc.php?rsd",
+                                             "https://unair.ac.id/",
+                                             "https://unair.ac.id/wp-json/oembed/1.0/embed?url=https%3A%2F%2Funair.ac.id%2F",
+                                             "https://unair.ac.id/wp-json/oembed/1.0/embed?url=https%3A%2F%2Funair.ac.id%2F\u0026#038;format=xml",
+                                             "https://unair.ac.id/wp-content/uploads/2025/07/cropped-UNAIR_SEAL_LOGO_2025_RGB-01-scaled-1-32x32.webp",
+                                             "https://unair.ac.id/wp-content/uploads/2025/07/cropped-UNAIR_SEAL_LOGO_2025_RGB-01-scaled-1-192x192.webp"
+                                         ],
+                               "meta":  [
+                                            {
+                                                "apple-mobile-web-app-capable":  "",
+                                                "apple-mobile-web-app-status-bar-style":  "",
+                                                "apple-mobile-web-app-title":  "",
+                                                "apple-touch-fullscreen":  "",
+                                                "application-name":  "",
+                                                "article:modified_time":  "",
+                                                "article:publisher":  "",
+                                                "description":  "",
+                                                "generator":  "",
+                                                "google-site-verification":  "",
+                                                "mobile-web-app-capable":  "",
+                                                "msapplication-tileimage":  "",
+                                                "og:description":  "",
+                                                "og:image":  "",
+                                                "og:image:height":  "",
+                                                "og:image:type":  "",
+                                                "og:image:width":  "",
+                                                "og:locale":  "",
+                                                "og:site_name":  "",
+                                                "og:title":  "",
+                                                "og:type":  "",
+                                                "og:url":  "",
+                                                "robots":  "",
+                                                "theme-color":  "",
+                                                "twitter:card":  "",
+                                                "twitter:site":  "",
+                                                "viewport":  ""
+                                            }
+                                        ],
+                               "scripts":  [
+                                               "//www.googletagmanager.com/gtag/js?id=G-DG8ZLQTRPR",
+                                               "https://unair.ac.id/wp-includes/js/jquery/jquery.min.js?ver=3.7.1",
+                                               "https://unair.ac.id/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1",
+                                               "https://unair.ac.id/wp-content/plugins/google-analytics-for-wordpress/assets/js/frontend-gtag.min.js?ver=9.10.1",
+                                               "https://unair.ac.id/wp-content/plugins/sitepress-multilingual-cms/templates/language-switchers/legacy-dropdown/script.min.js?ver=1",
+                                               "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/font-awesome/js/v4-shims.min.js?ver=3.33.4",
+                                               "https://www.googletagmanager.com/gtag/js?id=GT-NBPJKBK",
+                                               "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js",
+                                               "https://widget.komdigi.go.id/gpr-widget-kominfo.min.js"
+                                           ],
+                               "url":  [
+                                           "https://unair.ac.id/"
+                                       ]
+                           },
+                "technologies":  [
+                                     {
+                                         "categories":  [
+
+                                                        ],
+                                         "confidence":  80,
+                                         "name":  "jQuery",
+                                         "version":  null
+                                     },
+                                     {
+                                         "categories":  [
+
+                                                        ],
+                                         "confidence":  60,
+                                         "name":  "Font Awesome",
+                                         "version":  null
+                                     }
+                                 ]
+            },
+    "scan_mode":  "fast",
+    "started_at":  1765512532.0,
+    "technologies":  [
+                         {
+                             "aliases":  [
+
+                                         ],
+                             "audit":  {
+                                           "difference":  "minor",
+                                           "latest":  "1.27.1",
+                                           "status":  "outdated"
+                                       },
+                             "canonical_name":  "Nginx",
+                             "categories":  [
+                                                "Web servers",
+                                                "Reverse proxies"
+                                            ],
+                             "confidence":  35,
+                             "evidence":  [
+
+                                          ],
+                             "name":  "Nginx",
+                             "version":  "1.22.1"
+                         },
+                         {
+                             "categories":  [
+                                                "Security"
+                                            ],
+                             "confidence":  20,
+                             "evidence":  [
+
+                                          ],
+                             "name":  "HSTS",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "Progressive web apps"
+                                            ],
+                             "confidence":  30,
+                             "evidence":  [
+
+                                          ],
+                             "labels":  [
+                                            "manifest-link"
+                                        ],
+                             "name":  "Progressive Web App",
+                             "version":  null
+                         },
+                         {
+                             "alt_versions":  [
+                                                  "1",
+                                                  "1.0.0",
+                                                  "1.13.3",
+                                                  "1.2.1",
+                                                  "1.3.2",
+                                                  "1742285271",
+                                                  "1742285495",
+                                                  "1742285518",
+                                                  "1752225652",
+                                                  "1764060690",
+                                                  "1765358812",
+                                                  "1765358813",
+                                                  "1765358815",
+                                                  "1765358816",
+                                                  "1765358817",
+                                                  "1765358829",
+                                                  "1765358855",
+                                                  "1765358858",
+                                                  "1765358869",
+                                                  "2.2.40",
+                                                  "2.29.4",
+                                                  "2.7.0",
+                                                  "2810c76e705dd1a53b18",
+                                                  "3.1.1",
+                                                  "3.2.2",
+                                                  "3.24.0",
+                                                  "3.24.3",
+                                                  "3.25.0",
+                                                  "3.26.0",
+                                                  "3.26.2",
+                                                  "3.33.2",
+                                                  "3.33.4",
+                                                  "3.4.1",
+                                                  "3.7.1",
+                                                  "42",
+                                                  "5.0.0",
+                                                  "5.15.3",
+                                                  "5.34.0",
+                                                  "5.44.0",
+                                                  "5e580eb46a90c2b997e6",
+                                                  "6.5.3",
+                                                  "8.4.5",
+                                                  "9.10.1"
+                                              ],
+                             "categories":  [
+                                                "Content management systems",
+                                                "CMS"
+                                            ],
+                             "confidence":  45,
+                             "evidence":  [
+
+                                          ],
+                             "name":  "WordPress Multilingual Plugin (WPML)",
+                             "version":  null
+                         },
+                         {
+                             "alt_versions":  [
+                                                  "1.2.1",
+                                                  "3.24.0",
+                                                  "3.24.3",
+                                                  "3.25.0",
+                                                  "3.26.0",
+                                                  "3.26.2",
+                                                  "3.33.2",
+                                                  "3.33.4",
+                                                  "5.15.3",
+                                                  "5.34.0",
+                                                  "5.44.0",
+                                                  "8.4.5"
+                                              ],
+                             "categories":  [
+                                                "WordPress plugins",
+                                                "WordPress themes"
+                                            ],
+                             "confidence":  100,
+                             "evidence":  [
+
+                                          ],
+                             "name":  "Elementor",
+                             "version":  "5.44.0"
+                         },
+                         {
+                             "aliases":  [
+
+                                         ],
+                             "audit":  {
+                                           "difference":  "major",
+                                           "latest":  "3.7.1",
+                                           "status":  "outdated"
+                                       },
+                             "canonical_name":  "jQuery",
+                             "categories":  [
+
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+
+                                                                  ],
+                                                   "confidence":  80,
+                                                   "name":  "jQuery",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "kind":  "asset",
+                                                  "snippet":  "\u003cscript src=\"https://unair.ac.id/wp-includes/js/jquery/jquery.min.js?ver=3.7.1\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "extras.scripts",
+                                                  "url":  "https://unair.ac.id/wp-includes/js/jquery/jquery.min.js?ver=3.7.1"
+                                              },
+                                              {
+                                                  "kind":  "asset",
+                                                  "snippet":  "\u003cscript src=\"https://unair.ac.id/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "extras.scripts",
+                                                  "url":  "https://unair.ac.id/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "implies":  [
+                                                                  "jQuery"
+                                                              ],
+                                                  "kind":  "pattern",
+                                                  "match":  "1.13.3",
+                                                  "pattern":  "^(.{1,250})$",
+                                                  "source":  "js",
+                                                  "value":  "1.13.3",
+                                                  "version":  "\\1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "implies":  [
+                                                                  "jQuery"
+                                                              ],
+                                                  "kind":  "pattern",
+                                                  "match":  "jquery-ui-daterangepicker/jquery.comiseo.daterangepicker.js",
+                                                  "pattern":  "jquery-ui.{0,250}\\.js",
+                                                  "snippet":  "\u003cscript src=\"https://unair.ac.id/wp-content/plugins/wp-event-manager/assets/js/jquery-ui-daterangepicker/jquery.comiseo.daterangepicker.js?ver=3.2.2\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://unair.ac.id/wp-content/plugins/wp-event-manager/assets/js/jquery-ui-daterangepicker/jquery.comiseo.daterangepicker.js?ver=3.2.2",
+                                                  "value":  "https://unair.ac.id/wp-content/plugins/wp-event-manager/assets/js/jquery-ui-daterangepicker/jquery.comiseo.daterangepicker.js?ver=3.2.2"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "implies":  [
+                                                                  "jQuery"
+                                                              ],
+                                                  "kind":  "js",
+                                                  "match":  "1.13.3",
+                                                  "pattern":  "^(.{1,250})$",
+                                                  "source":  "js",
+                                                  "value":  "1.13.3",
+                                                  "version":  "\\1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "implies":  [
+                                                                  "jQuery"
+                                                              ],
+                                                  "kind":  "scriptSrc",
+                                                  "match":  "jquery-ui-daterangepicker/jquery.comiseo.daterangepicker.js",
+                                                  "pattern":  "jquery-ui.{0,250}\\.js",
+                                                  "snippet":  "\u003cscript src=\"https://unair.ac.id/wp-content/plugins/wp-event-manager/assets/js/jquery-ui-daterangepicker/jquery.comiseo.daterangepicker.js?ver=3.2.2\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://unair.ac.id/wp-content/plugins/wp-event-manager/assets/js/jquery-ui-daterangepicker/jquery.comiseo.daterangepicker.js?ver=3.2.2",
+                                                  "value":  "https://unair.ac.id/wp-content/plugins/wp-event-manager/assets/js/jquery-ui-daterangepicker/jquery.comiseo.daterangepicker.js?ver=3.2.2"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "implies":  [
+                                                                  "jQuery"
+                                                              ],
+                                                  "kind":  "pattern",
+                                                  "match":  "3.4.1",
+                                                  "pattern":  "([\\d.]{1,250})",
+                                                  "source":  "js",
+                                                  "value":  "3.4.1",
+                                                  "version":  "\\1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "implies":  [
+                                                                  "jQuery"
+                                                              ],
+                                                  "kind":  "pattern",
+                                                  "source":  "js"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "implies":  [
+                                                                  "jQuery"
+                                                              ],
+                                                  "kind":  "pattern",
+                                                  "match":  "jquery-migrate.min.js?ver=3.4.1",
+                                                  "pattern":  "jquery[.-]migrate(?:-([\\d.]{1,250}))?(?:\\.min)?\\.js(?:\\?ver=([\\d.]{1,250}))?",
+                                                  "snippet":  "\u003cscript src=\"https://unair.ac.id/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://unair.ac.id/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1",
+                                                  "value":  "https://unair.ac.id/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1",
+                                                  "version":  "\\1?\\1:\\2"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "implies":  [
+                                                                  "jQuery"
+                                                              ],
+                                                  "kind":  "js",
+                                                  "match":  "3.4.1",
+                                                  "pattern":  "([\\d.]{1,250})",
+                                                  "source":  "js",
+                                                  "value":  "3.4.1",
+                                                  "version":  "\\1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "implies":  [
+                                                                  "jQuery"
+                                                              ],
+                                                  "kind":  "scriptSrc",
+                                                  "match":  "jquery-migrate.min.js?ver=3.4.1",
+                                                  "pattern":  "jquery[.-]migrate(?:-([\\d.]{1,250}))?(?:\\.min)?\\.js(?:\\?ver=([\\d.]{1,250}))?",
+                                                  "snippet":  "\u003cscript src=\"https://unair.ac.id/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://unair.ac.id/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1",
+                                                  "value":  "https://unair.ac.id/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1",
+                                                  "version":  "\\1?\\1:\\2"
+                                              }
+                                          ],
+                             "name":  "jQuery",
+                             "version":  "1.13.3"
+                         },
+                         {
+                             "categories":  [
+
+                                            ],
+                             "confidence":  60,
+                             "detection_raw":  {
+                                                   "categories":  [
+
+                                                                  ],
+                                                   "confidence":  60,
+                                                   "name":  "Font Awesome",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+
+                                          ],
+                             "name":  "Font Awesome",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "Databases"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Databases"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+
+                                                                ],
+                                                   "name":  "MySQL",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+
+                                          ],
+                             "name":  "MySQL",
+                             "version":  null
+                         },
+                         {
+                             "aliases":  [
+
+                                         ],
+                             "canonical_name":  "PHP",
+                             "categories":  [
+                                                "Programming languages"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Programming languages"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+
+                                                                ],
+                                                   "name":  "PHP",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+
+                                          ],
+                             "name":  "PHP",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "WordPress plugins"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "WordPress plugins"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "\u003c!-- HFCM by 99 Robots",
+                                                                        "pattern":  "\u003c!--[^\u003e]{0,250}HFCM\\sby\\s99\\sRobots",
+                                                                        "source":  "html",
+                                                                        "value":  null,
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "Draftpress HFCM",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "\u003c!-- HFCM by 99 Robots",
+                                                  "pattern":  "\u003c!--[^\u003e]{0,250}HFCM\\sby\\s99\\sRobots",
+                                                  "source":  "html"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "html",
+                                                  "match":  "\u003c!-- HFCM by 99 Robots",
+                                                  "pattern":  "\u003c!--[^\u003e]{0,250}HFCM\\sby\\s99\\sRobots",
+                                                  "source":  "html"
+                                              }
+                                          ],
+                             "name":  "Draftpress HFCM",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "SEO",
+                                                "WordPress plugins"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "SEO",
+                                                                      "WordPress plugins"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "implies":  "WordPress",
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "dom",
+                                                                        "value":  "yoast-schema-graph",
+                                                                        "version":  null
+                                                                    },
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "implies":  "WordPress",
+                                                                        "kind":  "pattern",
+                                                                        "match":  "\u003c!-- This site is optimized with the Yoast SEO plugin v25.5 -",
+                                                                        "pattern":  "\u003c!-- This site is optimized with the Yoast (?:WordPress )?SEO plugin v([^\\s]{1,250}) -",
+                                                                        "source":  "html",
+                                                                        "value":  null,
+                                                                        "version":  "\\1"
+                                                                    }
+                                                                ],
+                                                   "name":  "Yoast SEO",
+                                                   "version":  "25.5"
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "implies":  [
+                                                                  "WordPress"
+                                                              ],
+                                                  "kind":  "pattern",
+                                                  "source":  "dom",
+                                                  "value":  "yoast-schema-graph"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "implies":  [
+                                                                  "WordPress"
+                                                              ],
+                                                  "kind":  "pattern",
+                                                  "match":  "\u003c!-- This site is optimized with the Yoast SEO plugin v25.5 -",
+                                                  "pattern":  "\u003c!-- This site is optimized with the Yoast (?:WordPress )?SEO plugin v([^\\s]{1,250}) -",
+                                                  "source":  "html",
+                                                  "version":  "\\1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "implies":  [
+                                                                  "WordPress"
+                                                              ],
+                                                  "kind":  "dom",
+                                                  "source":  "dom",
+                                                  "value":  "yoast-schema-graph"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "implies":  [
+                                                                  "WordPress"
+                                                              ],
+                                                  "kind":  "html",
+                                                  "match":  "\u003c!-- This site is optimized with the Yoast SEO plugin v25.5 -",
+                                                  "pattern":  "\u003c!-- This site is optimized with the Yoast (?:WordPress )?SEO plugin v([^\\s]{1,250}) -",
+                                                  "source":  "html",
+                                                  "version":  "\\1"
+                                              }
+                                          ],
+                             "name":  "Yoast SEO",
+                             "version":  "25.5"
+                         },
+                         {
+                             "categories":  [
+                                                "JavaScript frameworks"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "JavaScript frameworks"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "svelte-c701zt",
+                                                                        "pattern":  "svelte-\\w{1,250}",
+                                                                        "source":  "dom",
+                                                                        "value":  "tw:z-50 tw:flex tw:justify-end tw:fixed tw:bottom-0 tw:inset-x-0 tw:md:right-0 tw:pr-4 tw:md:pr-8 tw:pb-4 tw:md:pb-8 svelte-c701zt",
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "Svelte",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "svelte-c701zt",
+                                                  "pattern":  "svelte-\\w{1,250}",
+                                                  "source":  "dom",
+                                                  "value":  "tw:z-50 tw:flex tw:justify-end tw:fixed tw:bottom-0 tw:inset-x-0 tw:md:right-0 tw:pr-4 tw:md:pr-8 tw:pb-4 tw:md:pb-8 svelte-c701zt"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "dom",
+                                                  "match":  "svelte-c701zt",
+                                                  "pattern":  "svelte-\\w{1,250}",
+                                                  "source":  "dom",
+                                                  "value":  "tw:z-50 tw:flex tw:justify-end tw:fixed tw:bottom-0 tw:inset-x-0 tw:md:right-0 tw:pr-4 tw:md:pr-8 tw:pb-4 tw:md:pb-8 svelte-c701zt"
+                                              }
+                                          ],
+                             "name":  "Svelte",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "Analytics",
+                                                "WordPress plugins"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Analytics",
+                                                                      "WordPress plugins"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "Site Kit by Google 1.167.0",
+                                                                        "pattern":  "^Site Kit by Google ?([\\d.]{1,250})?",
+                                                                        "source":  "meta",
+                                                                        "value":  "Site Kit by Google 1.167.0",
+                                                                        "version":  "\\1"
+                                                                    }
+                                                                ],
+                                                   "name":  "Site Kit",
+                                                   "version":  "1.167.0"
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "Site Kit by Google 1.167.0",
+                                                  "pattern":  "^Site Kit by Google ?([\\d.]{1,250})?",
+                                                  "source":  "meta",
+                                                  "value":  "Site Kit by Google 1.167.0",
+                                                  "version":  "\\1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "meta",
+                                                  "match":  "Site Kit by Google 1.167.0",
+                                                  "pattern":  "^Site Kit by Google ?([\\d.]{1,250})?",
+                                                  "source":  "meta",
+                                                  "value":  "Site Kit by Google 1.167.0",
+                                                  "version":  "\\1"
+                                              }
+                                          ],
+                             "name":  "Site Kit",
+                             "version":  "1.167.0"
+                         },
+                         {
+                             "categories":  [
+                                                "WordPress plugins",
+                                                "Analytics"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "WordPress plugins",
+                                                                      "Analytics"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "js",
+                                                                        "value":  null,
+                                                                        "version":  null
+                                                                    },
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "/wp-content/plugins/google-analytics-for-wordpress/assets/js/frontend-gtag.min.js?ver=9.10.1",
+                                                                        "pattern":  "\\/wp-content\\/plugins\\/google-analytics-for-wordpress\\/.{1,250}\\.js(?:\\?ver=(\\d{1,250}(?:\\.\\d{1,250}){1,250}))?",
+                                                                        "snippet":  "\u003cscript src=\"https://unair.ac.id/wp-content/plugins/google-analytics-for-wordpress/assets/js/frontend-gtag.min.js?ver=9.10.1\" defer\u003e\u003c/script\u003e",
+                                                                        "source":  "scriptSrc",
+                                                                        "url":  "https://unair.ac.id/wp-content/plugins/google-analytics-for-wordpress/assets/js/frontend-gtag.min.js?ver=9.10.1",
+                                                                        "value":  "https://unair.ac.id/wp-content/plugins/google-analytics-for-wordpress/assets/js/frontend-gtag.min.js?ver=9.10.1",
+                                                                        "version":  "\\1"
+                                                                    }
+                                                                ],
+                                                   "name":  "MonsterInsights",
+                                                   "version":  "9.10.1"
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "/wp-content/plugins/google-analytics-for-wordpress/assets/js/frontend-gtag.min.js?ver=9.10.1",
+                                                  "pattern":  "\\/wp-content\\/plugins\\/google-analytics-for-wordpress\\/.{1,250}\\.js(?:\\?ver=(\\d{1,250}(?:\\.\\d{1,250}){1,250}))?",
+                                                  "snippet":  "\u003cscript src=\"https://unair.ac.id/wp-content/plugins/google-analytics-for-wordpress/assets/js/frontend-gtag.min.js?ver=9.10.1\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://unair.ac.id/wp-content/plugins/google-analytics-for-wordpress/assets/js/frontend-gtag.min.js?ver=9.10.1",
+                                                  "value":  "https://unair.ac.id/wp-content/plugins/google-analytics-for-wordpress/assets/js/frontend-gtag.min.js?ver=9.10.1",
+                                                  "version":  "\\1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "scriptSrc",
+                                                  "match":  "/wp-content/plugins/google-analytics-for-wordpress/assets/js/frontend-gtag.min.js?ver=9.10.1",
+                                                  "pattern":  "\\/wp-content\\/plugins\\/google-analytics-for-wordpress\\/.{1,250}\\.js(?:\\?ver=(\\d{1,250}(?:\\.\\d{1,250}){1,250}))?",
+                                                  "snippet":  "\u003cscript src=\"https://unair.ac.id/wp-content/plugins/google-analytics-for-wordpress/assets/js/frontend-gtag.min.js?ver=9.10.1\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://unair.ac.id/wp-content/plugins/google-analytics-for-wordpress/assets/js/frontend-gtag.min.js?ver=9.10.1",
+                                                  "value":  "https://unair.ac.id/wp-content/plugins/google-analytics-for-wordpress/assets/js/frontend-gtag.min.js?ver=9.10.1",
+                                                  "version":  "\\1"
+                                              }
+                                          ],
+                             "name":  "MonsterInsights",
+                             "version":  "9.10.1"
+                         },
+                         {
+                             "categories":  [
+                                                "Accessibility"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Accessibility"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "cdn.userway.org/widget.js",
+                                                                        "pattern":  "cdn\\.userway\\.org\\/widget.{0,250}\\.js",
+                                                                        "snippet":  "\u003cscript src=\"https://cdn.userway.org/widget.js\" defer\u003e\u003c/script\u003e",
+                                                                        "source":  "scriptSrc",
+                                                                        "url":  "https://cdn.userway.org/widget.js",
+                                                                        "value":  "https://cdn.userway.org/widget.js",
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "UserWay",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "cdn.userway.org/widget.js",
+                                                  "pattern":  "cdn\\.userway\\.org\\/widget.{0,250}\\.js",
+                                                  "snippet":  "\u003cscript src=\"https://cdn.userway.org/widget.js\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://cdn.userway.org/widget.js",
+                                                  "value":  "https://cdn.userway.org/widget.js"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "scriptSrc",
+                                                  "match":  "cdn.userway.org/widget.js",
+                                                  "pattern":  "cdn\\.userway\\.org\\/widget.{0,250}\\.js",
+                                                  "snippet":  "\u003cscript src=\"https://cdn.userway.org/widget.js\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://cdn.userway.org/widget.js",
+                                                  "value":  "https://cdn.userway.org/widget.js"
+                                              }
+                                          ],
+                             "name":  "UserWay",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "Font scripts"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Font scripts"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "\u003clink rel=\"dns-prefetch\" href=\"//fonts.googleapis.com",
+                                                                        "pattern":  "\u003clink[^\u003e]{0,250} href=[^\u003e]{1,250}fonts\\.(?:googleapis|google)\\.com",
+                                                                        "source":  "html",
+                                                                        "value":  null,
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "Google Font API",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "\u003clink rel=\"dns-prefetch\" href=\"//fonts.googleapis.com",
+                                                  "pattern":  "\u003clink[^\u003e]{0,250} href=[^\u003e]{1,250}fonts\\.(?:googleapis|google)\\.com",
+                                                  "source":  "html"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "html",
+                                                  "match":  "\u003clink rel=\"dns-prefetch\" href=\"//fonts.googleapis.com",
+                                                  "pattern":  "\u003clink[^\u003e]{0,250} href=[^\u003e]{1,250}fonts\\.(?:googleapis|google)\\.com",
+                                                  "source":  "html"
+                                              }
+                                          ],
+                             "name":  "Google Font API",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "Font scripts"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Font scripts"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "js",
+                                                                        "value":  null,
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "Twitter Emoji (Twemoji)",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+
+                                          ],
+                             "name":  "Twitter Emoji (Twemoji)",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "Marketing automation",
+                                                "A/B Testing"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Marketing automation",
+                                                                      "A/B Testing"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "js",
+                                                                        "value":  null,
+                                                                        "version":  null
+                                                                    },
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "cdn.onesignal.com",
+                                                                        "pattern":  "cdn\\.onesignal\\.com",
+                                                                        "snippet":  "\u003cscript src=\"https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js\" defer\u003e\u003c/script\u003e",
+                                                                        "source":  "scriptSrc",
+                                                                        "url":  "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js",
+                                                                        "value":  "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js",
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "OneSignal",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "cdn.onesignal.com",
+                                                  "pattern":  "cdn\\.onesignal\\.com",
+                                                  "snippet":  "\u003cscript src=\"https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js",
+                                                  "value":  "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "scriptSrc",
+                                                  "match":  "cdn.onesignal.com",
+                                                  "pattern":  "cdn\\.onesignal\\.com",
+                                                  "snippet":  "\u003cscript src=\"https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js",
+                                                  "value":  "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
+                                              }
+                                          ],
+                             "name":  "OneSignal",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "JavaScript libraries"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "JavaScript libraries"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "js",
+                                                                        "value":  null,
+                                                                        "version":  null
+                                                                    },
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "2.29.4",
+                                                                        "pattern":  "^(.{1,250})$",
+                                                                        "source":  "js",
+                                                                        "value":  "2.29.4",
+                                                                        "version":  "\\1"
+                                                                    },
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "moment.min.js",
+                                                                        "pattern":  "moment(?:\\.min)?\\.js",
+                                                                        "snippet":  "\u003cscript src=\"https://unair.ac.id/wp-includes/js/dist/vendor/moment.min.js?ver=2.29.4\" defer\u003e\u003c/script\u003e",
+                                                                        "source":  "scriptSrc",
+                                                                        "url":  "https://unair.ac.id/wp-includes/js/dist/vendor/moment.min.js?ver=2.29.4",
+                                                                        "value":  "https://unair.ac.id/wp-includes/js/dist/vendor/moment.min.js?ver=2.29.4",
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "Moment.js",
+                                                   "version":  "2.29.4"
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "2.29.4",
+                                                  "pattern":  "^(.{1,250})$",
+                                                  "source":  "js",
+                                                  "value":  "2.29.4",
+                                                  "version":  "\\1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "moment.min.js",
+                                                  "pattern":  "moment(?:\\.min)?\\.js",
+                                                  "snippet":  "\u003cscript src=\"https://unair.ac.id/wp-includes/js/dist/vendor/moment.min.js?ver=2.29.4\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://unair.ac.id/wp-includes/js/dist/vendor/moment.min.js?ver=2.29.4",
+                                                  "value":  "https://unair.ac.id/wp-includes/js/dist/vendor/moment.min.js?ver=2.29.4"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "js",
+                                                  "match":  "2.29.4",
+                                                  "pattern":  "^(.{1,250})$",
+                                                  "source":  "js",
+                                                  "value":  "2.29.4",
+                                                  "version":  "\\1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "scriptSrc",
+                                                  "match":  "moment.min.js",
+                                                  "pattern":  "moment(?:\\.min)?\\.js",
+                                                  "snippet":  "\u003cscript src=\"https://unair.ac.id/wp-includes/js/dist/vendor/moment.min.js?ver=2.29.4\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://unair.ac.id/wp-includes/js/dist/vendor/moment.min.js?ver=2.29.4",
+                                                  "value":  "https://unair.ac.id/wp-includes/js/dist/vendor/moment.min.js?ver=2.29.4"
+                                              }
+                                          ],
+                             "name":  "Moment.js",
+                             "version":  "2.29.4"
+                         },
+                         {
+                             "categories":  [
+                                                "JavaScript libraries"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "JavaScript libraries"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "js",
+                                                                        "value":  null,
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "Marked",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+
+                                          ],
+                             "name":  "Marked",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "Tag managers"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Tag managers"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "js",
+                                                                        "value":  null,
+                                                                        "version":  null
+                                                                    },
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "googletagmanager.com/ns.html?id=GTM-P8SBTW7\"\nheight=\"0\" width=\"0\" style=\"display:none;visibility:hidden\"\u003e\u003c/iframe\u003e",
+                                                                        "pattern":  "googletagmanager\\.com\\/ns\\.html[^\u003e]{1,250}\u003e\u003c\\/iframe\u003e",
+                                                                        "source":  "html",
+                                                                        "value":  null,
+                                                                        "version":  null
+                                                                    },
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "\u003c!-- Google Tag Manager --\u003e",
+                                                                        "pattern":  "\u003c!-- (?:End )?Google Tag Manager --\u003e",
+                                                                        "source":  "html",
+                                                                        "value":  null,
+                                                                        "version":  null
+                                                                    },
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "googletagmanager.com/gtm.js",
+                                                                        "pattern":  "googletagmanager\\.com\\/gtm\\.js",
+                                                                        "snippet":  "\u003cscript src=\"https://www.googletagmanager.com/gtm.js?id=GTM-P8SBTW7\" defer\u003e\u003c/script\u003e",
+                                                                        "source":  "scriptSrc",
+                                                                        "url":  "https://www.googletagmanager.com/gtm.js?id=GTM-P8SBTW7",
+                                                                        "value":  "https://www.googletagmanager.com/gtm.js?id=GTM-P8SBTW7",
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "Google Tag Manager",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "googletagmanager.com/ns.html?id=GTM-P8SBTW7\"\nheight=\"0\" width=\"0\" style=\"display:none;visibility:hidden\"\u003e\u003c/iframe\u003e",
+                                                  "pattern":  "googletagmanager\\.com\\/ns\\.html[^\u003e]{1,250}\u003e\u003c\\/iframe\u003e",
+                                                  "source":  "html"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "\u003c!-- Google Tag Manager --\u003e",
+                                                  "pattern":  "\u003c!-- (?:End )?Google Tag Manager --\u003e",
+                                                  "source":  "html"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "googletagmanager.com/gtm.js",
+                                                  "pattern":  "googletagmanager\\.com\\/gtm\\.js",
+                                                  "snippet":  "\u003cscript src=\"https://www.googletagmanager.com/gtm.js?id=GTM-P8SBTW7\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://www.googletagmanager.com/gtm.js?id=GTM-P8SBTW7",
+                                                  "value":  "https://www.googletagmanager.com/gtm.js?id=GTM-P8SBTW7"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "html",
+                                                  "match":  "googletagmanager.com/ns.html?id=GTM-P8SBTW7\"\nheight=\"0\" width=\"0\" style=\"display:none;visibility:hidden\"\u003e\u003c/iframe\u003e",
+                                                  "pattern":  "googletagmanager\\.com\\/ns\\.html[^\u003e]{1,250}\u003e\u003c\\/iframe\u003e",
+                                                  "source":  "html"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "html",
+                                                  "match":  "\u003c!-- Google Tag Manager --\u003e",
+                                                  "pattern":  "\u003c!-- (?:End )?Google Tag Manager --\u003e",
+                                                  "source":  "html"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "scriptSrc",
+                                                  "match":  "googletagmanager.com/gtm.js",
+                                                  "pattern":  "googletagmanager\\.com\\/gtm\\.js",
+                                                  "snippet":  "\u003cscript src=\"https://www.googletagmanager.com/gtm.js?id=GTM-P8SBTW7\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://www.googletagmanager.com/gtm.js?id=GTM-P8SBTW7",
+                                                  "value":  "https://www.googletagmanager.com/gtm.js?id=GTM-P8SBTW7"
+                                              }
+                                          ],
+                             "name":  "Google Tag Manager",
+                             "version":  null
+                         },
+                         {
+                             "aliases":  [
+
+                                         ],
+                             "canonical_name":  "Google Analytics",
+                             "categories":  [
+                                                "Analytics"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Analytics"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "js",
+                                                                        "value":  null,
+                                                                        "version":  null
+                                                                    },
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "googletagmanager.com/gtag/js",
+                                                                        "pattern":  "googletagmanager\\.com\\/gtag\\/js",
+                                                                        "snippet":  "\u003clink rel=\"preload\" href=\"https://www.googletagmanager.com/gtag/js?id=AW-10970847011\u0026cx=c\u0026gtm=4e5ca1\" as=\"fetch\"\u003e",
+                                                                        "source":  "scriptSrc",
+                                                                        "url":  "https://www.googletagmanager.com/gtag/js?id=AW-10970847011\u0026cx=c\u0026gtm=4e5ca1",
+                                                                        "value":  "https://www.googletagmanager.com/gtag/js?id=AW-10970847011\u0026cx=c\u0026gtm=4e5ca1",
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "Google Analytics",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "googletagmanager.com/gtag/js",
+                                                  "pattern":  "googletagmanager\\.com\\/gtag\\/js",
+                                                  "snippet":  "\u003clink rel=\"preload\" href=\"https://www.googletagmanager.com/gtag/js?id=AW-10970847011\u0026cx=c\u0026gtm=4e5ca1\" as=\"fetch\"\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://www.googletagmanager.com/gtag/js?id=AW-10970847011\u0026cx=c\u0026gtm=4e5ca1",
+                                                  "value":  "https://www.googletagmanager.com/gtag/js?id=AW-10970847011\u0026cx=c\u0026gtm=4e5ca1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "scriptSrc",
+                                                  "match":  "googletagmanager.com/gtag/js",
+                                                  "pattern":  "googletagmanager\\.com\\/gtag\\/js",
+                                                  "snippet":  "\u003clink rel=\"preload\" href=\"https://www.googletagmanager.com/gtag/js?id=AW-10970847011\u0026cx=c\u0026gtm=4e5ca1\" as=\"fetch\"\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://www.googletagmanager.com/gtag/js?id=AW-10970847011\u0026cx=c\u0026gtm=4e5ca1",
+                                                  "value":  "https://www.googletagmanager.com/gtag/js?id=AW-10970847011\u0026cx=c\u0026gtm=4e5ca1"
+                                              }
+                                          ],
+                             "name":  "Google Analytics",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "JavaScript libraries"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "JavaScript libraries"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "js",
+                                                                        "value":  null,
+                                                                        "version":  null
+                                                                    },
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "3.43.0",
+                                                                        "pattern":  "^(.{1,250})$",
+                                                                        "source":  "js",
+                                                                        "value":  "3.43.0",
+                                                                        "version":  "\\1"
+                                                                    }
+                                                                ],
+                                                   "name":  "core-js",
+                                                   "version":  "3.43.0"
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "3.43.0",
+                                                  "pattern":  "^(.{1,250})$",
+                                                  "source":  "js",
+                                                  "value":  "3.43.0",
+                                                  "version":  "\\1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "js",
+                                                  "match":  "3.43.0",
+                                                  "pattern":  "^(.{1,250})$",
+                                                  "source":  "js",
+                                                  "value":  "3.43.0",
+                                                  "version":  "\\1"
+                                              }
+                                          ],
+                             "name":  "core-js",
+                             "version":  "3.43.0"
+                         },
+                         {
+                             "categories":  [
+                                                "Live chat"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Live chat"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "dom",
+                                                                        "value":  "",
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "WhatsApp Business Chat",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "source":  "dom",
+                                                  "value":  ""
+                                              }
+                                          ],
+                             "name":  "WhatsApp Business Chat",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "Performance"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Performance"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "dom",
+                                                                        "value":  "",
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "Priority Hints",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "source":  "dom",
+                                                  "value":  ""
+                                              }
+                                          ],
+                             "name":  "Priority Hints",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "Miscellaneous"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Miscellaneous"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "js",
+                                                                        "value":  null,
+                                                                        "version":  null
+                                                                    },
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "swiper.min.js",
+                                                                        "pattern":  "swiper(?:\\.min)?\\.js",
+                                                                        "snippet":  "\u003cscript src=\"https://unair.ac.id/wp-content/plugins/elementor/assets/lib/swiper/v8/swiper.min.js?ver=8.4.5\" defer\u003e\u003c/script\u003e",
+                                                                        "source":  "scriptSrc",
+                                                                        "url":  "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/swiper/v8/swiper.min.js?ver=8.4.5",
+                                                                        "value":  "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/swiper/v8/swiper.min.js?ver=8.4.5",
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "Swiper Slider",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "swiper.min.js",
+                                                  "pattern":  "swiper(?:\\.min)?\\.js",
+                                                  "snippet":  "\u003cscript src=\"https://unair.ac.id/wp-content/plugins/elementor/assets/lib/swiper/v8/swiper.min.js?ver=8.4.5\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/swiper/v8/swiper.min.js?ver=8.4.5",
+                                                  "value":  "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/swiper/v8/swiper.min.js?ver=8.4.5"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "scriptSrc",
+                                                  "match":  "swiper.min.js",
+                                                  "pattern":  "swiper(?:\\.min)?\\.js",
+                                                  "snippet":  "\u003cscript src=\"https://unair.ac.id/wp-content/plugins/elementor/assets/lib/swiper/v8/swiper.min.js?ver=8.4.5\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/swiper/v8/swiper.min.js?ver=8.4.5",
+                                                  "value":  "https://unair.ac.id/wp-content/plugins/elementor/assets/lib/swiper/v8/swiper.min.js?ver=8.4.5"
+                                              }
+                                          ],
+                             "name":  "Swiper Slider",
+                             "version":  null
+                         }
+                     ],
+    "tiered":  {
+                   "micro_used":  true
+               },
+    "timestamp":  1765512532
+}

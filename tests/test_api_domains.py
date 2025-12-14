@@ -153,3 +153,82 @@ def test_api_domain_detail_diff(mock_get_conn, monkeypatch, tmp_path):
     assert 'X' in changed_names
     removed_names = {r['name'] for r in diff['removed']}
     assert len(removed_names) == 0
+
+@mock.patch('app.routes.ui._dg.remove_domain_everywhere')
+@mock.patch('app.routes.ui._dg.load')
+def test_api_domain_delete_mem(mock_load, mock_remove, monkeypatch):
+    monkeypatch.setenv('TECHSCAN_DISABLE_DB','1')
+    class FakeDG:
+        def membership(self, domain):
+            return ['ops'] if domain == 'example.com' else []
+    mock_load.return_value = FakeDG()
+    app = create_app()
+    client = app.test_client()
+    import app.db as _db_mod
+    mem = getattr(_db_mod, '_MEM_DOMAIN_TECHS', None)
+    if mem is None:
+        _db_mod._MEM_DOMAIN_TECHS = {}
+        mem = _db_mod._MEM_DOMAIN_TECHS
+    mem.clear()
+    ts = int(time.time())
+    mem[('example.com','A','1')] = {'domain':'example.com','tech_name':'A','version':'1','categories':'X','first_seen':ts,'last_seen':ts}
+    mem[('example.com','B',None)] = {'domain':'example.com','tech_name':'B','version':None,'categories':'Y','first_seen':ts,'last_seen':ts}
+    resp = client.delete('/api/domain/example.com')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['tech_rows_deleted'] == 2
+    assert data['groups_removed'] == 1
+    assert ('example.com','A','1') not in mem
+    assert ('example.com','B',None) not in mem
+    mock_remove.assert_called_once_with('example.com')
+
+@mock.patch('app.routes.ui._db.get_conn')
+@mock.patch('app.routes.ui._dg.remove_domain_everywhere')
+@mock.patch('app.routes.ui._dg.load')
+def test_api_domain_delete_db(mock_load, mock_remove, mock_get_conn, monkeypatch):
+    monkeypatch.delenv('TECHSCAN_DISABLE_DB', raising=False)
+    import app.db as _db_mod
+    _db_mod._DB_DISABLED = False  # type: ignore
+    class FakeDG:
+        def membership(self, domain):
+            return ['core'] if domain == 'example.net' else []
+    mock_load.return_value = FakeDG()
+    class FakeCursor:
+        def __init__(self):
+            self.calls = []
+            self.rowcount = 0
+        def execute(self, sql, params=None):
+            self.calls.append(sql)
+            if 'FROM scans' in sql:
+                self.rowcount = 3
+            else:
+                self.rowcount = 5
+        def __enter__(self):
+            return self
+        def __exit__(self, exc_type, exc, tb):
+            return False
+    class FakeConn:
+        def __init__(self):
+            self.cur = FakeCursor()
+        def cursor(self):
+            return self.cur
+        def __enter__(self):
+            return self
+        def __exit__(self, exc_type, exc, tb):
+            return False
+    mock_get_conn.return_value = FakeConn()
+    app = create_app()
+    client = app.test_client()
+    mem = getattr(_db_mod, '_MEM_DOMAIN_TECHS', None)
+    if mem is None:
+        _db_mod._MEM_DOMAIN_TECHS = {}
+        mem = _db_mod._MEM_DOMAIN_TECHS
+    mem.clear()
+    mem[('example.net','Only',None)] = {'domain':'example.net','tech_name':'Only','version':None,'categories':'Z'}
+    resp = client.delete('/api/domain/example.net')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['scans_deleted'] == 3
+    assert data['tech_rows_deleted'] == 5
+    assert ('example.net','Only',None) not in mem
+    mock_remove.assert_called_once_with('example.net')

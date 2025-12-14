@@ -41,14 +41,13 @@ jobs:
       - name: Ruff (lint)
         run: |
           ruff --version
-          # Limit to core folders; do not fail the build yet to avoid noisy first run
-          ruff check app tests scripts || true
+          # Fail build on lint errors now (stricter CI)
+          ruff check app tests scripts
       - name: pip-audit (dependencies)
-        continue-on-error: true
         run: |
           pip-audit -V
-          # Do not fail CI on initial advisories; treat as report
-          pip-audit --progress-spinner off || true
+          # Fail build on advisories (stricter CI)
+          pip-audit --progress-spinner off --strict
 
   tests:
     runs-on: ubuntu-latest
@@ -67,9 +66,21 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       TECHSCAN_DB_URL: postgresql://postgres:postgres@localhost:5432/techscan
       TECHSCAN_DISABLE_DB: '0'
+      TECHSCAN_REDIS_URL: redis://localhost:6379/0
+      TECHSCAN_PERSIST_BROWSER: '0'
+      TECHSCAN_DISABLE_PERSIST_AUTOSTART: '1'
       TECHSCAN_ADMIN_TOKEN: ci-token
       RUN_NODE_SCANNER: ${{ inputs.run_node_scanner }}
     steps:

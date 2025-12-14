@@ -193,6 +193,24 @@ def remove_domain(group: str, domain: str) -> DomainGroups:
             return _cached_obj or reload()
         return _cached_obj or load()
 
+def remove_domain_everywhere(domain: str) -> DomainGroups:
+    domain = (domain or '').strip().lower()
+    if not domain:
+        raise ValueError('bad_params')
+    with _lock:
+        data = _current_data()
+        groups = data.setdefault('groups', {})
+        changed = False
+        for arr in groups.values():
+            if domain in arr:
+                arr.remove(domain)
+                changed = True
+        if changed:
+            _bump_version(data)
+            _write_data(data)
+            return _cached_obj or reload()
+        return _cached_obj or load()
+
     def rename_group(old: str, new: str) -> DomainGroups:
         """Rename a group key while preserving domains. If new exists, merge domains.
         Raises ValueError on invalid params or if old not found.
@@ -239,10 +257,10 @@ def diagnostics() -> dict:
     return info
 
 
-def group_domains(domain_meta: List[Tuple[str, float | None, str | None, int | None]], extras: dict | None = None):
+def group_domains(domain_meta: List[tuple], extras: dict | None = None):
     """Group domains according to groups file.
-    Input: list tuples (domain, last_scan_ts, last_mode, tech_count)
-    Returns: dict structure for /api/domains endpoint
+    Input tuples shaped like (domain, last_scan_ts, last_mode, tech_count[, payload_bytes])
+    Returns structure for /api/domains endpoint.
     """
     dg = load()
     groups = dg.groups
@@ -253,13 +271,19 @@ def group_domains(domain_meta: List[Tuple[str, float | None, str | None, int | N
             rev.setdefault(d, []).append(gk)
     grouped = {k: [] for k in groups.keys()}
     ungrouped = []
-    for domain, last_scan_ts, last_mode, tech_count in domain_meta:
+    for meta in domain_meta:
+        domain = meta[0]
+        last_scan_ts = meta[1] if len(meta) > 1 else None
+        last_mode = meta[2] if len(meta) > 2 else None
+        tech_count = meta[3] if len(meta) > 3 else None
+        payload_bytes = meta[4] if len(meta) > 4 else None
         buckets = rev.get(domain)
         entry = {
             'domain': domain,
             'last_scan_ts': last_scan_ts,
             'last_mode': last_mode,
-            'tech_count': tech_count or 0
+            'tech_count': tech_count or 0,
+            'payload_bytes': payload_bytes
         }
         if extras and domain in extras:
             try:
@@ -288,7 +312,11 @@ def group_domains(domain_meta: List[Tuple[str, float | None, str | None, int | N
             'domains': arr
         })
     total_domains = len(domain_meta)
-    scanned = sum(1 for _, ts, _, _ in domain_meta if ts)
+    scanned = 0
+    for meta in domain_meta:
+        ts = meta[1] if len(meta) > 1 else None
+        if ts:
+            scanned += 1
     return {
         'generated_at': time.time(),
         'groups': groups_out,

@@ -1,5 +1,12 @@
 # TechScan
 
+For complete setup, server configuration, deployment, and API details, see the full documentation: `docs/README_full.md`.
+
+Documentation links:
+- Full guide: `docs/README_full.md`
+- API spec (OpenAPI): `docs/openapi.yaml`
+- Documentation standards: `docs/CONTRIBUTING_DOCS.md`
+
 Fast, production-ready web technology scanner. TechScan exposes a Flask API that detects technologies running on a domain (CMS, frameworks, JS libraries, servers), enriches results with heuristics, and optionally persists scans to Postgres. A Node.js Wappalyzer worker is used for deep/full scans; Redis can be used to back rate limits and caching.
 
 ## What’s inside
@@ -94,8 +101,31 @@ Tips
 	- `TECHSCAN_REDIS_URL` optional Redis connection string
 - Scanner
 	- `WAPPALYZER_PATH` path to `node_scanner/` (auto-detected if not set)
+	- `TECHSCAN_PREFLIGHT` fail-fast TCP reachability check (default `1`, disable only if your network blocks raw sockets)
+	- `TECHSCAN_DNS_NEG_CACHE` seconds to cache unreachable DNS lookups (default `600`)
 - Safety switches
 	- `TECHSCAN_DISABLE_DB=1` run without a DB (persistence/search disabled)
+- Background maintenance
+	- `TECHSCAN_WEEKLY_RESCAN` enable weekly auto-rescans (default `1`)
+	- `TECHSCAN_WEEKLY_RESCAN_MAX` cap domains per sweep (default `2000`)
+	- `TECHSCAN_WEEKLY_RESCAN_LOOKBACK_DAYS` days since last scan to qualify domains (default `7`)
+	- `TECHSCAN_WEEKLY_RESCAN_CRON` cron-style schedule (`m h * * dow`, default `0 3 * * 0` for Sunday 03:00 local time)
+	- `TECHSCAN_WEEKLY_RESCAN_INTERVAL_S` fallback interval when cron spec invalid (default `604800` seconds)
+
+## Rekomendasi Infrastruktur 1 Tahun
+
+Paket di bawah ini sudah dipakai untuk perhitungan satu tahun ke depan (dengan asumsi ±400 domain yang discan ulang setiap bulan dan aktivitas harian ringan):
+
+- **CPU**: 4 vCPU (sekitar 2 core fisik dengan hyper-threading). Cukup untuk Flask API, worker Node/Chromium, dan job bulanan. Jika antrean scan sering menumpuk, siapkan opsi upgrade ke 8 vCPU.
+- **RAM**: 16 GB. Memberi ruang untuk Python app, Node worker (±4 GB), Postgres, serta cache OS. Naikkan ke 24–32 GB bila jumlah domain atau concurrency bertambah banyak.
+- **Storage utama**: SSD 200 GB.
+  - ±30 GB untuk OS + dependensi
+  - `<1 GB` data scan + index selama 1 tahun
+  - sisanya untuk log, backup, dan ruang tumbuh
+- **Database (opsional terpisah)**: jika memakai managed Postgres atau volume khusus, siapkan SSD 100 GB—sudah sangat cukup untuk beberapa tahun.
+- **Jaringan**: NIC 1 Gbps, siapkan IP publik statis atau load balancer dengan TLS. Perkiraan data keluar <25 GB/tahun.
+- **Backup & pemeliharaan**: snapshot mingguan + incremental harian, uji restore tiap kuartal. Patch OS bulanan, pantau utilisasi CPU/RAM/DB.
+- **Monitoring**: aktifkan Prometheus/Grafana (atau solusi setara), alert untuk antrean scan dan error Node worker. Evaluasi ulang setengah tahun jika domain atau traffic meningkat >2×.
 
 ## Endpoints (high level)
 
@@ -135,6 +165,7 @@ Notes
 - “DB password required”: ensure `TECHSCAN_DB_URL` or the composed parts are present before the app imports `app/db.py`.
 - Node scanner not found: run `npm install` under `node_scanner/` and verify `WAPPALYZER_PATH`.
 - Rate limiter using memory: set `TECHSCAN_REDIS_URL` to enable Redis backend.
+- VS Code Pylance MCP: when registering the MCP server inside VS Code, choose **Auth type: None** (or start your MCP adapter with `--no-auth`). Otherwise VS Code will try to fetch `/.well-known/openid-configuration` from port 3048 and the connector will fail with the 401/404 errors shown above.
 
 ## Development notes
 

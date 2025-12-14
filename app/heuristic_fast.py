@@ -39,12 +39,18 @@ Implementation notes:
  - Timeout budget split: head_timeout + get_timeout (default total <= 2s configurable by env TECHSCAN_TIERED_BUDGET_MS)
 """
 from __future__ import annotations
-import time, re, http.client, socket, ssl
+import time, re, http.client, socket, ssl, gzip, zlib
 from typing import Dict, Any, List, Tuple
+
+try:
+    import brotli  # optional
+except ImportError:  # pragma: no cover - optional dependency
+    brotli = None
 
 CMS_PATTERNS: List[Tuple[str, re.Pattern]] = [
     ('WordPress', re.compile(r'wp-content/|wp-includes/|<meta[^>]+name=["\']generator["\'][^>]+wordpress', re.I)),
     ('Joomla', re.compile(r'/media/system/js/|Joomla!|<meta[^>]+generator["\'][^>]+joomla', re.I)),
+    ('Joomla', re.compile(r'/components/com_[a-z0-9_]+', re.I)),
     ('Drupal', re.compile(r'/sites/(?:default|all)/|drupal-settings-json|<meta[^>]+name=["\']Generator["\'][^>]+Drupal', re.I)),
     ('Laravel', re.compile(r'laravel_session|/vendor/laravel', re.I)),
     ('CodeIgniter', re.compile(r'CodeIgniter', re.I)),
@@ -69,15 +75,20 @@ WP_PLUGIN_PATTERNS: List[Tuple[str, re.Pattern]] = [
     # Tambahan
     ('Advanced Custom Fields', re.compile(r'wp-content/plugins/advanced-custom-fields', re.I)),
     ('Jetpack', re.compile(r'wp-content/plugins/jetpack', re.I)),
-    ('WPML', re.compile(r'wp-content/plugins/sitepress-multilingual-cms', re.I)),
+    ('WordPress Multilingual Plugin (WPML)', re.compile(r'wp-content/plugins/sitepress-multilingual-cms', re.I)),
     ('Polylang', re.compile(r'wp-content/plugins/polylang', re.I)),
     ('Rank Math SEO', re.compile(r'wp-content/plugins/seo-by-rank-math', re.I)),
     ('UpdraftPlus', re.compile(r'wp-content/plugins/updraftplus', re.I)),
     ('Slider Revolution', re.compile(r'wp-content/plugins/revslider', re.I)),
 ]
 
+WP_THEME_PATTERNS: List[Tuple[str, re.Pattern]] = [
+    ('Hello Elementor Theme', re.compile(r'wp-content/themes/hello-elementor', re.I))
+]
+
 LIB_PATTERNS: List[Tuple[str, re.Pattern]] = [
     ('jQuery', re.compile(r'jquery[-\.](\d[\w\.\-]*)\.js', re.I)),
+    ('jQuery Migrate', re.compile(r'jquery-migrate(?:\.min)?-(\d[\w\.\-]*)\.js', re.I)),
     ('React', re.compile(r'react(?:\.production)?(?:\.min)?\.js', re.I)),
     ('Vue.js', re.compile(r'vue(?:\.runtime)?(?:\.min)?\.js', re.I)),
     ('AngularJS', re.compile(r'angular(?:\.min)?\.js', re.I)),
@@ -131,6 +142,7 @@ CATEGORY_MAP = {
     'WP Rocket': ['Caching','WordPress plugins'],
     'Revolution Slider': ['Media','WordPress plugins'],
     'HSTS': ['Security'],
+    'HP Smart': ['Device management'],
     'Apache': ['Web servers'],
     'Nginx': ['Web servers','Reverse proxies'],
     'Cloudflare': ['Reverse proxies','CDN'],
@@ -146,7 +158,72 @@ CATEGORY_MAP = {
     'uWSGI': ['Application servers'],
     'Fastly': ['CDN','Reverse proxies'],
     'Varnish': ['Reverse proxies','Caching'],
+    'BitNinja': ['Security'],
+    'Google reCAPTCHA': ['Security'],
+    'IBM WebSphere': ['Application servers','Web servers'],
+    'Shopify': ['Ecommerce'],
+    'Livewire': ['JavaScript frameworks'],
+    'Inertia.js': ['JavaScript frameworks'],
+    'Svelte': ['JavaScript frameworks'],
+    'SvelteKit': ['JavaScript frameworks'],
+    'Remix': ['JavaScript frameworks'],
+    'JBOSS Web': ['Application servers','Web servers'],
+    'Symfony': ['Web frameworks'],
+    'Django': ['Web frameworks'],
+    'Python': ['Programming languages'],
+    'Octane': ['Application servers','Web servers'],
+    'Oracle ILOM': ['Device management'],
+    'Import Maps': ['JavaScript tooling'],
+    'Progressive Web App': ['Progressive web apps'],
+    'Service Worker': ['Progressive web apps']
 }
+
+# Additional fingerprint sources beyond vanilla Wappalyzer signals
+JS_RUNTIME_HINTS = [
+    {'name': 'Next.js', 'pattern': re.compile(r'__NEXT_DATA__', re.I), 'reason': 'next-data-inline', 'confidence': 50},
+    {'name': 'Nuxt.js', 'pattern': re.compile(r'__NUXT__', re.I), 'reason': 'nuxt-inline', 'confidence': 50},
+    {'name': 'Svelte', 'pattern': re.compile(r'__SVELTE_HMR__', re.I), 'reason': 'svelte-hmr', 'confidence': 45},
+    {'name': 'SvelteKit', 'pattern': re.compile(r'SvelteKit', re.I), 'reason': 'sveltekit-inline', 'confidence': 40},
+    {'name': 'Remix', 'pattern': re.compile(r'__remixManifest', re.I), 'reason': 'remix-manifest', 'confidence': 45},
+    {'name': 'Livewire', 'pattern': re.compile(r'window\.Livewire', re.I), 'reason': 'livewire-runtime', 'confidence': 45},
+    {'name': 'Inertia.js', 'pattern': re.compile(r'window\.Inertia', re.I), 'reason': 'inertia-runtime', 'confidence': 40},
+    {'name': 'Alpine.js', 'pattern': re.compile(r'window\.Alpine', re.I), 'reason': 'alpine-runtime', 'confidence': 35},
+    {'name': 'Laravel', 'pattern': re.compile(r'window\.Laravel', re.I), 'reason': 'laravel-runtime', 'confidence': 40},
+    {'name': 'Shopify', 'pattern': re.compile(r'window\.Shopify', re.I), 'reason': 'shopify-runtime', 'confidence': 40},
+    {'name': 'Drupal', 'pattern': re.compile(r'drupalSettings', re.I), 'reason': 'drupal-runtime', 'confidence': 35}
+]
+
+COOKIE_HINTS = [
+    {'name': 'Laravel', 'pattern': re.compile(r'laravel_session=', re.I), 'confidence': 65, 'implies': ['PHP'], 'label': 'laravel_session'},
+    {'name': 'Laravel', 'pattern': re.compile(r'XSRF-TOKEN=', re.I), 'confidence': 60, 'implies': ['PHP'], 'label': 'xsrf_token'},
+    {'name': 'CodeIgniter', 'pattern': re.compile(r'ci_session=', re.I), 'confidence': 55, 'implies': ['PHP'], 'label': 'ci_session'},
+    {'name': 'WordPress', 'pattern': re.compile(r'wordpress_(?:test_|logged_in|sec|settings)', re.I), 'confidence': 55, 'implies': ['PHP'], 'label': 'wordpress_cookie'},
+    {'name': 'PHP', 'pattern': re.compile(r'PHPSESSID=', re.I), 'confidence': 40, 'implies': [], 'label': 'phpsessid'}
+]
+
+FORM_TOKEN_HINTS = [
+    {'name': 'Laravel', 'pattern': re.compile(r'<input[^>]+name=["\']?_token["\']', re.I), 'confidence': 60, 'reason': 'laravel-csrf', 'label': 'csrf_token'},
+    {'name': 'CodeIgniter', 'pattern': re.compile(r'<input[^>]+name=["\']?ci_csrf_token["\']', re.I), 'confidence': 55, 'reason': 'ci-csrf', 'label': 'ci_csrf_token'},
+    {'name': 'Django', 'pattern': re.compile(r'name=["\']?csrfmiddlewaretoken["\']', re.I), 'confidence': 55, 'reason': 'django-csrf', 'label': 'django_csrf'}
+]
+
+CSP_HINTS = [
+    {'name': 'Next.js', 'pattern': re.compile(r'next(?:js|-data)', re.I), 'confidence': 35, 'label': 'csp-next'},
+    {'name': 'Nuxt.js', 'pattern': re.compile(r'nuxt', re.I), 'confidence': 35, 'label': 'csp-nuxt'},
+    {'name': 'Laravel', 'pattern': re.compile(r'laravel', re.I), 'confidence': 30, 'label': 'csp-laravel'},
+    {'name': 'Symfony', 'pattern': re.compile(r'_profiler', re.I), 'confidence': 35, 'label': 'csp-symfony'},
+    {'name': 'Shopify', 'pattern': re.compile(r'cdn\.shopify\.com', re.I), 'confidence': 30, 'label': 'csp-shopify'}
+]
+
+IMPORTMAP_RE = re.compile(r'<script[^>]+type=["\']importmap["\']', re.I)
+MANIFEST_RE = re.compile(r'<link[^>]+rel=["\']manifest["\'][^>]*href=["\']([^"\']+)["\']', re.I)
+WEBMANIFEST_URL_RE = re.compile(r'\.webmanifest(?:\?|$)', re.I)
+PHP_FORM_ACTION_RE = re.compile(r'<form[^>]+action=["\'][^"\']+\.php', re.I)
+FONT_HINTS = [
+    {'name': 'Bootstrap Icons', 'pattern': re.compile(r'bootstrap-icons(?:\.woff2|\.ttf)', re.I), 'confidence': 30},
+    {'name': 'Material Icons', 'pattern': re.compile(r'MaterialIcons(?:-Regular)?\.woff2', re.I), 'confidence': 25},
+    {'name': 'PrimeIcons', 'pattern': re.compile(r'primeicons\.woff2', re.I), 'confidence': 25}
+]
 
 MAX_HTML_BYTES = 250_000  # hard upper safety cap
 
@@ -163,6 +240,22 @@ def _resolve_html_cap() -> int:
     except ValueError:
         pass
     return MAX_HTML_BYTES
+
+
+def _decompress_body(data: bytes, encoding: str | None) -> bytes:
+    if not data or not encoding:
+        return data
+    enc = encoding.strip().lower()
+    try:
+        if enc in ('gzip', 'x-gzip'):
+            return gzip.decompress(data)
+        if enc in ('deflate', 'zlib'):
+            return zlib.decompress(data)
+        if enc == 'br' and brotli is not None:
+            return brotli.decompress(data)
+    except Exception:
+        return data
+    return data
 
 # Confidence constants (easier tuning)
 CONF_SERVER_PRIMARY = 35
@@ -239,6 +332,68 @@ def _http_fetch(domain: str, total_timeout: float) -> tuple[dict, bytes, bool]:
     truncated = False
     cap = _resolve_html_cap()
     tried = []
+    req_headers = {
+        'User-Agent': 'TechScan-Tier0/1.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br'
+    }
+    target_host = domain
+    target_path = '/'
+    redirects_left = 2
+    while time.time() < deadline:
+        made_request = False
+        for scheme, conn_cls, port in [
+            ('https', http.client.HTTPSConnection, 443),
+            ('http', http.client.HTTPConnection, 80)
+        ]:
+            if time.time() >= deadline:
+                break
+            try:
+                conn = conn_cls(target_host, timeout=remaining())
+                conn.request('GET', target_path, headers=req_headers)
+                resp = conn.getresponse()
+                headers_lower = {k.lower(): v for k,v in resp.getheaders()}
+                status = getattr(resp, 'status', 200)
+                if 300 <= status < 400 and redirects_left > 0 and headers_lower.get('location'):
+                    location = headers_lower.get('location') or ''
+                    new_url = location if '://' in location else f'{scheme}://{target_host}{location}'
+                    parsed = urlparse(new_url)
+                    new_host = parsed.hostname or target_host
+                    new_path = parsed.path or '/'
+                    if parsed.query:
+                        new_path = f'{new_path}?{parsed.query}'
+                    target_host = new_host
+                    target_path = new_path
+                    redirects_left -= 1
+                    conn.close()
+                    made_request = True
+                    break  # restart outer loop with updated host/path
+                # Read limited body
+                buff = []
+                remaining_bytes = cap
+                while remaining_bytes > 0:
+                    chunk = resp.read(min(8192, remaining_bytes))
+                    if not chunk:
+                        break
+                    buff.append(chunk)
+                    remaining_bytes -= len(chunk)
+                    if time.time() >= deadline:
+                        break
+                body = b''.join(buff)
+                if remaining_bytes <= 0:
+                    truncated = True
+                body = _decompress_body(body, headers_lower.get('content-encoding'))
+                conn.close()
+                tried.append(scheme)
+                made_request = True
+                if body:
+                    return headers_lower, body, truncated
+            except Exception:
+                continue
+        if not made_request:
+            break
+    return headers_lower, body, truncated
     for scheme, conn_cls, port in [
         ('https', http.client.HTTPSConnection, 443),
         ('http', http.client.HTTPConnection, 80)
@@ -247,7 +402,7 @@ def _http_fetch(domain: str, total_timeout: float) -> tuple[dict, bytes, bool]:
             break
         try:
             conn = conn_cls(domain, timeout=remaining())
-            conn.request('GET', '/', headers={'User-Agent': 'TechScan-Tier0/1.0'})
+            conn.request('GET', '/', headers=req_headers)
             resp = conn.getresponse()
             headers_lower = {k.lower(): v for k,v in resp.getheaders()}
             # Read limited body
@@ -264,6 +419,7 @@ def _http_fetch(domain: str, total_timeout: float) -> tuple[dict, bytes, bool]:
             body = b''.join(buff)
             if remaining_bytes <= 0:
                 truncated = True
+            body = _decompress_body(body, headers_lower.get('content-encoding'))
             conn.close()
             tried.append(scheme)
             if body:
@@ -287,6 +443,23 @@ def run_heuristic(domain: str, budget_ms: int = 1800, allow_empty_early: bool = 
     lower_html = body.decode('utf-8', 'ignore') if body else ''
     version_evidence: dict[str, list[dict[str,str]]] = {}
     alt_versions: dict[str, set[str]] = {}
+    tier_meta_extra: Dict[str, Any] = {}
+
+    def ensure_tech(name: str, confidence: int, label: str | None = None) -> Dict[str, Any]:
+        for entry in techs:
+            if entry['name'] == name:
+                if confidence > entry['confidence']:
+                    entry['confidence'] = confidence
+                if label:
+                    labels = entry.setdefault('labels', [])
+                    if label not in labels:
+                        labels.append(label)
+                return entry
+        _add(categories, techs, name, None, confidence)
+        entry = techs[-1]
+        if label:
+            entry['labels'] = [label]
+        return entry
 
     # Server header parsing (refactored)
     name, ver = parse_server_header(headers.get('server'))
@@ -302,6 +475,83 @@ def run_heuristic(domain: str, budget_ms: int = 1800, allow_empty_early: bool = 
             version_evidence.setdefault(bname, []).append({'source':'x-powered-by','value':bver})
     if 'strict-transport-security' in headers:
         _add(categories, techs, 'HSTS', None, 20)
+
+    # Bot protection / captcha indicators
+    lower_html = lower_html or ''
+    if 'bitninja' in lower_html and not any(t['name'] == 'BitNinja' for t in techs):
+        _add(categories, techs, 'BitNinja', None, 32)
+    if ('g-recaptcha' in lower_html or 'recaptcha/api.js' in lower_html) and not any(t['name'] == 'Google reCAPTCHA' for t in techs):
+        _add(categories, techs, 'Google reCAPTCHA', None, 28)
+
+    # Runtime globals / inline JS hints
+    runtime_hits = []
+    for hint in JS_RUNTIME_HINTS:
+        if hint['pattern'].search(lower_html):
+            ensure_tech(hint['name'], hint.get('confidence', 30), hint.get('reason'))
+            runtime_hits.append({'name': hint['name'], 'reason': hint.get('reason')})
+    if runtime_hits:
+        tier_meta_extra['runtime_hits'] = runtime_hits
+
+    # Cookie heuristics
+    cookie_header = headers.get('set-cookie-all') or headers.get('set-cookie')
+    if isinstance(cookie_header, list):
+        cookie_blob = '; '.join(cookie_header)
+    else:
+        cookie_blob = cookie_header or ''
+    cookie_hits = []
+    if cookie_blob:
+        for hint in COOKIE_HINTS:
+            if hint['pattern'].search(cookie_blob):
+                ensure_tech(hint['name'], hint['confidence'], hint.get('label'))
+                for implied in hint.get('implies', []):
+                    ensure_tech(implied, CONF_BACKEND_LANG if implied == 'PHP' else 25, 'cookie-implied')
+                cookie_hits.append({'name': hint['name'], 'label': hint.get('label')})
+    if cookie_hits:
+        tier_meta_extra['cookie_hits'] = cookie_hits
+
+    # Form token heuristics
+    form_hits = []
+    for hint in FORM_TOKEN_HINTS:
+        if hint['pattern'].search(lower_html):
+            ensure_tech(hint['name'], hint['confidence'], hint.get('label') or hint.get('reason'))
+            form_hits.append({'name': hint['name'], 'label': hint.get('label')})
+    if PHP_FORM_ACTION_RE.search(lower_html):
+        ensure_tech('PHP', CONF_BACKEND_LANG, 'php-form-action')
+        form_hits.append({'name': 'PHP', 'label': 'php-form-action'})
+    if form_hits:
+        tier_meta_extra['form_hits'] = form_hits
+
+    # Content-Security-Policy heuristics
+    csp_val = headers.get('content-security-policy')
+    csp_hits = []
+    service_worker_sources: List[str] = []
+    if csp_val:
+        for hint in CSP_HINTS:
+            if hint['pattern'].search(csp_val):
+                ensure_tech(hint['name'], hint['confidence'], hint.get('label'))
+                csp_hits.append({'name': hint['name'], 'label': hint.get('label')})
+        if 'worker-src' in csp_val or 'service-worker' in csp_val:
+            ensure_tech('Service Worker', 32, 'csp-worker-src')
+            ensure_tech('Progressive Web App', 28, 'csp-worker-src')
+            csp_hits.append({'name': 'Service Worker', 'label': 'csp-worker-src'})
+            service_worker_sources.append('csp')
+    if csp_hits:
+        tier_meta_extra['csp_hits'] = csp_hits
+
+    # Import map / manifest hints
+    if IMPORTMAP_RE.search(lower_html):
+        ensure_tech('Import Maps', 30, 'importmap-script')
+        tier_meta_extra['import_map'] = True
+    manifest_hits = []
+    manifest_match = MANIFEST_RE.search(lower_html)
+    if manifest_match:
+        manifest_url = manifest_match.group(1)
+        ensure_tech('Progressive Web App', 30, 'manifest-link')
+        manifest_hits.append({'source': 'html', 'url': manifest_url})
+    if re.search(r'navigator\.serviceWorker\.register', lower_html):
+        ensure_tech('Service Worker', 35, 'inline-register')
+        ensure_tech('Progressive Web App', 30, 'inline-register')
+        service_worker_sources.append('inline-js')
 
     # CMS / Framework patterns
     for name, pat in CMS_PATTERNS:
@@ -360,6 +610,7 @@ def run_heuristic(domain: str, budget_ms: int = 1800, allow_empty_early: bool = 
         if len(url) < 4 or len(url) > 300:
             continue
         asset_urls.append(url)
+    font_hits = []
 
     KNOWN_MAP = [
         ('WordPress', re.compile(r'/wp-(?:includes|content)/', re.I)),
@@ -397,6 +648,18 @@ def run_heuristic(domain: str, budget_ms: int = 1800, allow_empty_early: bool = 
         version_evidence.setdefault(name, []).append({'source':source,'value':ver})
 
     for url in asset_urls:
+        for fh in FONT_HINTS:
+            if fh['pattern'].search(url):
+                ensure_tech(fh['name'], fh['confidence'], 'font-asset')
+                font_hits.append({'name': fh['name'], 'url': url})
+                break
+        if WEBMANIFEST_URL_RE.search(url):
+            ensure_tech('Progressive Web App', 28, 'webmanifest-asset')
+            manifest_hits.append({'source': 'asset', 'url': url})
+        if re.search(r'(?:^|/)sw(?:\.|-)?[a-z0-9_-]*\.js', url):
+            ensure_tech('Service Worker', 30, 'sw-asset')
+            ensure_tech('Progressive Web App', 28, 'sw-asset')
+            service_worker_sources.append('asset')
         qver = VERSION_FROM_QUERY.search(url)
         simple_file_ver = VERSION_IN_FILENAME.search(url)
         for name, pat in KNOWN_MAP:
@@ -408,6 +671,13 @@ def run_heuristic(domain: str, budget_ms: int = 1800, allow_empty_early: bool = 
                     ver_candidate = simple_file_ver.group(1)
                 # Special case Tailwind / DataTables often need comment parse; handled later if needed
                 _record_version(name, ver_candidate, 'asset-url' if qver or simple_file_ver else 'asset-presence')
+
+    if font_hits:
+        tier_meta_extra['font_hits'] = font_hits
+    if manifest_hits:
+        tier_meta_extra['manifest_hits'] = manifest_hits
+    if service_worker_sources:
+        tier_meta_extra['service_worker_sources'] = sorted(set(service_worker_sources))
 
     # Phase 2: banner comment extraction (Bootstrap / Tailwind / DataTables)
     for cb in COMMENT_BANNER.finditer(lower_html[:120000]):  # limit scan for performance
@@ -485,6 +755,8 @@ def run_heuristic(domain: str, budget_ms: int = 1800, allow_empty_early: bool = 
     }
     if version_evidence:
         result['tiered']['version_evidence'] = version_evidence
+    if tier_meta_extra:
+        result['tiered']['hint_meta'] = tier_meta_extra
     # alt_versions: collect if any tech has multiple evidence differing from main version
     for t in techs:
         name = t['name']

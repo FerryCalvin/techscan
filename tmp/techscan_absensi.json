@@ -1,0 +1,299 @@
+﻿{
+    "audit":  {
+                  "outdated":  [
+                                   {
+                                       "difference":  "patch",
+                                       "latest":  "2.4.62",
+                                       "name":  "Apache",
+                                       "version":  "2.4.41"
+                                   }
+                               ],
+                  "outdated_count":  1,
+                  "outdated_major":  0,
+                  "outdated_minor":  0,
+                  "outdated_patch":  1,
+                  "version_dataset":  "latest_versions.json"
+              },
+    "categories":  {
+                       "Analytics":  [
+                                         {
+                                             "name":  "Google Analytics",
+                                             "version":  "GA4"
+                                         }
+                                     ],
+                       "Operating systems":  [
+                                                 {
+                                                     "name":  "Ubuntu",
+                                                     "version":  null
+                                                 }
+                                             ],
+                       "Programming languages":  [
+                                                     {
+                                                         "name":  "PHP",
+                                                         "version":  null
+                                                     }
+                                                 ],
+                       "SSL/TLS certificate authorities":  [
+                                                               {
+                                                                   "name":  "Sectigo",
+                                                                   "version":  null
+                                                               }
+                                                           ],
+                       "Web servers":  [
+                                           {
+                                               "name":  "Apache",
+                                               "version":  "2.4.41"
+                                           },
+                                           {
+                                               "name":  "Apache HTTP Server",
+                                               "version":  "2.4.41"
+                                           }
+                                       ]
+                   },
+    "domain":  "absensi.unair.ac.id",
+    "duration":  14.68,
+    "engine":  "unified",
+    "finished_at":  1765277416.0,
+    "payload_bytes":  304,
+    "phases":  {
+                   "heuristic_ms":  230,
+                   "micro_ms":  7432,
+                   "node_full_ms":  6754,
+                   "py_local_ms":  98,
+                   "synthetic_ms":  165
+               },
+    "raw":  {
+                "extras":  {
+                               "headers":  [
+                                               {
+                                                   "content-length":  "1061",
+                                                   "content-type":  "text/html; charset=UTF-8",
+                                                   "date":  "Tue, 09 Dec 2025 10:50:02 GMT",
+                                                   "server":  "Apache/2.4.41 (Ubuntu)",
+                                                   "vary":  "Accept-Encoding"
+                                               }
+                                           ],
+                               "links":  [
+
+                                         ],
+                               "meta":  [
+                                            {
+
+                                            }
+                                        ],
+                               "scripts":  [
+
+                                           ],
+                               "url":  [
+                                           "https://absensi.unair.ac.id/"
+                                       ]
+                           },
+                "technologies":  [
+
+                                 ]
+            },
+    "scan_mode":  "fast",
+    "started_at":  1765277416.0,
+    "technologies":  [
+                         {
+                             "aliases":  [
+                                             "Apache HTTP Server"
+                                         ],
+                             "audit":  {
+                                           "difference":  "patch",
+                                           "latest":  "2.4.62",
+                                           "status":  "outdated"
+                                       },
+                             "canonical_name":  "Apache HTTP Server",
+                             "categories":  [
+                                                "Web servers"
+                                            ],
+                             "confidence":  100,
+                             "evidence":  [
+
+                                          ],
+                             "name":  "Apache",
+                             "version":  "2.4.41"
+                         },
+                         {
+                             "aliases":  [
+
+                                         ],
+                             "canonical_name":  "PHP",
+                             "categories":  [
+                                                "Programming languages"
+                                            ],
+                             "confidence":  35,
+                             "evidence":  [
+
+                                          ],
+                             "labels":  [
+                                            "php-form-action"
+                                        ],
+                             "name":  "PHP",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "Operating systems"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Operating systems"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "Ubuntu",
+                                                                        "pattern":  "Ubuntu",
+                                                                        "source":  "headers",
+                                                                        "value":  "Apache/2.4.41 (Ubuntu)",
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "Ubuntu",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "Ubuntu",
+                                                  "pattern":  "Ubuntu",
+                                                  "source":  "headers",
+                                                  "value":  "Apache/2.4.41 (Ubuntu)"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "headers",
+                                                  "match":  "Ubuntu",
+                                                  "pattern":  "Ubuntu",
+                                                  "source":  "headers",
+                                                  "value":  "Apache/2.4.41 (Ubuntu)"
+                                              }
+                                          ],
+                             "name":  "Ubuntu",
+                             "version":  null
+                         },
+                         {
+                             "aliases":  [
+
+                                         ],
+                             "canonical_name":  "Google Analytics",
+                             "categories":  [
+                                                "Analytics"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Analytics"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "cookies",
+                                                                        "value":  "GA1.1.1104735322.1765262460",
+                                                                        "version":  null
+                                                                    },
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "cookies",
+                                                                        "value":  "GS2.1.s1765263187$o1$g0$t1765263197$j50$l0$h0",
+                                                                        "version":  "GA4"
+                                                                    }
+                                                                ],
+                                                   "name":  "Google Analytics",
+                                                   "version":  "GA4"
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "source":  "cookies",
+                                                  "value":  "GA1.1.1104735322.1765262460"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "source":  "cookies",
+                                                  "value":  "GS2.1.s1765263187$o1$g0$t1765263197$j50$l0$h0",
+                                                  "version":  "GA4"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "cookies",
+                                                  "source":  "cookies",
+                                                  "value":  "GA1.1.1104735322.1765262460"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "cookies",
+                                                  "source":  "cookies",
+                                                  "value":  "GS2.1.s1765263187$o1$g0$t1765263197$j50$l0$h0",
+                                                  "version":  "GA4"
+                                              }
+                                          ],
+                             "name":  "Google Analytics",
+                             "version":  "GA4"
+                         },
+                         {
+                             "categories":  [
+                                                "SSL/TLS certificate authorities"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "SSL/TLS certificate authorities"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "Sectigo",
+                                                                        "pattern":  "Sectigo",
+                                                                        "source":  "certIssuer",
+                                                                        "value":  "Sectigo RSA Domain Validation Secure Server CA",
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "Sectigo",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "Sectigo",
+                                                  "pattern":  "Sectigo",
+                                                  "source":  "certIssuer",
+                                                  "value":  "Sectigo RSA Domain Validation Secure Server CA"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "certIssuer",
+                                                  "match":  "Sectigo",
+                                                  "pattern":  "Sectigo",
+                                                  "source":  "certIssuer",
+                                                  "value":  "Sectigo RSA Domain Validation Secure Server CA"
+                                              }
+                                          ],
+                             "name":  "Sectigo",
+                             "version":  null
+                         }
+                     ],
+    "tiered":  {
+                   "micro_used":  true
+               },
+    "timestamp":  1765277416
+}

@@ -17,6 +17,16 @@ _MEM_DOMAIN_TECHS: dict = {}
 
 _DB_DISABLED_ENV = os.environ.get('TECHSCAN_DISABLE_DB', '0') == '1'
 
+def _is_disabled_runtime() -> bool:
+    """Runtime check so tests can flip TECHSCAN_DISABLE_DB after import.
+    This complements the import-time flag and avoids opening connections when
+    a test sets the env var with monkeypatch.
+    """
+    try:
+        return os.environ.get('TECHSCAN_DISABLE_DB', '0') == '1'
+    except Exception:
+        return False
+
 _explicit_url = os.environ.get('TECHSCAN_DB_URL')
 if _explicit_url:
     DB_URL = _explicit_url
@@ -116,6 +126,7 @@ SCHEMA_STATEMENTS = [
         technologies_json JSONB NOT NULL,
         categories_json JSONB NOT NULL,
         raw_json JSONB,
+        payload_bytes BIGINT,
         error TEXT
     );''',
     'CREATE INDEX IF NOT EXISTS idx_scans_domain_time ON scans(domain, finished_at DESC);',
@@ -276,8 +287,15 @@ def get_conn():
             except Exception:
                 pass
 
+
+@contextmanager
+def get_db():
+    """Backwards-compatible alias returning a managed connection context."""
+    with get_conn() as conn:
+        yield conn
+
 def ensure_schema():
-    if _DB_DISABLED:
+    if _DB_DISABLED or _is_disabled_runtime():
         return
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -291,6 +309,8 @@ def ensure_schema():
                 alter_needed.append('ADD COLUMN tech_count INTEGER')
             if 'versions_count' not in existing:
                 alter_needed.append('ADD COLUMN versions_count INTEGER')
+            if 'payload_bytes' not in existing:
+                alter_needed.append('ADD COLUMN payload_bytes BIGINT')
             if alter_needed:
                 cur.execute('ALTER TABLE scans ' + ', '.join(alter_needed))
         conn.commit()
@@ -300,10 +320,49 @@ def save_scan(result: dict, from_cache: bool, timeout_used: int):
     """Persist single scan result.
     result expects keys: domain, scan_mode, duration, technologies, categories, timestamp, (optional) adaptive_timeout, retries, raw
     """
-    if _DB_DISABLED:
+    # If disabled at import-time or runtime, only mirror to in-memory store
+    if _DB_DISABLED or _is_disabled_runtime():
+        technologies = result.get('technologies') or []
+        finished_at = result.get('finished_at') or result.get('timestamp') or time.time()
+        for tech in technologies:
+            name = tech.get('name')
+            if not name:
+                continue
+            version = tech.get('version')
+            cats = ','.join(sorted(tech.get('categories') or [])) if tech.get('categories') else None
+            key = (result.get('domain'), name, version)
+            existing = _MEM_DOMAIN_TECHS.get(key)
+            if existing:
+                existing['last_seen'] = finished_at
+                if cats and not existing.get('categories'):
+                    existing['categories'] = cats
+            else:
+                _MEM_DOMAIN_TECHS[key] = {
+                    'domain': result.get('domain'),
+                    'tech_name': name,
+                    'version': version,
+                    'categories': cats,
+                    'first_seen': finished_at,
+                    'last_seen': finished_at
+                }
         return
-    started_at = result.get('started_at') or result.get('_started_at') or result.get('timestamp')
-    finished_at = result.get('finished_at') or result.get('timestamp') or time.time()
+    def _coerce_epoch(value, fallback):
+        try:
+            if value is None:
+                return float(fallback)
+            num = float(value)
+            if num <= 0 and fallback is not None:
+                return float(fallback)
+            return num
+        except Exception:
+            return float(fallback if fallback is not None else time.time())
+
+    base_now = time.time()
+    started_at = _coerce_epoch(result.get('started_at') or result.get('_started_at') or result.get('timestamp'), base_now)
+    finished_at = _coerce_epoch(result.get('finished_at') or result.get('_finished_at') or result.get('completed_at') or result.get('timestamp'), base_now)
+    if finished_at < started_at:
+        # Guard against inverted timestamps from upstream rounding issues.
+        finished_at = started_at
     if not started_at:
         # Fallback: derive started_at from finished_at - duration if possible, else use finished_at
         try:
@@ -314,19 +373,77 @@ def save_scan(result: dict, from_cache: bool, timeout_used: int):
     technologies = result.get('technologies') or []
     categories = result.get('categories') or {}
     raw = result.get('raw')
+    hint_meta = None
+    try:
+        tiered_block = result.get('tiered') if isinstance(result, dict) else None
+        if isinstance(tiered_block, dict):
+            hint_meta = tiered_block.get('hint_meta') if isinstance(tiered_block.get('hint_meta'), dict) else None
+    except Exception:
+        hint_meta = None
+    if hint_meta:
+        if isinstance(raw, dict):
+            raw = {**raw, '_tiered_hint_meta': hint_meta}
+        else:
+            payload = {'_tiered_hint_meta': hint_meta}
+            if raw is not None:
+                payload['_raw_payload'] = raw
+            raw = payload
     adaptive = bool(result.get('adaptive_timeout'))
     retries = int(result.get('retries') or 0)
-    duration_ms = int(float(result.get('duration') or 0) * 1000)
+    duration_seconds_raw = result.get('duration')
+    try:
+        duration_seconds = float(duration_seconds_raw)
+    except Exception:
+        duration_seconds = None
+
+    def _derive_duration_seconds() -> float | None:
+        if started_at is None or finished_at is None:
+            return None
+        try:
+            delta = float(finished_at) - float(started_at)
+            if delta <= 0:
+                return None
+            return delta
+        except Exception:
+            return None
+
+    if duration_seconds is None or duration_seconds <= 0:
+        derived = _derive_duration_seconds()
+        if derived is not None:
+            duration_seconds = derived
+
+    if duration_seconds is None or duration_seconds < 0:
+        duration_seconds = 0.0
+
+    duration_ms = int(round(duration_seconds * 1000))
+    if duration_seconds > 0 and duration_ms <= 0:
+        duration_ms = 1
+    duration_ms = max(duration_ms, 0)
     # derive counts
     tech_count = len(technologies)
     versions_count = sum(1 for t in technologies if t.get('version'))
+    payload_bytes = result.get('payload_bytes')
+    if payload_bytes is None:
+        try:
+            payload_bytes = len(json.dumps(result, ensure_ascii=False).encode('utf-8'))
+        except Exception:
+            logging.getLogger('techscan.db').debug('failed estimating payload size for domain=%s', result.get('domain'), exc_info=True)
+            payload_bytes = None
+    try:
+        if payload_bytes is not None:
+            payload_bytes = int(payload_bytes)
+            if payload_bytes < 0:
+                payload_bytes = None
+    except Exception:
+        logging.getLogger('techscan.db').debug('invalid payload size for domain=%s payload=%s', result.get('domain'), payload_bytes, exc_info=True)
+        payload_bytes = None
     log = logging.getLogger('techscan.db')
     with get_conn() as conn:
         with conn.cursor() as cur:
             try:
                 cur.execute(
-                '''INSERT INTO scans(domain, mode, started_at, finished_at, duration_ms, from_cache, adaptive_timeout, retries, timeout_used, tech_count, versions_count, technologies_json, categories_json, raw_json, error)
-                   VALUES (%s, %s, to_timestamp(%s), to_timestamp(%s), %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s)''',
+                '''INSERT INTO scans(domain, mode, started_at, finished_at, duration_ms, from_cache, adaptive_timeout, retries, timeout_used, tech_count, versions_count, technologies_json, categories_json, raw_json, payload_bytes, error)
+                   VALUES (%s, %s, to_timestamp(%s), to_timestamp(%s), %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s)''',
                 (
                     result['domain'],
                     result.get('scan_mode','fast'),
@@ -342,6 +459,7 @@ def save_scan(result: dict, from_cache: bool, timeout_used: int):
                     json.dumps(technologies, ensure_ascii=False),
                     json.dumps(categories, ensure_ascii=False),
                     json.dumps(raw, ensure_ascii=False) if raw is not None else None,
+                    payload_bytes,
                     result.get('error')
                 )
                 )
@@ -350,12 +468,25 @@ def save_scan(result: dict, from_cache: bool, timeout_used: int):
                 raise
             # Update-then-insert pattern (avoids reliance on unique constraint) with explicit NULL branch to prevent unknown type errors.
             now_epoch = finished_at
+            def _prep_categories(raw):
+                if not raw:
+                    return None
+                filtered = []
+                for cat in raw:
+                    text = str(cat).strip()
+                    if text:
+                        filtered.append(text)
+                if not filtered:
+                    return None
+                # Sort for deterministic storage and join with commas
+                return ','.join(sorted(dict.fromkeys(filtered)))
+
             for tech in technologies:
                 name = tech.get('name')
                 if not name:
                     continue
                 version = tech.get('version')  # may be None
-                cats = ','.join(sorted(tech.get('categories') or [])) if tech.get('categories') else None
+                cats = _prep_categories(tech.get('categories'))
                 try:
                     if version is None:
                         # NULL version branch
@@ -397,14 +528,13 @@ def save_scan(result: dict, from_cache: bool, timeout_used: int):
     if _count_cache:
         _count_cache.clear()
     # Mirror into in-memory map for test code paths that call _db.get_domain_techs after save_scan without performing query
-    global _MEM_DOMAIN_TECHS
     now_epoch = finished_at
     for tech in technologies:
         name = tech.get('name')
         if not name:
             continue
         version = tech.get('version')
-        cats = ','.join(sorted(tech.get('categories') or [])) if tech.get('categories') else None
+        cats = _prep_categories(tech.get('categories'))
         key = (result['domain'], name, version)
         existing = _MEM_DOMAIN_TECHS.get(key)
         if existing:
@@ -421,51 +551,121 @@ def save_scan(result: dict, from_cache: bool, timeout_used: int):
                 'last_seen': now_epoch
             }
 
+def _prepare_tech_filter(raw: str | None):
+    if not isinstance(raw, str):
+        return None, None, False
+    term = raw.strip()
+    if not term:
+        return None, None, False
+    use_like = len(term) >= 3
+    return term, (f'%{term}%') if use_like else term, use_like
+
+
 def search_tech(tech: str | None = None, category: str | None = None, version: str | None = None, limit: int = 200, offset: int = 0, new24: bool = False, sort_key: str | None = None, sort_dir: str = 'desc'):
-    if _DB_DISABLED:
-        # Return synthesized results from in-memory mirror
-        out = []
-        for (d, name, ver), rec in list(globals().get('_MEM_DOMAIN_TECHS', {}).items()):
-            if tech and name.lower() != tech.lower():
+    """Return aggregated domain/technology rows with version history list."""
+    def _normalize_categories(raw: str | None) -> list[str]:
+        if not raw:
+            return []
+        return [c for c in (raw.split(',') if isinstance(raw, str) else []) if c]
+
+    def _finalize_rows(rows: list[dict]):
+        for entry in rows:
+            versions = entry.get('versions') or []
+            if not entry.get('version') and versions:
+                entry['version'] = versions[0]
+        return rows
+
+    tech_term, tech_param, tech_use_like = _prepare_tech_filter(tech)
+
+    if _DB_DISABLED or _is_disabled_runtime():
+        # Aggregate from in-memory mirror when DB is disabled
+        mem = _MEM_DOMAIN_TECHS
+        if not mem:
+            return []
+        tech_lower = tech_term.lower() if tech_term else None
+        category_lower = category.lower() if isinstance(category, str) else None
+        cutoff = time.time() - 24 * 3600 if new24 else None
+        data: dict[tuple[str | None, str | None], dict] = {}
+
+        def _match_tech(name: str | None) -> bool:
+            if tech_lower is None:
+                return True
+            candidate = (name or '').lower()
+            if tech_use_like:
+                return tech_lower in candidate
+            return candidate == tech_lower
+
+        for (domain, name, ver), rec in list(mem.items()):
+            if not _match_tech(name):
                 continue
-            if category:
-                cats = (rec.get('categories') or '').lower()
-                if category.lower() not in cats:
+            if category_lower:
+                cats_raw = (rec.get('categories') or '')
+                if category_lower not in str(cats_raw).lower():
                     continue
             if version and ver != version:
                 continue
-            if new24:
+            if cutoff is not None:
                 try:
-                    if rec.get('first_seen', 0) < (time.time() - 24*3600):
+                    first_seen_val = rec.get('first_seen', 0) or 0
+                    if first_seen_val < cutoff:
                         continue
                 except Exception:
-                    pass
-            out.append({
-                'domain': d,
-                'tech_name': name,
-                'version': ver,
-                'categories': rec.get('categories').split(',') if rec.get('categories') else [],
-                'first_seen': rec.get('first_seen'),
-                'last_seen': rec.get('last_seen')
-            })
-        # sort
-        reverse = (sort_dir.lower() != 'asc')
+                    continue
+            key = (domain, name)
+            entry = data.get(key)
+            cats_list = _normalize_categories(rec.get('categories'))
+            if entry is None:
+                entry = {
+                    'domain': domain,
+                    'tech_name': name,
+                    'version': ver,
+                    'versions': [],
+                    'categories': cats_list,
+                    'first_seen': rec.get('first_seen'),
+                    'last_seen': rec.get('last_seen'),
+                }
+                data[key] = entry
+            rec_first = rec.get('first_seen')
+            rec_last = rec.get('last_seen')
+            if rec_first is not None and (entry.get('first_seen') is None or rec_first < entry['first_seen']):
+                entry['first_seen'] = rec_first
+            if rec_last is not None and (entry.get('last_seen') is None or rec_last > entry['last_seen']):
+                entry['last_seen'] = rec_last
+            if ver and ver not in entry['versions']:
+                entry['versions'].append(ver)
+            if cats_list and not entry.get('categories'):
+                entry['categories'] = cats_list
+            if ver and not entry.get('version'):
+                entry['version'] = ver
+        results = list(data.values())
+        if not results:
+            return []
+        sort_key_norm = (sort_key or 'last_seen').lower()
+        reverse = (sort_dir or '').lower() != 'asc'
         key_map = {
             'domain': lambda r: r['domain'],
             'tech_name': lambda r: r['tech_name'],
-            'version': lambda r: r['version'] or '',
-            'first_seen': lambda r: r.get('first_seen', 0),
-            'last_seen': lambda r: r.get('last_seen', 0)
+            'version': lambda r: r.get('version') or '',
+            'first_seen': lambda r: r.get('first_seen') or 0,
+            'last_seen': lambda r: r.get('last_seen') or 0
         }
-        keyfn = key_map.get((sort_key or '').lower(), lambda r: r.get('last_seen', 0))
-        out.sort(key=keyfn, reverse=reverse)
-        return out[offset:offset+limit]
+        keyfn = key_map.get(sort_key_norm, key_map['last_seen'])
+        try:
+            results.sort(key=keyfn, reverse=reverse)
+        except Exception:
+            # Fallback to last_seen ordering if custom sort fails
+            results.sort(key=key_map['last_seen'], reverse=True)
+        end = offset + max(0, limit)
+        return _finalize_rows(results[offset:end])
+
     clauses = []
-    params = []
-    base = 'SELECT domain, tech_name, version, categories, first_seen, last_seen FROM domain_techs'
-    if tech:
-        clauses.append('LOWER(tech_name)=LOWER(%s)')
-        params.append(tech)
+    params: list = []
+    if tech_term:
+        if tech_use_like:
+            clauses.append('LOWER(tech_name) LIKE LOWER(%s)')
+        else:
+            clauses.append('LOWER(tech_name)=LOWER(%s)')
+        params.append(tech_param)
     if category:
         clauses.append("(','||LOWER(categories)||',') LIKE %s")
         params.append(f'%,{category.lower()},%')
@@ -473,42 +673,111 @@ def search_tech(tech: str | None = None, category: str | None = None, version: s
         clauses.append('version = %s')
         params.append(version)
     if new24:
-            clauses.append('first_seen >= NOW() - INTERVAL \'24 hours\'')
+        clauses.append('first_seen >= NOW() - INTERVAL \'24 hours\'')
     where = (' WHERE ' + ' AND '.join(clauses)) if clauses else ''
     valid_cols = {
-        'domain': 'domain',
-        'tech_name': 'tech_name',
-        'version': 'version',
-        'first_seen': 'first_seen',
-        'last_seen': 'last_seen'
+        'domain': 's.domain',
+        'tech_name': 's.tech_name',
+        'version': 'l.latest_version',
+        'first_seen': 's.first_seen',
+        'last_seen': 's.last_seen'
     }
-    col = valid_cols.get((sort_key or '').lower(), 'last_seen')
-    dir_sql = 'ASC' if sort_dir.lower() == 'asc' else 'DESC'
-    order = f' ORDER BY {col} {dir_sql}'
-    sql = base + where + order + ' LIMIT %s OFFSET %s'
+    sort_col = valid_cols.get((sort_key or '').lower(), 's.last_seen')
+    dir_sql = 'ASC' if (sort_dir or '').lower() == 'asc' else 'DESC'
+    sql = f'''
+        WITH filtered AS (
+            SELECT domain, tech_name, version, categories, first_seen, last_seen
+            FROM domain_techs
+            {where}
+        ),
+        summary AS (
+            SELECT domain, tech_name,
+                   MIN(first_seen) AS first_seen,
+                   MAX(last_seen) AS last_seen
+            FROM filtered
+            GROUP BY domain, tech_name
+        ),
+        latest AS (
+            SELECT DISTINCT ON (domain, tech_name)
+                   domain,
+                   tech_name,
+                   version AS latest_version,
+                   categories AS latest_categories
+            FROM filtered
+            ORDER BY domain, tech_name, last_seen DESC
+        )
+        SELECT s.domain,
+               s.tech_name,
+               l.latest_categories,
+               s.first_seen,
+               s.last_seen,
+               l.latest_version,
+               COALESCE(
+                 (
+                   SELECT jsonb_agg(jsonb_build_object('version', vs.version, 'last_seen', vs.last_seen)
+                                    ORDER BY vs.last_seen DESC)
+                   FROM (
+                     SELECT version, MAX(last_seen) AS last_seen
+                     FROM filtered
+                     WHERE filtered.domain = s.domain
+                       AND filtered.tech_name = s.tech_name
+                       AND version IS NOT NULL AND version <> ''
+                     GROUP BY version
+                   ) vs
+                 ), '[]'::jsonb
+               ) AS versions_json
+        FROM summary s
+        JOIN latest l ON l.domain = s.domain AND l.tech_name = s.tech_name
+        ORDER BY {sort_col} {dir_sql}
+        LIMIT %s OFFSET %s
+    '''
     params.extend([limit, offset])
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
             rows = cur.fetchall()
             out = []
-            for r in rows:
+            for row in rows:
+                first_seen = row[3]
+                last_seen = row[4]
+                versions_payload = row[6] or []
+                versions = []
+                try:
+                    for entry in versions_payload:
+                        if isinstance(entry, dict):
+                            ver = entry.get('version')
+                        else:
+                            ver = entry[0] if isinstance(entry, (list, tuple)) else None
+                        if ver and ver not in versions:
+                            versions.append(ver)
+                except Exception:
+                    pass
                 out.append({
-                    'domain': r[0],
-                    'tech_name': r[1],
-                    'version': r[2],
-                    'categories': r[3].split(',') if r[3] else [],
-                    'first_seen': r[4].timestamp(),
-                    'last_seen': r[5].timestamp(),
+                    'domain': row[0],
+                    'tech_name': row[1],
+                    'categories': _normalize_categories(row[2]),
+                    'first_seen': first_seen.timestamp() if first_seen else None,
+                    'last_seen': last_seen.timestamp() if last_seen else None,
+                    'version': row[5],
+                    'versions': versions,
                 })
-            return out
+            return _finalize_rows(out)
 
 def count_search_tech(tech: str | None = None, category: str | None = None, version: str | None = None, new24: bool = False):
-    if _DB_DISABLED:
+    tech_term, tech_param, tech_use_like = _prepare_tech_filter(tech)
+    if _DB_DISABLED or _is_disabled_runtime():
         seen = set()
+        cutoff = time.time() - 24 * 3600
         for (d, name, ver), rec in list(globals().get('_MEM_DOMAIN_TECHS', {}).items()):
-            if tech and name.lower() != tech.lower():
-                continue
+            if tech_term:
+                candidate = (name or '').lower()
+                target = tech_term.lower()
+                if tech_use_like:
+                    if target not in candidate:
+                        continue
+                else:
+                    if candidate != target:
+                        continue
             if category:
                 cats = (rec.get('categories') or '').lower()
                 if category.lower() not in cats:
@@ -517,14 +786,14 @@ def count_search_tech(tech: str | None = None, category: str | None = None, vers
                 continue
             if new24:
                 try:
-                    if rec.get('first_seen', 0) < (time.time() - 24*3600):
+                    if rec.get('first_seen', 0) < cutoff:
                         continue
                 except Exception:
-                    pass
-            seen.add(d)
+                    continue
+            seen.add((d, name))
         return len(seen)
     # Cache key
-    k = (tech.lower() if tech else None, category.lower() if category else None, version, new24)
+    k = (tech_term.lower() if tech_term else None, category.lower() if category else None, version, new24, tech_use_like)
     now = time.time()
     # Purge stale entries occasionally
     if _count_cache and len(_count_cache) > _COUNT_CACHE_MAX:
@@ -538,10 +807,13 @@ def count_search_tech(tech: str | None = None, category: str | None = None, vers
             return val
     clauses = []
     params = []
-    base = 'SELECT COUNT(*) FROM domain_techs'
-    if tech:
-        clauses.append('LOWER(tech_name)=LOWER(%s)')
-        params.append(tech)
+    base = 'SELECT COUNT(DISTINCT (domain, tech_name)) FROM domain_techs'
+    if tech_term:
+        if tech_use_like:
+            clauses.append('LOWER(tech_name) LIKE LOWER(%s)')
+        else:
+            clauses.append('LOWER(tech_name)=LOWER(%s)')
+        params.append(tech_param)
     if category:
         clauses.append("(','||LOWER(categories)||',') LIKE %s")
         params.append(f'%,{category.lower()},%')
@@ -560,32 +832,48 @@ def count_search_tech(tech: str | None = None, category: str | None = None, vers
             return val
 
 def history(domain: str, limit: int = 20, offset: int = 0):
-    if _DB_DISABLED:
+    if _DB_DISABLED or _is_disabled_runtime():
         return []
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute('''SELECT mode, started_at, finished_at, duration_ms, from_cache, adaptive_timeout, retries, timeout_used
+            cur.execute('''SELECT mode, started_at, finished_at, duration_ms, from_cache, adaptive_timeout, retries, timeout_used, payload_bytes
                            FROM scans WHERE domain=%s ORDER BY finished_at DESC LIMIT %s OFFSET %s''', (domain, limit, offset))
             rows = cur.fetchall()
-            return [
-                {
+            out = []
+            for r in rows:
+                started_dt = r[1]
+                finished_dt = r[2]
+                duration_ms = r[3]
+                needs_recalc = duration_ms is None
+                if not needs_recalc:
+                    try:
+                        needs_recalc = float(duration_ms) <= 0
+                    except Exception:
+                        needs_recalc = True
+                if needs_recalc and started_dt and finished_dt:
+                    try:
+                        duration_ms = max(0, int((finished_dt - started_dt).total_seconds() * 1000))
+                    except Exception:
+                        duration_ms = None
+                out.append({
                     'mode': r[0],
-                    'started_at': r[1].timestamp(),
-                    'finished_at': r[2].timestamp(),
-                    'duration_ms': r[3],
+                    'started_at': started_dt.timestamp() if started_dt else None,
+                    'finished_at': finished_dt.timestamp() if finished_dt else None,
+                    'duration_ms': duration_ms,
                     'from_cache': r[4],
                     'adaptive_timeout': r[5],
                     'retries': r[6],
-                    'timeout_used': r[7]
-                } for r in rows
-            ]
+                    'timeout_used': r[7],
+                    'payload_bytes': r[8]
+                })
+            return out
 
 def get_domain_techs(domain: str):
     """Return current technologies for a domain from domain_techs ordered by last_seen desc.
     Output: list of {tech_name, version, categories, first_seen, last_seen}
     """
     # If DB disabled, synthesize from in-memory mirror (may be empty)
-    if _DB_DISABLED:
+    if _DB_DISABLED or _is_disabled_runtime():
         out = []
         for (d, name, version), rec in getattr(globals(), '_MEM_DOMAIN_TECHS', {}).items():
             if d != domain:
@@ -633,7 +921,7 @@ def get_domain_techs(domain: str):
     return mirror
 
 def count_history(domain: str):
-    if _DB_DISABLED:
+    if _DB_DISABLED or _is_disabled_runtime():
         return 0
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -643,7 +931,7 @@ def count_history(domain: str):
 
 def get_latest_scan_raw(domain: str):
     """Return raw JSON of the latest scan for a domain, or None."""
-    if _DB_DISABLED:
+    if _DB_DISABLED or _is_disabled_runtime():
         # try to synthesize from in-memory mirror by returning a fabricated raw
         # For tests, domain_techs mirror contains minimal info; return None
         return None
@@ -659,9 +947,39 @@ def get_latest_scan_raw(domain: str):
             return {'raw': raw_json, 'technologies': techs_json, 'finished_at': finished_at.timestamp() if finished_at else None}
 
 
+def get_hint_meta_for_domains(domains: list[str]) -> dict[str, dict]:
+    """Return mapping of domain -> stored tiered hint metadata."""
+    if not domains:
+        return {}
+    if _DB_DISABLED or _is_disabled_runtime():
+        return {}
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                '''
+                SELECT domain, raw_json
+                FROM (
+                    SELECT domain, raw_json,
+                           ROW_NUMBER() OVER (PARTITION BY domain ORDER BY finished_at DESC) AS rn
+                    FROM scans
+                    WHERE domain = ANY(%s)
+                ) ranked
+                WHERE rn = 1
+                ''',
+                (domains,)
+            )
+            rows = cur.fetchall()
+    hint_map: dict[str, dict] = {}
+    for domain, raw_json in rows:
+        meta = raw_json.get('_tiered_hint_meta') if isinstance(raw_json, dict) else None
+        if meta:
+            hint_map[domain] = meta
+    return hint_map
+
+
 def top_versions_for_tech(tech: str, limit: int = 10):
     """Return list of (version, count) for top versions for a tech."""
-    if _DB_DISABLED:
+    if _DB_DISABLED or _is_disabled_runtime():
         counts = {}
         for (d, name, ver), rec in list(globals().get('_MEM_DOMAIN_TECHS', {}).items()):
             if name.lower() != tech.lower():
@@ -679,7 +997,7 @@ def top_versions_for_tech(tech: str, limit: int = 10):
 
 def tech_trend(tech: str, days: int = 30):
     """Return timeseries counts per day for the past `days` days for a tech."""
-    if _DB_DISABLED:
+    if _DB_DISABLED or _is_disabled_runtime():
         # approximate trend from in-memory mirror using last_seen timestamps
         from collections import defaultdict
         buckets = defaultdict(int)
@@ -711,7 +1029,7 @@ def tech_trend(tech: str, days: int = 30):
 
 def db_stats():
     """Return aggregate DB statistics for quick dashboard use."""
-    if _DB_DISABLED:
+    if _DB_DISABLED or _is_disabled_runtime():
         return {'disabled': True}
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -742,7 +1060,7 @@ def db_stats():
 
 def get_db_diagnostics():
     """Collect lightweight diagnostics for /admin/db_check endpoint."""
-    if _DB_DISABLED:
+    if _DB_DISABLED or _is_disabled_runtime():
         return {'disabled': True, 'ok': False}
     info = {
         'ok': False,

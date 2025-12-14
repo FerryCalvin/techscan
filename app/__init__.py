@@ -9,6 +9,9 @@ def create_app():
     os.environ.setdefault('TECHSCAN_PERSIST_BROWSER', '1')
     os.environ.setdefault('TECHSCAN_UNIFIED', '1')
     os.environ.setdefault('TECHSCAN_FORCE_FULL', '1')
+    # Fail-fast defaults so unreachable hosts surface as explicit errors instead of slow 0-tech scans
+    os.environ.setdefault('TECHSCAN_PREFLIGHT', '1')
+    os.environ.setdefault('TECHSCAN_DNS_NEG_CACHE', '600')
     app = Flask(__name__)
     # Optional template auto-reload for development (to pick up index.html JS edits without restart)
     if os.environ.get('TECHSCAN_TEMPLATE_AUTO_RELOAD','0') == '1':
@@ -152,6 +155,18 @@ def create_app():
         # Non-fatal: if db import/monitor cannot be started, continue
         logging.getLogger(__name__).debug('DB monitor startup skipped or failed')
 
+    # Optionally start weekly rescan background thread (opt-in)
+    try:
+        from . import periodic
+        periodic.start_weekly_rescan(app)
+    except Exception:
+        logging.getLogger(__name__).debug('weekly rescan startup skipped or failed')
+
+    # Stats page auto-refresh configuration (default: manual/off)
+    # Set TECHSCAN_STATS_AUTO_REFRESH=1 to enable auto-refresh with 5 minute interval
+    app.config['STATS_AUTO_REFRESH'] = os.environ.get('TECHSCAN_STATS_AUTO_REFRESH', '0') == '1'
+    app.config['STATS_AUTO_REFRESH_INTERVAL_MS'] = int(os.environ.get('TECHSCAN_STATS_AUTO_REFRESH_INTERVAL_MS', '300000'))
+    
     # Version / commit (surface in config for other components if needed)
     app.config['TECHSCAN_VERSION'] = os.environ.get('TECHSCAN_VERSION', '0.3.0')
     # Attempt to read short commit for logging (best-effort)

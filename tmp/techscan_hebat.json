@@ -1,0 +1,713 @@
+﻿{
+    "audit":  {
+                  "outdated":  [
+                                   {
+                                       "difference":  "minor",
+                                       "latest":  "1.27.1",
+                                       "name":  "Nginx",
+                                       "version":  "1.22.1"
+                                   },
+                                   {
+                                       "difference":  "patch",
+                                       "latest":  "5.3.3",
+                                       "name":  "Bootstrap",
+                                       "version":  "5.3.2"
+                                   }
+                               ],
+                  "outdated_count":  2,
+                  "outdated_major":  0,
+                  "outdated_minor":  1,
+                  "outdated_patch":  1,
+                  "version_dataset":  "latest_versions.json"
+              },
+    "categories":  {
+                       "Analytics":  [
+                                         {
+                                             "name":  "Google Analytics",
+                                             "version":  "GA4"
+                                         }
+                                     ],
+                       "CDN":  [
+                                   {
+                                       "name":  "jsDelivr",
+                                       "version":  null
+                                   }
+                               ],
+                       "Font scripts":  [
+                                            {
+                                                "name":  "Google Font API",
+                                                "version":  null
+                                            }
+                                        ],
+                       "JavaScript frameworks":  [
+                                                     {
+                                                         "name":  "RequireJS",
+                                                         "version":  null
+                                                     }
+                                                 ],
+                       "JavaScript graphics":  [
+                                                   {
+                                                       "name":  "MathJax",
+                                                       "version":  null
+                                                   }
+                                               ],
+                       "JavaScript libraries":  [
+                                                    {
+                                                        "name":  "jQuery",
+                                                        "version":  "3.6.1"
+                                                    },
+                                                    {
+                                                        "name":  "Isotope",
+                                                        "version":  null
+                                                    },
+                                                    {
+                                                        "name":  "YUI",
+                                                        "version":  null
+                                                    }
+                                                ],
+                       "LMS":  [
+                                   {
+                                       "name":  "Moodle",
+                                       "version":  null
+                                   }
+                               ],
+                       "Programming languages":  [
+                                                     {
+                                                         "name":  "PHP",
+                                                         "version":  null
+                                                     }
+                                                 ],
+                       "Reverse proxies":  [
+                                               {
+                                                   "name":  "Nginx",
+                                                   "version":  "1.22.1"
+                                               }
+                                           ],
+                       "Security":  [
+                                        {
+                                            "name":  "HSTS",
+                                            "version":  null
+                                        }
+                                    ],
+                       "UI frameworks":  [
+                                             {
+                                                 "name":  "Bootstrap",
+                                                 "version":  "5.3.2"
+                                             }
+                                         ],
+                       "Web servers":  [
+                                           {
+                                               "name":  "Nginx",
+                                               "version":  "1.22.1"
+                                           }
+                                       ]
+                   },
+    "domain":  "hebat.elearning.unair.ac.id",
+    "duration":  9.0,
+    "engine":  "unified",
+    "finished_at":  1765277425.0,
+    "payload_bytes":  2061,
+    "phases":  {
+                   "heuristic_ms":  362,
+                   "micro_ms":  8119,
+                   "py_local_ms":  258,
+                   "synthetic_ms":  255
+               },
+    "raw":  {
+                "extras":  {
+                               "headers":  [
+                                               {
+                                                   "accept-ranges":  "none",
+                                                   "cache-control":  "no-store, no-cache, must-revalidate, post-check=0, pre-check=0, no-transform",
+                                                   "connection":  "keep-alive",
+                                                   "content-language":  "en",
+                                                   "content-script-type":  "text/javascript",
+                                                   "content-security-policy":  "upgrade-insecure-requests",
+                                                   "content-style-type":  "text/css",
+                                                   "content-type":  "text/html; charset=utf-8",
+                                                   "date":  "Tue, 09 Dec 2025 10:50:18 GMT",
+                                                   "expires":  "Mon, 20 Aug 1969 09:23:00 GMT",
+                                                   "last-modified":  "Tue, 09 Dec 2025 10:50:18 GMT",
+                                                   "location":  "/hebat-v2/",
+                                                   "permissions-policy":  "interest-cohort=()",
+                                                   "pragma":  "no-cache",
+                                                   "referrer-policy":  "no-referrer-when-downgrade",
+                                                   "server":  "nginx/1.22.1",
+                                                   "set-cookie":  "MoodleSession=tadd3m40tjcaedvjhsfd9vh9r0; path=/; secure; HttpOnly",
+                                                   "strict-transport-security":  "max-age=31536000;  includeSubDomains ",
+                                                   "transfer-encoding":  "chunked",
+                                                   "x-content-type-options":  "nosniff",
+                                                   "x-frame-options":  "SAMEORIGIN",
+                                                   "x-ua-compatible":  "IE=edge",
+                                                   "x-xss-protection":  "1; mode=block"
+                                               }
+                                           ],
+                               "links":  [
+                                             "https://hebat.elearning.unair.ac.id/pluginfile.php/1/core_admin/favicon/64x64/1762933464/favicon-unair.ico",
+                                             "https://hebat.elearning.unair.ac.id/theme/yui_combo.php?rollup/3.18.1/yui-moodlesimple.css",
+                                             "https://hebat.elearning.unair.ac.id/theme/styles.php/classic/1762933464_1/all"
+                                         ],
+                               "meta":  [
+                                            {
+                                                "description":  "",
+                                                "keywords":  "",
+                                                "viewport":  ""
+                                            }
+                                        ],
+                               "scripts":  [
+                                               "https://hebat.elearning.unair.ac.id/lib/javascript.php/1762933465/lib/polyfills/polyfill.js",
+                                               "https://hebat.elearning.unair.ac.id/theme/yui_combo.php?rollup/3.18.1/yui-moodlesimple.js",
+                                               "https://hebat.elearning.unair.ac.id/lib/javascript.php/1762933465/lib/javascript-static.js",
+                                               "https://hebat.elearning.unair.ac.id/lib/javascript.php/1762933465/lib/requirejs/require.min.js",
+                                               "https://cdn.jsdelivr.net/npm/mathjax@2.7.9/MathJax.js?delayStartupUntil=configured"
+                                           ],
+                               "url":  [
+                                           "https://hebat.elearning.unair.ac.id/"
+                                       ]
+                           },
+                "technologies":  [
+                                     {
+                                         "categories":  [
+
+                                                        ],
+                                         "confidence":  80,
+                                         "name":  "jQuery",
+                                         "version":  null
+                                     },
+                                     {
+                                         "categories":  [
+
+                                                        ],
+                                         "confidence":  60,
+                                         "name":  "Font Awesome",
+                                         "version":  null
+                                     }
+                                 ]
+            },
+    "scan_mode":  "fast",
+    "started_at":  1765277425.0,
+    "technologies":  [
+                         {
+                             "aliases":  [
+
+                                         ],
+                             "audit":  {
+                                           "difference":  "minor",
+                                           "latest":  "1.27.1",
+                                           "status":  "outdated"
+                                       },
+                             "canonical_name":  "Nginx",
+                             "categories":  [
+                                                "Web servers",
+                                                "Reverse proxies"
+                                            ],
+                             "confidence":  35,
+                             "evidence":  [
+
+                                          ],
+                             "name":  "Nginx",
+                             "version":  "1.22.1"
+                         },
+                         {
+                             "aliases":  [
+
+                                         ],
+                             "canonical_name":  "jQuery",
+                             "categories":  [
+
+                                            ],
+                             "confidence":  80,
+                             "detection_raw":  {
+                                                   "categories":  [
+
+                                                                  ],
+                                                   "confidence":  80,
+                                                   "name":  "jQuery",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+
+                                          ],
+                             "name":  "jQuery",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+
+                                            ],
+                             "confidence":  60,
+                             "detection_raw":  {
+                                                   "categories":  [
+
+                                                                  ],
+                                                   "confidence":  60,
+                                                   "name":  "Font Awesome",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+
+                                          ],
+                             "name":  "Font Awesome",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "Security"
+                                            ],
+                             "confidence":  30,
+                             "evidence":  [
+                                              {
+                                                  "name":  "strict-transport-security",
+                                                  "type":  "header",
+                                                  "value":  "max-age=31536000;  includeSubDomains "
+                                              }
+                                          ],
+                             "name":  "HSTS",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "LMS"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "LMS"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "implies":  [
+                                                                                        "PHP"
+                                                                                    ],
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "cookies",
+                                                                        "value":  "ls3t8c6obdssls2419ehgdkafu",
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "Moodle",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "implies":  [
+                                                                  "PHP"
+                                                              ],
+                                                  "kind":  "pattern",
+                                                  "source":  "cookies",
+                                                  "value":  "ls3t8c6obdssls2419ehgdkafu"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "implies":  [
+                                                                  "PHP"
+                                                              ],
+                                                  "kind":  "cookies",
+                                                  "source":  "cookies",
+                                                  "value":  "ls3t8c6obdssls2419ehgdkafu"
+                                              }
+                                          ],
+                             "name":  "Moodle",
+                             "version":  null
+                         },
+                         {
+                             "aliases":  [
+
+                                         ],
+                             "canonical_name":  "PHP",
+                             "categories":  [
+                                                "Programming languages"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Programming languages"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+
+                                                                ],
+                                                   "name":  "PHP",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+
+                                          ],
+                             "name":  "PHP",
+                             "version":  null
+                         },
+                         {
+                             "aliases":  [
+
+                                         ],
+                             "audit":  {
+                                           "difference":  "patch",
+                                           "latest":  "5.3.3",
+                                           "status":  "outdated"
+                                       },
+                             "canonical_name":  "Bootstrap",
+                             "categories":  [
+                                                "UI frameworks"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "UI frameworks"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "\u003clink href=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css",
+                                                                        "pattern":  "\u003clink[^\u003e]{0,250} href=[^\u003e]{0,250}?bootstrap(?:[^\u003e]{0,250}?([0-9a-fA-F]{7,40}|[\\d]{1,250}(?:.[\\d]{1,250}(?:.[\\d]{1,250})?)?)|)[^\u003e-]{0,250}?(?:\\.min)?\\.css",
+                                                                        "source":  "html",
+                                                                        "value":  null,
+                                                                        "version":  "\\1"
+                                                                    },
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js",
+                                                                        "pattern":  "bootstrap(?:[^\u003e]{0,250}?([0-9a-fA-F]{7,40}|[\\d]{1,250}(?:.[\\d]{1,250}(?:.[\\d]{1,250})?)?)|)[^\u003e]{0,250}?(?:\\.min)?\\.js",
+                                                                        "snippet":  "\u003cscript src=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js\" defer\u003e\u003c/script\u003e",
+                                                                        "source":  "scriptSrc",
+                                                                        "url":  "https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js",
+                                                                        "value":  "https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js",
+                                                                        "version":  "\\1"
+                                                                    },
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "bootstrap.bundle.min.js",
+                                                                        "pattern":  "bootstrap(?:[^\u003e]{0,250}?([0-9a-fA-F]{7,40}|[\\d]{1,250}(?:.[\\d]{1,250}(?:.[\\d]{1,250})?)?)|)[^\u003e]{0,250}?(?:\\.min)?\\.js",
+                                                                        "snippet":  "\u003cscript src=\"https://hebat.elearning.unair.ac.id/hebat-v2/assets/js/bootstrap.bundle.min.js\" defer\u003e\u003c/script\u003e",
+                                                                        "source":  "scriptSrc",
+                                                                        "url":  "https://hebat.elearning.unair.ac.id/hebat-v2/assets/js/bootstrap.bundle.min.js",
+                                                                        "value":  "https://hebat.elearning.unair.ac.id/hebat-v2/assets/js/bootstrap.bundle.min.js",
+                                                                        "version":  "\\1"
+                                                                    }
+                                                                ],
+                                                   "name":  "Bootstrap",
+                                                   "version":  "5.3.2"
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "\u003clink href=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css",
+                                                  "pattern":  "\u003clink[^\u003e]{0,250} href=[^\u003e]{0,250}?bootstrap(?:[^\u003e]{0,250}?([0-9a-fA-F]{7,40}|[\\d]{1,250}(?:.[\\d]{1,250}(?:.[\\d]{1,250})?)?)|)[^\u003e-]{0,250}?(?:\\.min)?\\.css",
+                                                  "source":  "html",
+                                                  "version":  "\\1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js",
+                                                  "pattern":  "bootstrap(?:[^\u003e]{0,250}?([0-9a-fA-F]{7,40}|[\\d]{1,250}(?:.[\\d]{1,250}(?:.[\\d]{1,250})?)?)|)[^\u003e]{0,250}?(?:\\.min)?\\.js",
+                                                  "snippet":  "\u003cscript src=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js",
+                                                  "value":  "https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js",
+                                                  "version":  "\\1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "bootstrap.bundle.min.js",
+                                                  "pattern":  "bootstrap(?:[^\u003e]{0,250}?([0-9a-fA-F]{7,40}|[\\d]{1,250}(?:.[\\d]{1,250}(?:.[\\d]{1,250})?)?)|)[^\u003e]{0,250}?(?:\\.min)?\\.js",
+                                                  "snippet":  "\u003cscript src=\"https://hebat.elearning.unair.ac.id/hebat-v2/assets/js/bootstrap.bundle.min.js\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://hebat.elearning.unair.ac.id/hebat-v2/assets/js/bootstrap.bundle.min.js",
+                                                  "value":  "https://hebat.elearning.unair.ac.id/hebat-v2/assets/js/bootstrap.bundle.min.js",
+                                                  "version":  "\\1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "html",
+                                                  "match":  "\u003clink href=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css",
+                                                  "pattern":  "\u003clink[^\u003e]{0,250} href=[^\u003e]{0,250}?bootstrap(?:[^\u003e]{0,250}?([0-9a-fA-F]{7,40}|[\\d]{1,250}(?:.[\\d]{1,250}(?:.[\\d]{1,250})?)?)|)[^\u003e-]{0,250}?(?:\\.min)?\\.css",
+                                                  "source":  "html",
+                                                  "version":  "\\1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "scriptSrc",
+                                                  "match":  "bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js",
+                                                  "pattern":  "bootstrap(?:[^\u003e]{0,250}?([0-9a-fA-F]{7,40}|[\\d]{1,250}(?:.[\\d]{1,250}(?:.[\\d]{1,250})?)?)|)[^\u003e]{0,250}?(?:\\.min)?\\.js",
+                                                  "snippet":  "\u003cscript src=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js",
+                                                  "value":  "https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js",
+                                                  "version":  "\\1"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "scriptSrc",
+                                                  "match":  "bootstrap.bundle.min.js",
+                                                  "pattern":  "bootstrap(?:[^\u003e]{0,250}?([0-9a-fA-F]{7,40}|[\\d]{1,250}(?:.[\\d]{1,250}(?:.[\\d]{1,250})?)?)|)[^\u003e]{0,250}?(?:\\.min)?\\.js",
+                                                  "snippet":  "\u003cscript src=\"https://hebat.elearning.unair.ac.id/hebat-v2/assets/js/bootstrap.bundle.min.js\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://hebat.elearning.unair.ac.id/hebat-v2/assets/js/bootstrap.bundle.min.js",
+                                                  "value":  "https://hebat.elearning.unair.ac.id/hebat-v2/assets/js/bootstrap.bundle.min.js",
+                                                  "version":  "\\1"
+                                              }
+                                          ],
+                             "name":  "Bootstrap",
+                             "version":  "5.3.2"
+                         },
+                         {
+                             "aliases":  [
+
+                                         ],
+                             "canonical_name":  "Google Analytics",
+                             "categories":  [
+                                                "Analytics"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Analytics"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "cookies",
+                                                                        "value":  "GA1.1.1104735322.1765262460",
+                                                                        "version":  null
+                                                                    },
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "cookies",
+                                                                        "value":  "GS2.1.s1765263187$o1$g0$t1765263197$j50$l0$h0",
+                                                                        "version":  "GA4"
+                                                                    }
+                                                                ],
+                                                   "name":  "Google Analytics",
+                                                   "version":  "GA4"
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "source":  "cookies",
+                                                  "value":  "GA1.1.1104735322.1765262460"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "source":  "cookies",
+                                                  "value":  "GS2.1.s1765263187$o1$g0$t1765263197$j50$l0$h0",
+                                                  "version":  "GA4"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "cookies",
+                                                  "source":  "cookies",
+                                                  "value":  "GA1.1.1104735322.1765262460"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "cookies",
+                                                  "source":  "cookies",
+                                                  "value":  "GS2.1.s1765263187$o1$g0$t1765263197$j50$l0$h0",
+                                                  "version":  "GA4"
+                                              }
+                                          ],
+                             "name":  "Google Analytics",
+                             "version":  "GA4"
+                         },
+                         {
+                             "categories":  [
+                                                "JavaScript libraries"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "JavaScript libraries"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "js",
+                                                                        "value":  null,
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "Isotope",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "js",
+                                                  "source":  "js",
+                                                  "value":  true
+                                              }
+                                          ],
+                             "name":  "Isotope",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "CDN"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "CDN"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  null,
+                                                                        "pattern":  "(?:)",
+                                                                        "source":  "dom",
+                                                                        "value":  "",
+                                                                        "version":  null
+                                                                    },
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "cdn.jsdelivr.net",
+                                                                        "pattern":  "cdn\\.jsdelivr\\.net",
+                                                                        "snippet":  "\u003cscript src=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js\" defer\u003e\u003c/script\u003e",
+                                                                        "source":  "scriptSrc",
+                                                                        "url":  "https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js",
+                                                                        "value":  "https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js",
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "jsDelivr",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "source":  "dom",
+                                                  "value":  ""
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "cdn.jsdelivr.net",
+                                                  "pattern":  "cdn\\.jsdelivr\\.net",
+                                                  "snippet":  "\u003cscript src=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js",
+                                                  "value":  "https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "scriptSrc",
+                                                  "match":  "cdn.jsdelivr.net",
+                                                  "pattern":  "cdn\\.jsdelivr\\.net",
+                                                  "snippet":  "\u003cscript src=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js\" defer\u003e\u003c/script\u003e",
+                                                  "source":  "scriptSrc",
+                                                  "url":  "https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js",
+                                                  "value":  "https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+                                              }
+                                          ],
+                             "name":  "jsDelivr",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "Font scripts"
+                                            ],
+                             "confidence":  100,
+                             "detection_raw":  {
+                                                   "categories":  [
+                                                                      "Font scripts"
+                                                                  ],
+                                                   "confidence":  100,
+                                                   "evidence":  [
+                                                                    {
+                                                                        "confidence":  100,
+                                                                        "kind":  "pattern",
+                                                                        "match":  "fonts.googleapis.com",
+                                                                        "pattern":  "fonts\\.(?:googleapis|google|gstatic)\\.com",
+                                                                        "snippet":  "\u003clink rel=\"preload\" href=\"https://fonts.googleapis.com\" as=\"fetch\"\u003e",
+                                                                        "source":  "dom",
+                                                                        "url":  "https://fonts.googleapis.com",
+                                                                        "value":  "https://fonts.googleapis.com",
+                                                                        "version":  null
+                                                                    }
+                                                                ],
+                                                   "name":  "Google Font API",
+                                                   "version":  null
+                                               },
+                             "evidence":  [
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "pattern",
+                                                  "match":  "fonts.googleapis.com",
+                                                  "pattern":  "fonts\\.(?:googleapis|google|gstatic)\\.com",
+                                                  "snippet":  "\u003clink rel=\"preload\" href=\"https://fonts.googleapis.com\" as=\"fetch\"\u003e",
+                                                  "source":  "dom",
+                                                  "url":  "https://fonts.googleapis.com",
+                                                  "value":  "https://fonts.googleapis.com"
+                                              },
+                                              {
+                                                  "confidence":  100.0,
+                                                  "kind":  "dom",
+                                                  "match":  "fonts.googleapis.com",
+                                                  "pattern":  "fonts\\.(?:googleapis|google|gstatic)\\.com",
+                                                  "snippet":  "\u003clink rel=\"preload\" href=\"https://fonts.googleapis.com\" as=\"fetch\"\u003e",
+                                                  "source":  "dom",
+                                                  "url":  "https://fonts.googleapis.com",
+                                                  "value":  "https://fonts.googleapis.com"
+                                              }
+                                          ],
+                             "name":  "Google Font API",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "JavaScript libraries"
+                                            ],
+                             "confidence":  18,
+                             "name":  "YUI",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "JavaScript frameworks"
+                                            ],
+                             "confidence":  25,
+                             "name":  "RequireJS",
+                             "version":  null
+                         },
+                         {
+                             "categories":  [
+                                                "JavaScript graphics"
+                                            ],
+                             "confidence":  24,
+                             "name":  "MathJax",
+                             "version":  null
+                         }
+                     ],
+    "tiered":  {
+                   "micro_used":  true
+               },
+    "timestamp":  1765277425
+}

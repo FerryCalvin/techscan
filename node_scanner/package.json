@@ -9,8 +9,8 @@
     "scan": "node scanner.js"
   },
   "dependencies": {
-    "wappalyzer": "^6.10.0",
-    "puppeteer": "^22.10.0"
+    "puppeteer": "^22.10.0",
+    "wappalyzer": "6.10.66"
   },
   "overrides": {
     "tar-fs": "^3.0.4",

@@ -43,6 +43,28 @@ def compare_versions(found: str, latest: str) -> int:
         return 0
     return 1
 
+
+def _prefer_newer_version(current: str | None, candidate: str | None) -> str | None:
+    """Pick the newer-looking semantic version between current and candidate.
+
+    Falls back to current when comparison fails so we avoid accidental downgrades.
+    """
+    if not candidate:
+        return current
+    if not current:
+        return candidate
+    cur = _semver_tuple(current)
+    cand = _semver_tuple(candidate)
+    if cand and cur:
+        return candidate if cand > cur else current
+    try:
+        # prefer the one with more segments when we cannot parse both cleanly
+        cur_parts = current.split('.')
+        cand_parts = candidate.split('.')
+        return candidate if len(cand_parts) > len(cur_parts) else current
+    except Exception:
+        return candidate
+
 def diff_severity(found: str, latest: str) -> str | None:
     """Classify how far behind 'found' is vs 'latest'.
     Returns one of: 'major','minor','patch' or None if not outdated / incomparable.
@@ -70,6 +92,12 @@ def audit_versions(scan: Dict[str, Any], latest_map: Dict[str,str] | None = None
         latest_map = load_latest_versions()
     if not latest_map:
         return scan
+    # Ensure version evidence has been applied so we audit the highest confident version
+    try:
+        if os.environ.get('TECHSCAN_VERSION_EVIDENCE','1') == '1':
+            apply_version_evidence(scan)
+    except Exception:
+        pass
     techs: List[Dict[str, Any]] = scan.get('technologies', [])
     # Early exit optimization: if no tech has version string, skip
     if not any(t.get('version') for t in techs):
@@ -200,7 +228,10 @@ def apply_version_evidence(result: Dict[str, Any]) -> None:
             extras = raw.get('extras') or raw.get('data', {}).get('extras')
         if not extras and isinstance(result, dict):
             extras = result.get('extras')
-        meta = (extras or {}).get('meta') or {}
+        meta_raw = (extras or {}).get('meta') or {}
+        if isinstance(meta_raw, list):
+            meta_raw = meta_raw[0] if meta_raw and isinstance(meta_raw[0], dict) else {}
+        meta = meta_raw if isinstance(meta_raw, dict) else {}
         scripts = (extras or {}).get('scripts') or []
         links = (extras or {}).get('links') or []
         evid_meta = extract_versions_from_meta(meta)
@@ -242,15 +273,15 @@ def apply_version_evidence(result: Dict[str, Any]) -> None:
             # Pick winner by highest weight; compute confidence aggregate
             best = max(candidates, key=lambda c: c.get('weight', 0))
             conf = combine_confidences([c.get('weight', 0) for c in candidates])
-            # Set version only if empty or weaker
-            if not t.get('version'):
-                t['version'] = best.get('normalized')
-                t.setdefault('version_confidence', conf)
-            else:
-                prev_conf = float(t.get('version_confidence') or 0.0)
-                if conf > prev_conf:
-                    t['version'] = best.get('normalized')
-                    t['version_confidence'] = conf
+            best_version = best.get('normalized')
+            prev_conf = float(t.get('version_confidence') or 0.0)
+            chosen_version = _prefer_newer_version(t.get('version'), best_version)
+            if not t.get('version') or chosen_version != t.get('version'):
+                t['version'] = chosen_version
+                t['version_confidence'] = max(prev_conf, conf)
+            elif conf > prev_conf:
+                # keep current version but carry the stronger confidence signal
+                t['version_confidence'] = conf
     except Exception:
         # best effort only
         return

@@ -1,6 +1,24 @@
+from __future__ import annotations
+
 from flask import Blueprint, request, jsonify, current_app, Response
-import logging, time, os
-from ..scan_utils import get_cached_or_scan, scan_bulk, DOMAIN_RE, extract_host, snapshot_cache, validate_domain, quick_single_scan, deep_scan, scan_unified, bulk_quick_then_deep, fast_full_scan
+import logging, time, os, threading, json, math
+from datetime import datetime
+from ..scan_utils import (
+    version_audit,
+    get_cached_or_scan,
+    scan_bulk,
+    DOMAIN_RE,
+    extract_host,
+    snapshot_cache,
+    validate_domain,
+    quick_single_scan,
+    deep_scan,
+    scan_unified,
+    bulk_quick_then_deep,
+    fast_full_scan,
+    scan_domain,
+    synthetic_header_detection,
+)
 from .. import db as _db
 from .. import bulk_store  # added for native batch caching
 from flask_limiter import Limiter
@@ -13,6 +31,244 @@ deep_scan_fn = deep_scan
 # Alias at module scope to avoid accidental function-local shadowing which can
 # trigger UnboundLocalError when Python marks the name as local in a function.
 deep_scan_fn = deep_scan
+
+_cancelled_tokens: dict[str, float] = {}
+_cancel_lock = threading.Lock()
+_CANCEL_TOKEN_TTL = 300.0
+
+
+def _estimate_payload_bytes(payload: dict | list | None) -> int | None:
+    if payload is None:
+        return None
+    try:
+        return len(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
+    except Exception:
+        logging.getLogger('techscan.scan').debug('failed to estimate payload size', exc_info=True)
+        return None
+
+
+def _coerce_timestamp(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            coerced = float(value)
+        except (TypeError, ValueError):
+            return None
+        return coerced if math.isfinite(coerced) else None
+    if isinstance(value, datetime):
+        return value.timestamp()
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            coerced = float(stripped)
+            return coerced if math.isfinite(coerced) else None
+        except ValueError:
+            try:
+                iso_formatted = stripped.replace('Z', '+00:00') if stripped.endswith('Z') else stripped
+                return datetime.fromisoformat(iso_formatted).timestamp()
+            except ValueError:
+                return None
+    return None
+
+
+def _register_cancel_tokens(tokens: list[str] | tuple[str, ...]) -> None:
+    if not tokens:
+        return
+    now = time.time()
+    with _cancel_lock:
+        for token in tokens:
+            if not token:
+                continue
+            _cancelled_tokens[str(token)] = now
+        stale = [tok for tok, ts in _cancelled_tokens.items() if now - ts > _CANCEL_TOKEN_TTL]
+        for tok in stale:
+            _cancelled_tokens.pop(tok, None)
+
+
+def _consume_cancel_token(token: str | None) -> bool:
+    if not token:
+        return False
+    now = time.time()
+    with _cancel_lock:
+        ts = _cancelled_tokens.pop(token, None)
+        if ts is None:
+            stale = [tok for tok, val in _cancelled_tokens.items() if now - val > _CANCEL_TOKEN_TTL]
+            for tok in stale:
+                _cancelled_tokens.pop(tok, None)
+            return False
+    return True
+
+
+def _apply_low_tech_rescue(domain: str, wappalyzer_path: str, result: dict, current_count: int) -> bool:
+    """If enabled, run one more persistent scan when tech count is too low.
+
+    Returns True when the fallback added more technologies to the result.
+    """
+    if not isinstance(result, dict):
+        return False
+    if os.environ.get('TECHSCAN_LOW_TECH_RETRY', '1') != '1':
+        return False
+    try:
+        threshold = int(os.environ.get('TECHSCAN_LOW_TECH_THRESHOLD', '15') or '15')
+    except ValueError:
+        threshold = 1
+    if current_count > threshold:
+        return False
+    try:
+        fallback_timeout = int(os.environ.get('TECHSCAN_LOW_TECH_TIMEOUT_S', '15') or '15')
+    except ValueError:
+        fallback_timeout = 15
+    use_best_snapshot = os.environ.get('TECHSCAN_LOW_TECH_BEST_FALLBACK','1') == '1'
+    logger = logging.getLogger('techscan.scan')
+    try:
+        fallback = scan_domain(domain, wappalyzer_path, timeout=fallback_timeout, retries=0, full=True)
+    except Exception as err:
+        logger.warning('low-tech fallback scan failed domain=%s err=%s', domain, err)
+        return False
+    fallback_techs = fallback.get('technologies') or []
+    if len(fallback_techs) <= current_count:
+        logger.debug('low-tech fallback added no new technologies domain=%s base=%d fallback=%d', domain, current_count, len(fallback_techs))
+        if use_best_snapshot:
+            best_payload = _load_best_scan_payload(domain)
+            if best_payload:
+                best_techs = best_payload.get('technologies') or []
+                if len(best_techs) > current_count:
+                    logger.info('low-tech best snapshot fallback domain=%s best=%d current=%d', domain, len(best_techs), current_count)
+                    result['technologies'] = best_techs
+                    if best_payload.get('raw'):
+                        result['raw'] = best_payload['raw']
+                    if best_payload.get('payload_bytes') is not None:
+                        result['payload_bytes'] = best_payload['payload_bytes']
+                    if best_payload.get('mode'):
+                        result['mode'] = best_payload['mode']
+                    if best_payload.get('duration') is not None:
+                        result['duration'] = best_payload['duration']
+                    if best_payload.get('started_at') is not None:
+                        result['started_at'] = best_payload['started_at']
+                    if best_payload.get('finished_at') is not None:
+                        result['finished_at'] = best_payload['finished_at']
+                    result.setdefault('phases', {})['low_tech_rescue'] = 'best_snapshot'
+                    result['fallback_engine'] = 'best_snapshot'
+                    return True
+        return False
+    logger.info('low-tech fallback added %d technologies domain=%s', len(fallback_techs) - current_count, domain)
+    result['technologies'] = fallback_techs
+    if fallback.get('categories'):
+        result['categories'] = fallback.get('categories')
+    if fallback.get('raw'):
+        result['raw'] = fallback.get('raw')
+    result.setdefault('phases', {})['low_tech_rescue'] = 'full_scan'
+    result['fallback_engine'] = fallback.get('engine')
+    return True
+
+
+def _load_best_scan_payload(domain: str) -> dict | None:
+    """Fetch the best historical scan for a domain (highest tech_count)."""
+    try:
+        with _db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                        SELECT id, mode, started_at, finished_at, duration_ms, from_cache, retries, timeout_used,
+                               technologies_json, raw_json, payload_bytes
+                        FROM scans
+                        WHERE domain=%s
+                        ORDER BY COALESCE(tech_count, 0) DESC, finished_at DESC
+                        LIMIT 1
+                    """,
+                    (domain,)
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                techs = row[8] if isinstance(row[8], list) else []
+                payload = {
+                    'domain': domain,
+                    'scan_id': row[0],
+                    'mode': row[1],
+                    'started_at': row[2].timestamp() if getattr(row[2], 'timestamp', None) else None,
+                    'finished_at': row[3].timestamp() if getattr(row[3], 'timestamp', None) else None,
+                    'duration': round((row[4] or 0) / 1000.0, 3) if row[4] is not None else None,
+                    'from_cache': row[5],
+                    'retries': row[6],
+                    'timeout_used': row[7],
+                    'technologies': techs,
+                    'tech_count': len(techs)
+                }
+                if len(row) > 9 and isinstance(row[9], dict):
+                    payload['raw'] = row[9]
+                if len(row) > 10 and row[10] is not None:
+                    payload['payload_bytes'] = row[10]
+                return payload
+    except Exception:
+        logging.getLogger('techscan.scan').debug('best scan lookup failed domain=%s', domain, exc_info=True)
+    return None
+
+
+def _ensure_minimum_detection(domain: str, result: dict) -> bool:
+    """Guarantee at least one technology entry when scanners return empty.
+
+    Tries heuristic_fast first (cheap HTML fetch) then synthetic header detection.
+    Returns True if technologies were injected.
+    """
+    if os.environ.get('TECHSCAN_ENSURE_MIN_TECH', '1') != '1':
+        return False
+    if not isinstance(result, dict):
+        return False
+    techs = result.get('technologies')
+    if isinstance(techs, list) and any((t or {}).get('name') for t in techs):
+        return False
+    logger = logging.getLogger('techscan.scan')
+    # Stage 1: heuristic quick probe (reuse tier-0 logic)
+    try:
+        from .. import heuristic_fast
+        try:
+            budget_ms = int(os.environ.get('TECHSCAN_MIN_TECH_HEURISTIC_MS', '1200') or '1200')
+        except ValueError:
+            budget_ms = 1200
+        hres = heuristic_fast.run_heuristic(domain, budget_ms=max(600, min(budget_ms, 2000)), allow_empty_early=True)
+        htechs = [t for t in (hres.get('technologies') or []) if t.get('name')]
+        if htechs:
+            result['technologies'] = htechs
+            if hres.get('categories'):
+                result['categories'] = hres['categories']
+            meta = result.setdefault('phases', {})
+            meta['minimum_detection'] = 'heuristic'
+            tier = result.setdefault('tiered', {})
+            tier['minimum_detection'] = 'heuristic'
+            logger.info('minimum detection heuristic added %d technologies domain=%s', len(htechs), domain)
+            return True
+    except Exception as err:
+        logger.debug('minimum detection heuristic failed domain=%s err=%s', domain, err)
+    # Stage 2: server header fallback via synthetic HEAD probe
+    try:
+        synth_timeout = 3
+        try:
+            synth_timeout = max(1, int(os.environ.get('TECHSCAN_MIN_TECH_SYNTH_TIMEOUT', '3') or '3'))
+        except ValueError:
+            synth_timeout = 3
+        synth = synthetic_header_detection(domain, timeout=synth_timeout)
+        synth = [t for t in synth if t.get('name')]
+        if synth:
+            result['technologies'] = synth
+            cats = result.setdefault('categories', {})
+            for tech in synth:
+                for cat in tech.get('categories') or []:
+                    bucket = cats.setdefault(cat, [])
+                    if not any(b['name'] == tech['name'] and b.get('version') == tech.get('version') for b in bucket):
+                        bucket.append({'name': tech['name'], 'version': tech.get('version')})
+            meta = result.setdefault('phases', {})
+            meta['minimum_detection'] = 'synthetic'
+            tier = result.setdefault('tiered', {})
+            tier['minimum_detection'] = 'synthetic'
+            logger.info('minimum detection synthetic headers added %d technologies domain=%s', len(synth), domain)
+            return True
+    except Exception as err:
+        logger.debug('minimum detection synthetic failed domain=%s err=%s', domain, err)
+    return False
 
 # Custom limits (can be overridden via env)
 BULK_LIMIT = os.environ.get('TECHSCAN_BULK_RATE_LIMIT', '20 per minute')
@@ -61,6 +317,8 @@ def scan_single_impl():
     if data is None or not isinstance(data, dict):
         return jsonify({'error': 'invalid JSON body'}), 400
     raw_input = (data.get('domain') or '').strip()
+    client_request_id = str(data.get('client_request_id') or request.args.get('client_request_id') or '').strip()
+    client_context = str(data.get('client_context') or request.args.get('client_context') or '').strip()
     domain = extract_host(raw_input)
     timeout = int(data.get('timeout') or 45)
     retries = int(data.get('retries') or 0)
@@ -89,6 +347,24 @@ def scan_single_impl():
     if str(data.get('quick')).lower() in ('1','true','yes') or request.args.get('quick') == '1' or os.environ.get('TECHSCAN_QUICK_SINGLE','0') == '1':
         quick_flag = True
     defer_quick = os.environ.get('TECHSCAN_QUICK_DEFER_FULL','0') == '1'
+    unified_enabled = os.environ.get('TECHSCAN_UNIFIED','1') == '1'
+    force_unified_flag = unified_enabled and str(os.environ.get('TECHSCAN_FORCE_UNIFIED','1')).lower() not in ('0','false','no')
+    def run_unified_scan(reason: str, min_budget_ms: int = 6000, fallback=None):
+        try:
+            budget_ms = max(min_budget_ms, int(timeout) * 1000)
+        except Exception:
+            budget_ms = min_budget_ms
+        logging.getLogger('techscan.scan').info('%s: using unified pipeline budget_ms=%s domain=%s', reason, budget_ms, domain)
+        try:
+            return scan_unified(domain, wpath, budget_ms=budget_ms)
+        except Exception as ue:
+            logging.getLogger('techscan.scan').warning('unified pipeline failed (%s) domain=%s err=%s', reason, domain, ue)
+            if callable(fallback):
+                return fallback()
+            raise
+    if force_unified_flag:
+        quick_flag = False
+        full = True
     try:
         # If the request explicitly asks for a specific mode, respect it.
         # Otherwise prefer the more-complete deep/full path when unified mode is enabled
@@ -97,37 +373,19 @@ def scan_single_impl():
         force_full_env = os.environ.get('TECHSCAN_FORCE_FULL','0') == '1'
         if fast_full:
             result = fast_full_scan(domain, wpath)
+        elif force_unified_flag:
+            result = run_unified_scan('force-unified', min_budget_ms=12000, fallback=lambda: deep_scan_fn(domain, wpath))
         elif deep or force_full_env:
-            # If unified pipeline is enabled, prefer it even for explicit "deep" requests
-            # This restores the multi-stage adaptive pipeline (heuristic -> py-local -> micro -> short full)
-            if os.environ.get('TECHSCAN_UNIFIED', '1') == '1':
-                try:
-                    # Use provided timeout (seconds) as a minimum budget, convert to ms
-                    budget_ms = max(6000, int(timeout) * 1000)
-                except Exception:
-                    budget_ms = 12000
-                logging.getLogger('techscan.scan').info('deep request: using unified pipeline budget_ms=%s', budget_ms)
-                try:
-                    result = scan_unified(domain, wpath, budget_ms=budget_ms)
-                except Exception as ue:
-                    logging.getLogger('techscan.scan').warning('unified pipeline failed for deep request, falling back to deep_scan domain=%s err=%s', domain, ue)
-                    result = deep_scan_fn(domain, wpath)
+            if unified_enabled or force_unified_flag:
+                result = run_unified_scan('deep-request', min_budget_ms=12000, fallback=lambda: deep_scan_fn(domain, wpath))
             else:
                 result = deep_scan_fn(domain, wpath)
-        elif quick_flag and not force_full_env:
+        elif quick_flag and not force_full_env and not force_unified_flag:
             result = quick_single_scan(domain, wpath, defer_full=defer_quick, timeout_full=timeout, retries_full=retries)
         else:
             # Prefer unified/deep by default for completeness when unified mode enabled
-            if os.environ.get('TECHSCAN_UNIFIED','1') == '1' or force_full_env:
-                # Prefer the unified pipeline for more complete detection by default when
-                # TECHSCAN_UNIFIED is enabled. Use the request timeout (seconds) as
-                # budget_ms for the unified engine (converted to milliseconds).
-                try:
-                    budget_ms = max(3000, int(timeout) * 1000)
-                except Exception:
-                    budget_ms = 6000
-                logging.getLogger('techscan.scan').info('defaulting to unified scan for more complete detection budget_ms=%s', budget_ms)
-                result = scan_unified(domain, wpath, budget_ms=budget_ms)
+            if unified_enabled or force_full_env or force_unified_flag:
+                result = run_unified_scan('default', min_budget_ms=6000, fallback=lambda: get_cached_or_scan(domain, wpath, timeout=timeout, retries=retries, fresh=fresh, ttl=ttl_int, full=full))
             else:
                 if logging.getLogger().isEnabledFor(logging.DEBUG):
                     logging.getLogger('techscan.scan').debug('quick_flag_evaluation quick_flag=%s body.quick=%r env.TECHSCAN_QUICK_SINGLE=%s args.quick=%s', quick_flag, data.get('quick'), os.environ.get('TECHSCAN_QUICK_SINGLE','0'), request.args.get('quick'))
@@ -137,13 +395,26 @@ def scan_single_impl():
             result['started_at'] = result.get('timestamp')
         if 'finished_at' not in result:
             result['finished_at'] = int(time.time())
+        # Ensure version evidence is applied even when payload comes from cache/DB
+        try:
+            if os.environ.get('TECHSCAN_VERSION_EVIDENCE', '1') == '1':
+                version_audit.apply_version_evidence(result)
+        except Exception:
+            logging.getLogger('techscan.scan').debug('version evidence apply failed', exc_info=True)
         # Observability: warn if scan returned very few technologies
         try:
             techs_check = result.get('technologies') or []
-            if isinstance(techs_check, list) and len(techs_check) <= 3:
+            low_thresh = 3
+            try:
+                low_thresh = int(os.environ.get('TECHSCAN_LOW_TECH_THRESHOLD', '15') or '15')
+            except ValueError:
+                low_thresh = 3
+            if isinstance(techs_check, list) and len(techs_check) <= low_thresh:
                 logging.getLogger('techscan.scan').warning('Low tech count (%d) for domain=%s engine=%s phases=%s', len(techs_check), domain, result.get('engine'), result.get('phases'))
+                _apply_low_tech_rescue(domain, wpath, result, len(techs_check))
+            _ensure_minimum_detection(domain, result)
         except Exception:
-            pass
+            logging.getLogger('techscan.scan').debug('low tech count check failed', exc_info=True)
         # Performance summary log (optional)
         if os.environ.get('TECHSCAN_PERF_LOG','0') == '1':
             try:
@@ -176,8 +447,82 @@ def scan_single_impl():
                     parts.append("adaptive=1")
                 logger.info('[perf] ' + ' '.join(parts))
             except Exception:
-                pass
-        logging.getLogger('techscan.scan').info('/scan success domain=%s quick=%s deep=%s fast_full=%s duration=%.2fs retries_used=%s', domain, quick_flag, deep, fast_full, time.time()-start, result.get('retries',0))
+                logging.getLogger('techscan.scan').debug('failed building perf log parts', exc_info=True)
+        if client_request_id and _consume_cancel_token(client_request_id):
+            logging.getLogger('techscan.scan').info('/scan client_cancel domain=%s request_id=%s context=%s', domain, client_request_id, client_context or 'n/a')
+            if debug_escalated:
+                try:
+                    base_level_name = os.environ.get('TECHSCAN_LOG_LEVEL', 'INFO').upper()
+                    base_level = getattr(logging, base_level_name, logging.INFO)
+                    logging.getLogger().setLevel(base_level)
+                except Exception:
+                    logging.getLogger('techscan.scan').debug('failed to restore log level after cancel acknowledgement', exc_info=True)
+            return jsonify({'domain': domain, 'status': 'cancelled', 'error': 'client_cancelled'})
+
+        raw_payload = result.get('raw') if isinstance(result, dict) else None
+        payload_bytes = _estimate_payload_bytes(raw_payload)
+        if payload_bytes is not None:
+            result['payload_bytes'] = payload_bytes
+        now = time.time()
+        started_at = _coerce_timestamp(result.get('started_at'))
+        if started_at is None:
+            started_at = _coerce_timestamp(result.get('timestamp'))
+        finished_at = _coerce_timestamp(result.get('finished_at'))
+
+        existing_duration = None
+        if 'duration' in result:
+            try:
+                existing_duration = float(result['duration'])
+                if existing_duration < 0 or not math.isfinite(existing_duration):
+                    existing_duration = None
+            except (TypeError, ValueError):
+                existing_duration = None
+
+        derived_duration = None
+        if started_at is not None and finished_at is not None:
+            try:
+                derived_duration = max(0.0, float(finished_at) - float(started_at))
+            except Exception:
+                derived_duration = None
+
+        duration = None
+        if derived_duration is not None and derived_duration > 0:
+            duration = derived_duration
+        elif existing_duration is not None and existing_duration > 0:
+            duration = existing_duration
+            if finished_at is None:
+                finished_at = now
+            if started_at is None:
+                started_at = finished_at - duration
+        else:
+            if finished_at is None:
+                finished_at = now
+            if started_at is None:
+                started_at = finished_at
+            duration = 0.0
+
+        # Guard against negative spacing due to inconsistent timestamps
+        if finished_at < started_at:
+            if duration and duration > 0:
+                # Align start time using available duration
+                started_at = finished_at - duration
+            else:
+                finished_at = started_at
+                duration = 0.0
+
+        result['started_at'] = started_at
+        result['finished_at'] = finished_at
+        result['duration'] = duration
+        logging.getLogger('techscan.scan').info(
+            '/scan success domain=%s quick=%s deep=%s fast_full=%s duration=%.2fs retries_used=%s payload_bytes=%s',
+            domain,
+            quick_flag,
+            deep,
+            fast_full,
+            time.time()-start,
+            result.get('retries',0),
+            payload_bytes if payload_bytes is not None else 'n/a'
+        )
         if debug_escalated:
             # Revert to original level (INFO by default)
             try:
@@ -185,22 +530,22 @@ def scan_single_impl():
                 base_level = getattr(logging, base_level_name, logging.INFO)
                 logging.getLogger().setLevel(base_level)
             except Exception:
-                pass
+                logging.getLogger('techscan.scan').debug('failed to restore log level after /scan', exc_info=True)
         # Persist scan (best-effort) if DB enabled
         try:
-            duration = (result.get('finished_at', time.time()) - result.get('started_at', result.get('timestamp', time.time())))
             meta_for_db = {
                 'domain': domain,
                 'scan_mode': result.get('engine') or ('fast_full' if fast_full else 'deep' if deep else 'quick' if quick_flag else ('full' if full else 'fast')),
-                'started_at': result.get('started_at'),
-                'finished_at': result.get('finished_at'),
+                'started_at': started_at,
+                'finished_at': finished_at,
                 'duration': duration,
                 'technologies': result.get('technologies'),
                 'categories': result.get('categories'),
                 'raw': result.get('raw'),
                 'retries': result.get('retries',0),
                 'adaptive_timeout': result.get('phases',{}).get('adaptive'),
-                'error': result.get('error')
+                'error': result.get('error'),
+                'payload_bytes': payload_bytes
             }
             timeout_used = 0
             # Derive timeout used if present in phases metadata
@@ -211,7 +556,7 @@ def scan_single_impl():
                         timeout_used = int(phases[k])
                         break
                     except Exception:
-                        pass
+                        logging.getLogger('techscan.scan').debug('failed to parse timeout_used from phases', exc_info=True)
             _db.save_scan(meta_for_db, result.get('cached', False), timeout_used)
         except Exception as persist_ex:
             logging.getLogger('techscan.scan').warning('persist_failed domain=%s err=%s', domain, persist_ex)
@@ -221,12 +566,7 @@ def scan_single_impl():
         import traceback as _tb
         tb = _tb.format_exc()
         logging.getLogger('techscan.scan').exception('/scan error domain=%s err=%s\n%s', domain, e, tb)
-        # Return traceback in response for easier local debugging (remove in production)
-        try:
-            return jsonify({'domain': domain, 'error': str(e), 'traceback': tb}), 500
-        except Exception:
-            return jsonify({'domain': domain, 'error': str(e)}), 500
-        # Attempt to log failed attempt as scan row too (with error)
+        # Attempt to log failed attempt as scan row too (with error) before returning
         try:
             _db.save_scan({
                 'domain': domain,
@@ -241,8 +581,12 @@ def scan_single_impl():
                 'error': str(e)
             }, from_cache=False, timeout_used=0)
         except Exception:
-            pass
-        return jsonify({'domain': domain, 'error': str(e)}), 500
+            logging.getLogger('techscan.scan').debug('failed to persist error scan row', exc_info=True)
+        # Return traceback in response for easier local debugging (remove in production)
+        try:
+            return jsonify({'domain': domain, 'error': str(e), 'traceback': tb}), 500
+        except Exception:
+            return jsonify({'domain': domain, 'error': str(e)}), 500
 
 @bp.route('/bulk', methods=['POST'])
 def bulk_rate_wrapper():
@@ -303,7 +647,7 @@ def scan_bulk_route_impl():
         if out_format == 'csv':
             import csv, io, json as _json
             output = io.StringIO()
-            fieldnames = ['status','domain','timestamp','tech_count','technologies','categories','cached','duration','retries','engine','error','outdated_count','outdated_list']
+            fieldnames = ['status','domain','timestamp','tech_count','payload_bytes','technologies','categories','cached','duration','retries','engine','error','outdated_count','outdated_list']
             if include_raw:
                 fieldnames.append('raw')
             writer = csv.DictWriter(output, fieldnames=fieldnames)
@@ -360,7 +704,7 @@ def scan_bulk_route_impl():
                 best[dom] = r
         import csv, io, json as _json
         output = io.StringIO()
-        fieldnames = ['status','domain','timestamp','tech_count','technologies','categories','cached','duration','retries','engine','error','outdated_count','outdated_list']
+        fieldnames = ['status','domain','timestamp','tech_count','payload_bytes','technologies','categories','cached','duration','retries','engine','error','outdated_count','outdated_list']
         if include_raw:
             fieldnames.append('raw')
         writer = csv.DictWriter(output, fieldnames=fieldnames)
@@ -380,6 +724,7 @@ def scan_bulk_route_impl():
             outdated_list_str = ' | '.join(f"{o.get('name')} ({o.get('version')} -> {o.get('latest')})" for o in outdated_items)
             row = {
                 'status':'ok','domain':dom_l,'timestamp':r.get('timestamp') or now_ts,'tech_count':len(techs),
+                'payload_bytes': r.get('payload_bytes'),
                 'technologies':' | '.join(tech_list),'categories':' | '.join(categories),'cached':True,
                 'duration': r.get('duration'),'retries': r.get('retries',0),'engine': r.get('engine'),
                 'error': r.get('error'),'outdated_count': audit_meta.get('outdated_count'),'outdated_list': outdated_list_str
@@ -437,6 +782,24 @@ def scan_bulk_route_impl():
             fixed.append(r)
         results = fixed
 
+    for r in results:
+        if not r:
+            continue
+        if r.get('status') != 'ok':
+            r.setdefault('payload_bytes', None)
+            continue
+        payload_val = r.get('payload_bytes')
+        if payload_val is None:
+            payload_val = _estimate_payload_bytes(r.get('raw'))
+        try:
+            if payload_val is not None:
+                r['payload_bytes'] = int(payload_val)
+            else:
+                r['payload_bytes'] = None
+        except Exception:
+            logging.getLogger('techscan.bulk').debug('bulk payload estimate failed domain=%s payload=%r', r.get('domain'), payload_val, exc_info=True)
+            r['payload_bytes'] = None
+
     # Save batch
     try:
         batch_id = bulk_store.save_batch(results, domains)
@@ -473,7 +836,7 @@ def scan_bulk_route_impl():
     if out_format == 'csv':
         import csv, io, json as _json
         output = io.StringIO()
-        fieldnames = ['status','domain','timestamp','tech_count','technologies','categories','cached','duration','retries','engine','error','outdated_count','outdated_list']
+        fieldnames = ['status','domain','timestamp','tech_count','payload_bytes','technologies','categories','cached','duration','retries','engine','error','outdated_count','outdated_list']
         if include_raw:
             fieldnames.append('raw')
         writer = csv.DictWriter(output, fieldnames=fieldnames)
@@ -498,6 +861,7 @@ def scan_bulk_route_impl():
                 'domain': r.get('domain'),
                 'timestamp': r.get('timestamp'),
                 'tech_count': len(techs),
+                'payload_bytes': r.get('payload_bytes'),
                 'technologies': ' | '.join(tech_list),
                 'categories': ' | '.join(categories),
                 'cached': r.get('cached'),
@@ -535,7 +899,8 @@ def scan_bulk_route_impl():
                 'raw': r.get('raw'),
                 'retries': r.get('retries',0),
                 'adaptive_timeout': (r.get('phases') or {}).get('adaptive'),
-                'error': r.get('error') if r.get('status') != 'ok' else None
+                'error': r.get('error') if r.get('status') != 'ok' else None,
+                'payload_bytes': r.get('payload_bytes')
             }
             timeout_used = 0
             phases = r.get('phases') or {}
@@ -544,12 +909,73 @@ def scan_bulk_route_impl():
                     try:
                         timeout_used = int(phases[k]); break
                     except Exception:
-                        pass
+                        logging.getLogger('techscan.bulk').debug('failed to parse timeout_used from phases (bulk)', exc_info=True)
             _db.save_scan(meta_for_db, r.get('cached', False), timeout_used)
     except Exception as bulk_persist_ex:
         logging.getLogger('techscan.bulk').warning('bulk_persist_failed err=%s', bulk_persist_ex)
 
     return jsonify({'count': len(results), 'ok': ok, 'batch_id': batch_id, 'error_summary': buckets, 'results': results})
+
+@bp.route('/scan/cancelled', methods=['POST'])
+def scan_cancelled():
+    data = request.get_json(silent=True) or {}
+    domain = str(data.get('domain') or '').strip()
+    token = str(data.get('token') or '').strip()
+    tokens = data.get('tokens') or []
+    if isinstance(tokens, str):
+        tokens = [tokens]
+    cleaned_tokens = []
+    if token:
+        cleaned_tokens.append(token)
+    for tok in tokens:
+        if not tok:
+            continue
+        st = str(tok).strip()
+        if st and st not in cleaned_tokens:
+            cleaned_tokens.append(st)
+    if cleaned_tokens:
+        _register_cancel_tokens(cleaned_tokens)
+    reason = data.get('reason') or 'client_cancel'
+    logger = logging.getLogger('techscan.scan')
+    if domain:
+        logger.info('single cancel acknowledged domain=%s reason=%s tokens=%d', domain, reason, len(cleaned_tokens))
+    elif cleaned_tokens:
+        logger.info('single cancel acknowledged reason=%s tokens=%d', reason, len(cleaned_tokens))
+    return jsonify({'status': 'ok', 'logged_tokens': len(cleaned_tokens)})
+
+
+@bp.route('/bulk/cancelled', methods=['POST'])
+def bulk_cancelled():
+    data = request.get_json(silent=True) or {}
+    domains = data.get('domains') or []
+    reason = data.get('reason') or 'client_cancel'
+    if isinstance(domains, str):
+        domains = [domains]
+    if not isinstance(domains, list):
+        return jsonify({'error': 'domains must be a list'}), 400
+    cleaned = []
+    for dom in domains:
+        if not dom:
+            continue
+        cleaned.append(str(dom).strip())
+    tokens = data.get('tokens') or []
+    if isinstance(tokens, str):
+        tokens = [tokens]
+    cleaned_tokens = []
+    for tok in tokens:
+        if not tok:
+            continue
+        st = str(tok).strip()
+        if st:
+            cleaned_tokens.append(st)
+    if cleaned_tokens:
+        _register_cancel_tokens(cleaned_tokens)
+    logger = logging.getLogger('techscan.bulk')
+    for dom in cleaned:
+        logger.info('bulk cancel acknowledged domain=%s reason=%s', dom, reason)
+    if cleaned_tokens:
+        logger.info('bulk cancel tokens logged=%d reason=%s', len(cleaned_tokens), reason)
+    return jsonify({'status': 'ok', 'logged': len(cleaned), 'logged_tokens': len(cleaned_tokens)})
 
 @bp.route('/export/csv', methods=['GET'])
 def export_csv():

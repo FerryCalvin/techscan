@@ -8,6 +8,7 @@ from .. import safe_subprocess as sproc
 from .. import version_audit
 from .. import scan_utils
 from .. import db as dbmod
+from .. import periodic
 from statistics import mean, median
 import random
 
@@ -34,6 +35,35 @@ def cache_flush():
     logging.getLogger('techscan.admin').info('cache flush domains=%s removed=%s remaining=%s',
                                             'subset' if domains else 'all', res['removed'], res['remaining'])
     return jsonify({'status': 'ok', **res})
+
+@admin_bp.route('/weekly_rescan/run', methods=['POST'])
+def weekly_rescan_run():
+    """Manual trigger for the weekly rescan sweep (diagnostics only)."""
+    body = request.get_json(silent=True) or {}
+    limit_raw = body.get('limit') or body.get('max') or body.get('max_domains') or request.args.get('limit')
+    lookback_raw = body.get('lookback_days') or request.args.get('lookback_days')
+    dry_run = bool(body.get('dry_run'))
+    try:
+        limit = int(limit_raw) if limit_raw is not None else None
+    except (TypeError, ValueError):
+        return jsonify({'error': 'limit must be an integer'}), 400
+    try:
+        lookback = int(lookback_raw) if lookback_raw is not None else None
+    except (TypeError, ValueError):
+        return jsonify({'error': 'lookback_days must be an integer'}), 400
+    try:
+        summary = periodic.run_weekly_rescan_once(
+            current_app,
+            max_domains=limit,
+            lookback_days=lookback,
+            dry_run=dry_run
+        )
+    except (ValueError, FileNotFoundError) as err:
+        return jsonify({'error': str(err)}), 400
+    except Exception as err:
+        logging.getLogger('techscan.admin').exception('manual weekly rescan trigger failed')
+        return jsonify({'error': 'internal', 'detail': str(err)}), 500
+    return jsonify({'status': 'ok', **summary})
 
 @admin_bp.route('/log_level', methods=['GET','POST'])
 def log_level():
@@ -611,3 +641,27 @@ def health_summary():
         'uptime_seconds': round(uptime,2) if uptime else None
     }
     return jsonify(out)
+
+
+@admin_bp.route('/node_health', methods=['GET'])
+def node_health():
+    """Lightweight health check for the persistent Node/Wappalyzer daemon.
+
+    Returns availability plus recent metrics; errors are surfaced with a 503.
+    """
+    try:
+        from .. import persistent_client as pc
+        ping_resp = pc.ping()
+        metrics = pc.get_metrics_snapshot()
+        return jsonify({
+            'available': True,
+            'ping': ping_resp,
+            'metrics': metrics,
+            'persist_enabled': os.environ.get('TECHSCAN_PERSIST_BROWSER','0') == '1'
+        })
+    except Exception as e:
+        return jsonify({
+            'available': False,
+            'error': str(e),
+            'persist_enabled': os.environ.get('TECHSCAN_PERSIST_BROWSER','0') == '1'
+        }), 503

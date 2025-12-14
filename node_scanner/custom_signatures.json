@@ -1,0 +1,74 @@
+{
+  "meta": {
+    "note": "Local offline signatures for techscan; regex patterns are case-insensitive by default."
+  },
+  "technologies": [
+    {
+      "name": "GA4",
+      "categories": ["Analytics"],
+      "confidence": 65,
+      "rules": [
+        { "field": "scripts", "pattern": "googletagmanager\\.com/gtag/js\\?id=G-[A-Z0-9]{4,}" },
+        { "field": "scripts", "pattern": "measurement\\?id=G-[A-Z0-9]{4,}" }
+      ]
+    },
+    {
+      "name": "Google Tag Manager",
+      "categories": ["Analytics"],
+      "confidence": 60,
+      "rules": [
+        { "field": "scripts", "pattern": "googletagmanager\\.com/gtm\\.js" },
+        { "field": "scripts", "pattern": "GTM-[A-Z0-9]+" }
+      ]
+    },
+    {
+      "name": "Progressive Web App",
+      "categories": ["PWA"],
+      "confidence": 55,
+      "minHits": 1,
+      "rules": [
+        { "field": "serviceWorkers", "pattern": "." },
+        { "field": "manifestUrls", "pattern": "." }
+      ]
+    },
+    {
+      "name": "RSS",
+      "categories": ["Syndication"],
+      "confidence": 50,
+      "rules": [
+        { "field": "links", "pattern": "rss\\.xml|/rss(\\?|$)" },
+        { "field": "links", "pattern": "(/|=)feed(\\.|/|$)" }
+      ]
+    },
+    {
+      "name": "Open Graph",
+      "categories": ["Social"],
+      "confidence": 40,
+      "rules": [
+        { "field": "metaKeys", "pattern": "^og:" }
+      ]
+    },
+    {
+      "name": "Tailwind CSS",
+      "categories": ["CSS frameworks"],
+      "confidence": 55,
+      "rules": [
+        { "field": "links", "pattern": "tailwind" },
+        { "field": "scripts", "pattern": "tailwind" },
+        { "field": "bodyClasses", "pattern": "tailwind" }
+      ]
+    },
+    {
+      "name": "Floodlight",
+      "categories": ["Advertising"],
+      "confidence": 50,
+      "rules": [
+        { "field": "scripts", "pattern": "fls\\.doubleclick\\.net" },
+        { "field": "links", "pattern": "fls\\.doubleclick\\.net" },
+        { "field": "scripts", "pattern": "googleads\\.g\\.doubleclick\\.net/pagead/viewthroughconversion" },
+        { "field": "scripts", "pattern": "floodlight" },
+        { "field": "scripts", "pattern": "dc_pre" }
+      ]
+    }
+  ]
+}

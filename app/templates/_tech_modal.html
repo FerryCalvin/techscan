@@ -1,108 +1,111 @@
-<!-- Clean single tech modal partial -->
-<div id="tech-modal" class="tech-modal" role="dialog" aria-modal="true" aria-hidden="true">
-  <div id="tech-modal-overlay" class="tech-modal-backdrop" data-close="true"></div>
-  <!-- adopt stats-cat-panel styling to match category popup visuals -->
-  <div class="tech-modal-panel stats-cat-panel" role="document" aria-labelledby="tech-modal-name" tabindex="-1">
-    <header class="tech-modal-header">
-      <div class="tech-meta">
-        <img id="tech-modal-icon" src="/static/assets/images/placeholder-tech.svg" alt="" class="tech-icon" />
-        <div>
+<!-- Shared technology modal injected on every page -->
+<div id="tech-modal" class="ts-tech-modal" aria-hidden="true">
+  <div id="tech-modal-overlay" class="ts-tech-modal__overlay" data-dismiss="true"></div>
+  <div class="ts-tech-modal__panel" role="dialog" aria-modal="true" aria-labelledby="tech-modal-name" tabindex="-1">
+    <header class="ts-tech-modal__header">
+      <div class="ts-tech-modal__identity">
+        <p class="ts-tech-modal__label">Technology</p>
+        <div class="ts-tech-modal__title">
+          <img id="tech-modal-icon" src="" alt="" role="presentation" />
           <h2 id="tech-modal-name">Technology</h2>
-          <div id="tech-modal-sub" class="small-note"></div>
         </div>
+        <p id="tech-modal-sub" class="ts-tech-modal__sub">Category</p>
       </div>
-      <div class="tech-actions">
-        <button id="tech-modal-export" class="btn">Export CSV</button>
-        <button id="tech-modal-close" class="btn" aria-label="Close">✕</button>
+      <div class="ts-tech-modal__actions">
+        <button id="tech-modal-view-websites" type="button" class="ts-tech-modal__btn ghost" aria-label="View related websites">
+          <span>Websites</span>
+        </button>
+        <button id="tech-modal-open-evidence" type="button" class="ts-tech-modal__btn ghost" aria-label="View evidence">
+          <span>Evidence</span>
+        </button>
+        <button id="tech-modal-export" type="button" class="ts-tech-modal__btn ghost" aria-label="Export JSON">⇩</button>
+        <button id="tech-modal-close" type="button" class="ts-tech-modal__btn ghost" aria-label="Close">&times;</button>
       </div>
     </header>
-    <div class="tech-modal-body">
-      <div class="tech-left">
-        <section id="tech-sites" class="tech-section">
-          <h3>Sites using this technology</h3>
-          <div style="margin-bottom:8px"><input id="tech-modal-search" placeholder="Search sites…" style="width:100%;padding:.45rem;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit" /></div>
-          <div id="tech-modal-sites-list" style="max-height:62vh;overflow:auto;padding:8px;">Loading...</div>
-          <div id="tech-modal-sites-pager" class="tech-sites-pager" style="padding:8px;text-align:center;"></div>
-        </section>
+    <section class="ts-tech-modal__summary">
+      <div id="tech-modal-summary-inner" class="ts-tech-modal__summary-grid">
+        <div class="ts-tech-modal__metric"><span>Detected</span><strong>—</strong></div>
+        <div class="ts-tech-modal__metric"><span>Confidence</span><strong>—</strong></div>
+        <div class="ts-tech-modal__metric"><span>Total Sites</span><strong>—</strong></div>
       </div>
-      <aside class="tech-right">
-        <section id="tech-summary" class="tech-section">
-          <h3>Summary</h3>
-          <div id="tech-modal-summary-inner">Loading metadata…</div>
-        </section>
-        <section id="tech-evidence" class="tech-section">
-          <h3>Evidence</h3>
-          <div id="tech-evidence-list">Loading evidence…</div>
-        </section>
-        <section id="tech-trend" class="tech-section">
-          <h3>Trend</h3>
-          <canvas id="modalTrend" style="width:100%;height:180px"></canvas>
-        </section>
-      </aside>
-    </div>
-    <footer class="tech-modal-footer">
-      <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
-        <div id="tech-modal-footer-left"></div>
+    </section>
+    <section class="ts-tech-modal__body">
+      <div class="ts-tech-modal__body-head">
         <div>
-          <button id="tech-modal-view-websites" class="btn">View all on Websites</button>
+          <h3>Detected Sites</h3>
+          <p class="ts-tech-modal__hint">Domains and URLs collected for this stack.</p>
+        </div>
+        <div class="ts-tech-modal__filter">
+          <input id="tech-modal-search" type="search" placeholder="Filter domains…" autocomplete="off" />
         </div>
       </div>
+      <ul id="tech-modal-sites-list" class="ts-tech-modal__sites"></ul>
+      <div id="tech-modal-sites-pager" class="ts-tech-modal__pager"></div>
+    </section>
+    <footer class="ts-tech-modal__footer">
+      <p id="tech-modal-footer-left">No stats loaded yet.</p>
     </footer>
   </div>
 </div>
 
+<!-- Evidence drilldown modal -->
+<div id="evidence-modal" class="ts-evidence-modal" aria-hidden="true">
+  <div id="evidence-modal-overlay" class="ts-evidence-modal__overlay" data-dismiss="true"></div>
+  <div class="ts-evidence-modal__panel" role="dialog" aria-modal="true" aria-labelledby="evidence-modal-name" tabindex="-1">
+    <header class="ts-evidence-modal__header">
+      <div>
+        <p class="ts-tech-modal__label">Evidence</p>
+        <h3 id="evidence-modal-name">Technology</h3>
+        <p id="evidence-modal-meta" class="ts-tech-modal__sub">—</p>
+      </div>
+      <button id="evidence-modal-close" type="button" class="ts-tech-modal__btn ghost" aria-label="Close">&times;</button>
+    </header>
+    <div class="ts-evidence-modal__body">
+      <ul id="tech-evidence-list" class="ts-evidence-list">
+        <li class="ts-evidence-empty">Evidence payload not loaded.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
 <style>
-/* Modal defaults: hidden until activated. Use fixed overlay + centered panel */
-#tech-modal { position: fixed; inset: 0; z-index: 1200; display: none; align-items: center; justify-content: center; }
-#tech-modal.active { display: flex; }
-#tech-modal-overlay { position: fixed; inset: 0; background: rgba(12,14,18,0.52); backdrop-filter: blur(6px) saturate(120%); z-index: 1200; }
-
-/* Liquid glass panel */
-.tech-modal-panel {
-  position: relative;
-  width: 86%;
-  max-width: 980px;
-  border-radius: 14px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  max-height: 84vh;
-  overflow: auto;
-  z-index: 1201;
-  background: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(245,248,255,0.45));
-  box-shadow: 0 8px 30px rgba(2,6,23,0.45), inset 0 1px 0 rgba(255,255,255,0.35);
-  border: 1px solid rgba(255,255,255,0.18);
-  backdrop-filter: blur(10px) saturate(140%);
-  -webkit-backdrop-filter: blur(10px) saturate(140%);
-  transition: transform .26s cubic-bezier(.2,.9,.2,1), opacity .22s ease, box-shadow .22s ease;
+.ts-tech-modal,.ts-evidence-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:150;}
+.ts-tech-modal.is-visible,.ts-evidence-modal.active,.ts-tech-modal.active{display:flex;}
+.ts-tech-modal__overlay,.ts-evidence-modal__overlay{position:absolute;inset:0;background:rgba(2,6,23,0.85);backdrop-filter:blur(14px);}
+.ts-tech-modal__panel,.ts-evidence-modal__panel{position:relative;width:min(900px,calc(100% - 2.5rem));border-radius:28px;padding:1.5rem 1.75rem;background:linear-gradient(145deg,rgba(7,12,24,0.94),rgba(16,24,40,0.96));color:#e2e8f0;box-shadow:0 45px 90px rgba(2,6,23,0.75),inset 0 0 0 1px rgba(148,163,184,0.25);display:flex;flex-direction:column;gap:1.2rem;overflow:hidden;}
+.ts-tech-modal__panel::before,.ts-evidence-modal__panel::before{content:'';position:absolute;inset:-25%;background:radial-gradient(circle at 20% 15%,rgba(94,234,212,0.32),transparent 55%);opacity:.45;pointer-events:none;}
+.ts-tech-modal__panel>* , .ts-evidence-modal__panel>*{position:relative;z-index:1;}
+.ts-tech-modal__header{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;}
+.ts-tech-modal__label{text-transform:uppercase;font-size:.52rem;letter-spacing:.4px;color:#93c5fd;margin:0 0 .2rem;}
+.ts-tech-modal__title{display:flex;align-items:center;gap:.8rem;}
+#tech-modal-icon{width:46px;height:46px;border-radius:14px;background:rgba(15,23,42,0.6);border:1px solid rgba(148,163,184,0.25);object-fit:contain;padding:.35rem;box-shadow:0 10px 24px rgba(15,23,42,0.35);}
+.ts-tech-modal__title h2{margin:0;font-size:1.35rem;color:#f8fafc;}
+.ts-tech-modal__sub{margin:.2rem 0 0;color:#cbd5f5;font-size:.85rem;}
+.ts-tech-modal__actions{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;}
+.ts-tech-modal__btn{border:1px solid rgba(148,163,184,0.35);background:rgba(15,23,42,0.35);color:#e2e8f0;padding:.4rem .85rem;border-radius:999px;font-size:.75rem;letter-spacing:.2px;cursor:pointer;transition:all .2s ease;}
+.ts-tech-modal__btn.ghost{background:rgba(15,23,42,0.45);}
+.ts-tech-modal__btn:hover{border-color:rgba(94,234,212,0.65);color:#a5f3fc;}
+.ts-tech-modal__summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem;}
+.ts-tech-modal__metric{padding:.8rem 1rem;border-radius:1rem;background:linear-gradient(135deg,rgba(15,23,42,0.55),rgba(31,41,55,0.55));box-shadow:inset 0 0 0 1px rgba(71,85,105,0.3);}
+.ts-tech-modal__metric span{display:block;font-size:.6rem;text-transform:uppercase;letter-spacing:.35px;color:#a5b4fc;margin-bottom:.2rem;}
+.ts-tech-modal__metric strong{font-size:1.05rem;color:#f8fafc;}
+.ts-tech-modal__body{padding:1rem 1.1rem;border-radius:1.25rem;background:rgba(15,23,42,0.45);box-shadow:inset 0 0 0 1px rgba(30,64,175,0.3);display:flex;flex-direction:column;gap:.95rem;}
+.ts-tech-modal__body-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;}
+.ts-tech-modal__body-head h3{margin:0;font-size:1rem;color:#f8fafc;}
+.ts-tech-modal__hint{margin:.2rem 0 0;color:#94a3b8;font-size:.75rem;}
+.ts-tech-modal__filter input{padding:.45rem .8rem;border-radius:999px;border:1px solid rgba(148,163,184,0.35);background:rgba(15,23,42,0.35);color:#e2e8f0;min-width:220px;}
+.ts-tech-modal__sites{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.55rem;max-height:260px;overflow:auto;}
+.ts-tech-modal__sites li{padding:.55rem .75rem;border-radius:.9rem;background:rgba(15,118,110,0.13);color:#ccfbf1;box-shadow:inset 0 0 0 1px rgba(34,197,94,0.25);font-size:.8rem;word-break:break-all;}
+.ts-tech-modal__pager{text-align:center;font-size:.75rem;color:#cbd5f5;}
+.ts-tech-modal__footer{display:flex;justify-content:space-between;flex-wrap:wrap;gap:.75rem;border-top:1px solid rgba(148,163,184,0.25);padding-top:.85rem;font-size:.78rem;color:#cbd5f5;}
+.ts-evidence-modal__body{max-height:60vh;overflow:auto;padding:.5rem;}
+.ts-evidence-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.65rem;font-size:.78rem;color:#e0f2fe;}
+.ts-evidence-list li{padding:.65rem .8rem;border-radius:1rem;background:rgba(7,89,133,0.38);box-shadow:inset 0 0 0 1px rgba(14,165,233,0.28);}
+.ts-evidence-empty{text-align:center;color:#cbd5f5;background:rgba(15,23,42,0.45);}
+@media (max-width:720px){
+  .ts-tech-modal__panel,.ts-evidence-modal__panel{padding:1.2rem;}
+  .ts-tech-modal__panel{width:calc(100% - 1.5rem);}
+  .ts-tech-modal__actions{width:100%;justify-content:flex-start;}
+  .ts-tech-modal__filter input{width:100%;}
 }
-.tech-modal-panel::before{
-  content: '';
-  position: absolute; inset: 0; z-index: 0; border-radius: 14px; pointer-events: none;
-  background: linear-gradient(120deg, rgba(255,255,255,0.02), rgba(255,255,255,0.06) 30%, rgba(255,255,255,0.01) 70%);
-}
-
-.tech-modal-header{ position: relative; display:flex; justify-content:space-between; align-items:center; padding:14px 18px; z-index:1; }
-.tech-modal-body{ display:flex; gap:18px; padding:12px 18px 18px 18px; z-index:1; }
-.tech-left{ flex:1 1 60%; }
-.tech-right{ flex:0 0 38%; max-width:420px; }
-.evidence-list{ margin-top:8px; }
-.evidence-item{ padding:8px 10px; border-radius:8px; background:rgba(255,255,255,0.06); margin-bottom:8px; font-size:0.95rem; }
-.sites-section .site-card{ padding:10px; border-bottom:1px solid rgba(255,255,255,0.04); display:flex; justify-content:space-between; gap:8px; }
-.sites-pager{ display:flex; gap:8px; align-items:center; margin-top:8px; }
-.tech-modal-footer{ display:flex; gap:8px; padding:12px 16px; border-top:1px solid rgba(255,255,255,0.04); justify-content:flex-end; z-index:1; }
-
-/* enter/exit animation */
-#tech-modal.active .tech-modal-panel { transform: translateY(0) scale(1); opacity: 1; }
-#tech-modal .tech-modal-panel { transform: translateY(-10px) scale(.995); opacity: 0; }
-
-/* visible state transitions */
-#tech-modal.active .tech-modal-panel { transition: transform .26s cubic-bezier(.2,.9,.2,1), opacity .2s ease; }
-
-/* header tech icon */
-.tech-icon{ width:56px; height:56px; object-fit:cover; border-radius:10px; margin-right:12px; z-index:1; }
-
-/* small helpers for focus ring */
-.tech-modal-panel :focus{ outline: 2px solid rgba(66,133,244,0.9); outline-offset: 3px; }
-
 </style>
