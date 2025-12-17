@@ -9,6 +9,7 @@ from ..scan_utils import (
     scan_bulk,
     DOMAIN_RE,
     extract_host,
+    extract_url_with_path,
     snapshot_cache,
     validate_domain,
     quick_single_scan,
@@ -319,7 +320,8 @@ def scan_single_impl():
     raw_input = (data.get('domain') or '').strip()
     client_request_id = str(data.get('client_request_id') or request.args.get('client_request_id') or '').strip()
     client_context = str(data.get('client_context') or request.args.get('client_context') or '').strip()
-    domain = extract_host(raw_input)
+    domain = extract_host(raw_input)  # host-only for validation and scanning
+    domain_with_path = extract_url_with_path(raw_input)  # full URL with path for storage
     timeout = int(data.get('timeout') or 45)
     retries = int(data.get('retries') or 0)
     ttl = data.get('ttl')
@@ -534,7 +536,7 @@ def scan_single_impl():
         # Persist scan (best-effort) if DB enabled
         try:
             meta_for_db = {
-                'domain': domain,
+                'domain': domain_with_path,  # Use full URL with path
                 'scan_mode': result.get('engine') or ('fast_full' if fast_full else 'deep' if deep else 'quick' if quick_flag else ('full' if full else 'fast')),
                 'started_at': started_at,
                 'finished_at': finished_at,
@@ -569,7 +571,7 @@ def scan_single_impl():
         # Attempt to log failed attempt as scan row too (with error) before returning
         try:
             _db.save_scan({
-                'domain': domain,
+                'domain': domain_with_path,  # Use full URL with path
                 'scan_mode': 'error',
                 'started_at': start,
                 'finished_at': time.time(),

@@ -1,0 +1,1488 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-wrapper report-page">
+    <header class="page-header" style="margin-bottom:2rem;text-align:center;">
+        <h1 class="page-title hero-title" style="font-size:2.2rem;margin-bottom:0.5rem;">Technology Report</h1>
+        <p class="page-subtitle" style="opacity:0.7;font-size:0.95rem;">Executive overview with drill-down analysis</p>
+    </header>
+
+    <!-- Layer 1: Category Grid 2x5 -->
+    <section class="report-grid" id="category-grid">
+        <!-- Row 1 -->
+        <div class="report-card glass-surface" data-category="cms">
+            <h3 class="report-card-title">CMS</h3>
+            <div class="report-card-chart"><canvas id="chart-cms"></canvas></div>
+            <div class="report-card-count"><span id="count-cms">-</span> usages</div>
+        </div>
+        <div class="report-card glass-surface" data-category="programming languages">
+            <h3 class="report-card-title">Programming Language</h3>
+            <div class="report-card-chart"><canvas id="chart-programming"></canvas></div>
+            <div class="report-card-count"><span id="count-programming">-</span> usages</div>
+        </div>
+        <div class="report-card glass-surface" data-category="ui frameworks">
+            <h3 class="report-card-title">UI Frameworks</h3>
+            <div class="report-card-chart"><canvas id="chart-ui"></canvas></div>
+            <div class="report-card-count"><span id="count-ui">-</span> usages</div>
+        </div>
+        <div class="report-card glass-surface" data-category="web frameworks">
+            <h3 class="report-card-title">Web Framework</h3>
+            <div class="report-card-chart"><canvas id="chart-webframework"></canvas></div>
+            <div class="report-card-count"><span id="count-webframework">-</span> usages</div>
+        </div>
+        <div class="report-card glass-surface" data-category="databases">
+            <h3 class="report-card-title">Database</h3>
+            <div class="report-card-chart"><canvas id="chart-database"></canvas></div>
+            <div class="report-card-count"><span id="count-database">-</span> usages</div>
+        </div>
+
+        <!-- Row 2 -->
+        <div class="report-card glass-surface" data-category="reverse proxies">
+            <h3 class="report-card-title">Reverse Proxies</h3>
+            <div class="report-card-chart"><canvas id="chart-proxies"></canvas></div>
+            <div class="report-card-count"><span id="count-proxies">-</span> usages</div>
+        </div>
+        <div class="report-card glass-surface" data-category="security">
+            <h3 class="report-card-title">Security</h3>
+            <div class="report-card-chart"><canvas id="chart-security"></canvas></div>
+            <div class="report-card-count"><span id="count-security">-</span> usages</div>
+        </div>
+        <div class="report-card glass-surface" data-category="ssl-tls-certificate-authorities">
+            <h3 class="report-card-title">SSL/TLS Certificate</h3>
+            <div class="report-card-chart"><canvas id="chart-ssl"></canvas></div>
+            <div class="report-card-count"><span id="count-ssl">-</span> usages</div>
+        </div>
+        <div class="report-card glass-surface" data-category="cdn">
+            <h3 class="report-card-title">CDN</h3>
+            <div class="report-card-chart"><canvas id="chart-cdn"></canvas></div>
+            <div class="report-card-count"><span id="count-cdn">-</span> usages</div>
+        </div>
+        <div class="report-card glass-surface" data-category="operating systems">
+            <h3 class="report-card-title">Operating System</h3>
+            <div class="report-card-chart"><canvas id="chart-os"></canvas></div>
+            <div class="report-card-count"><span id="count-os">-</span> usages</div>
+        </div>
+    </section>
+
+    <!-- Layer 2: Full-Screen Modal for Category/Tech -->
+    <div class="report-modal" id="layer2Modal">
+        <div class="report-modal-content glass-surface--intense">
+            <div class="report-modal-header">
+                <button class="report-modal-back" id="layer2BackBtn" onclick="handleLayer2Back()">← Back</button>
+                <h2 class="report-modal-title" id="modal-title">Category</h2>
+                <button class="report-modal-close" onclick="closeAllModals()">×</button>
+            </div>
+
+            <!-- Breadcrumb navigation -->
+            <div class="report-breadcrumb" id="breadcrumb">
+                <span class="breadcrumb-item" data-level="category">Category</span>
+            </div>
+
+            <!-- Tabs -->
+            <div class="report-tabs" id="modal-tabs">
+                <button class="report-tab active" data-tab="main">Technologies</button>
+            </div>
+
+            <!-- Main content area -->
+            <div class="report-content-area" id="modal-content">
+                <div class="loading-text">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Layer 3: Website Detail Modal -->
+    <div class="report-modal" id="layer3Modal">
+        <div class="report-modal-content glass-surface--intense">
+            <div class="report-modal-header">
+                <button class="report-modal-back" onclick="closeLayer3()">← Back to Tech</button>
+                <h2 class="report-modal-title" id="website-title">Website</h2>
+                <button class="report-modal-close" onclick="closeAllModals()">×</button>
+            </div>
+            <div class="report-tech-stack" id="website-tech-stack">
+                <div class="loading-text">Loading tech stack...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Layer 4: Evidence Popup Modal -->
+    <div class="evidence-modal" id="evidenceModal">
+        <div class="evidence-modal-content glass-liquid">
+            <div class="evidence-modal-header">
+                <h3 id="evidence-tech-name">Technology</h3>
+                <button type="button" class="evidence-modal-close" id="evidenceCloseBtn">×</button>
+            </div>
+            <div class="evidence-modal-body" id="evidence-body">
+                <div class="loading-text">Loading evidence...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Immediate setup for close button - runs as soon as DOM is parsed
+    document.addEventListener('DOMContentLoaded', function () {
+        var closeBtn = document.getElementById('evidenceCloseBtn');
+        var modal = document.getElementById('evidenceModal');
+
+        if (closeBtn) {
+            closeBtn.onclick = function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (modal) modal.classList.remove('active');
+                console.log('Close button clicked');
+            };
+        }
+
+        if (modal) {
+            modal.onclick = function (e) {
+                if (e.target === modal) {
+                    modal.classList.remove('active');
+                    console.log('Backdrop clicked');
+                }
+            };
+        }
+    });
+</script>
+
+<style>
+    .report-page {
+        padding: 1rem 2rem;
+        max-width: 1600px;
+        margin: 0 auto;
+    }
+
+    .report-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 1.25rem;
+        margin-bottom: 2rem;
+    }
+
+    .report-card {
+        padding: 1.25rem;
+        border-radius: 16px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(20px);
+    }
+
+    .report-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 40px -10px rgba(96, 165, 250, 0.3);
+        border-color: rgba(96, 165, 250, 0.4);
+    }
+
+    .report-card-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        text-align: center;
+        color: rgba(255, 255, 255, 0.9);
+    }
+
+    .report-card-chart {
+        height: 120px;
+        margin-bottom: 0.75rem;
+    }
+
+    .report-card-count {
+        text-align: center;
+        font-size: 0.85rem;
+        color: #60a5fa;
+        font-weight: 500;
+    }
+
+    body.light .report-card {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.88));
+        border: 1px solid rgba(226, 232, 240, 0.6);
+    }
+
+    body.light .report-card-title {
+        color: #1e293b;
+    }
+
+    /* Modal */
+    .report-modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(8px);
+    }
+
+    .report-modal.active {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .report-modal-content {
+        width: 95vw;
+        max-width: 1400px;
+        height: 90vh;
+        border-radius: 24px;
+        padding: 2rem;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 25px 80px -20px rgba(0, 0, 0, 0.5);
+    }
+
+    body.light .report-modal-content {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.95));
+        border: 1px solid rgba(226, 232, 240, 0.8);
+    }
+
+    .report-modal-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .report-modal-title {
+        flex: 1;
+        font-size: 1.5rem;
+        font-weight: 700;
+        background: linear-gradient(92deg, #a78bfa, #60a5fa 55%, #22d3ee);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        margin: 0;
+    }
+
+    .report-modal-close,
+    .report-modal-back {
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 1rem;
+        padding: 0.5rem 1rem;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .report-modal-close:hover,
+    .report-modal-back:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    body.light .report-modal-close,
+    body.light .report-modal-back {
+        background: rgba(0, 0, 0, 0.05);
+        color: #475569;
+    }
+
+    /* Breadcrumb */
+    .report-breadcrumb {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        font-size: 0.85rem;
+        color: rgba(255, 255, 255, 0.6);
+    }
+
+    .breadcrumb-item {
+        cursor: pointer;
+        padding: 0.25rem 0.5rem;
+        border-radius: 6px;
+        transition: all 0.2s;
+    }
+
+    .breadcrumb-item:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: #fff;
+    }
+
+    .breadcrumb-item.active {
+        color: #60a5fa;
+        font-weight: 600;
+    }
+
+    .breadcrumb-separator {
+        opacity: 0.4;
+    }
+
+    body.light .report-breadcrumb {
+        color: #64748b;
+    }
+
+    body.light .breadcrumb-item:hover {
+        background: rgba(0, 0, 0, 0.05);
+        color: #1e293b;
+    }
+
+    body.light .breadcrumb-item.active {
+        color: #3b82f6;
+    }
+
+    /* Tabs */
+    .report-tabs {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .report-tab {
+        padding: 0.6rem 1.2rem;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        color: rgba(255, 255, 255, 0.7);
+        cursor: pointer;
+        transition: all 0.2s;
+        font-weight: 500;
+        font-size: 0.9rem;
+    }
+
+    .report-tab:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .report-tab.active {
+        background: linear-gradient(135deg, #60a5fa, #a78bfa);
+        border-color: transparent;
+        color: #fff;
+    }
+
+    body.light .report-tab {
+        background: rgba(0, 0, 0, 0.03);
+        border-color: rgba(226, 232, 240, 0.6);
+        color: #64748b;
+    }
+
+    body.light .report-tab.active {
+        background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+        color: #fff;
+    }
+
+    /* Content area */
+    .report-content-area {
+        flex: 1;
+        overflow-y: auto;
+        padding-right: 0.5rem;
+    }
+
+    .report-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .report-item {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem 1.25rem;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .report-item:hover {
+        background: rgba(96, 165, 250, 0.15);
+        border-color: rgba(96, 165, 250, 0.3);
+        transform: translateX(4px);
+    }
+
+    body.light .report-item {
+        background: rgba(0, 0, 0, 0.02);
+        border-color: rgba(226, 232, 240, 0.6);
+    }
+
+    body.light .report-item:hover {
+        background: rgba(59, 130, 246, 0.08);
+        border-color: rgba(59, 130, 246, 0.3);
+    }
+
+    .report-item-name {
+        font-weight: 600;
+        font-size: 1rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .report-item-count {
+        font-size: 0.85rem;
+        color: #60a5fa;
+        font-weight: 500;
+        white-space: nowrap;
+        padding: 0.25rem 0.75rem;
+        background: rgba(96, 165, 250, 0.1);
+        border-radius: 6px;
+    }
+
+    .report-item-arrow {
+        opacity: 0.5;
+        font-size: 1rem;
+        color: #60a5fa;
+    }
+
+    /* Website metadata header */
+    .website-meta {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding: 1.25rem;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+    }
+
+    body.light .website-meta {
+        background: rgba(0, 0, 0, 0.02);
+        border-color: rgba(226, 232, 240, 0.5);
+    }
+
+    .website-meta-item {
+        text-align: center;
+    }
+
+    .website-meta-label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        opacity: 0.6;
+        margin-bottom: 0.25rem;
+    }
+
+    .website-meta-value {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #60a5fa;
+    }
+
+    body.light .website-meta-value {
+        color: #3b82f6;
+    }
+
+    /* Tech stack */
+    .report-tech-stack {
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    .report-stack-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .report-stack-title {
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #60a5fa;
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    body.light .report-stack-title {
+        color: #3b82f6;
+        border-bottom-color: rgba(226, 232, 240, 0.6);
+    }
+
+    .report-stack-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        margin: 0.25rem;
+        font-size: 0.9rem;
+    }
+
+    body.light .report-stack-item {
+        background: rgba(0, 0, 0, 0.03);
+        border-color: rgba(226, 232, 240, 0.6);
+    }
+
+    .report-stack-version {
+        font-size: 0.75rem;
+        opacity: 0.6;
+    }
+
+    .loading-text {
+        text-align: center;
+        padding: 3rem;
+        opacity: 0.6;
+    }
+
+    @media (max-width: 1200px) {
+        .report-grid {
+            grid-template-columns: repeat(3, 1fr);
+        }
+    }
+
+    @media (max-width: 768px) {
+        .report-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    /* Evidence Popup Modal Styles */
+    .evidence-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 2000;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .evidence-modal.active {
+        display: flex;
+    }
+
+    .evidence-modal-content {
+        max-width: 520px;
+        width: 90%;
+        max-height: 80vh;
+        overflow-y: auto;
+        border-radius: 20px;
+        padding: 1.5rem;
+        /* Glass Liquid Theme */
+        background: linear-gradient(135deg,
+                rgba(15, 23, 42, 0.85) 0%,
+                rgba(30, 41, 59, 0.9) 50%,
+                rgba(15, 23, 42, 0.85) 100%);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow:
+            0 25px 50px -12px rgba(0, 0, 0, 0.6),
+            0 0 0 1px rgba(255, 255, 255, 0.05),
+            inset 0 1px 0 0 rgba(255, 255, 255, 0.1),
+            0 0 40px rgba(96, 165, 250, 0.15);
+        animation: evidenceSlideIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+        position: relative;
+    }
+
+    .evidence-modal-content::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(90deg,
+                transparent,
+                rgba(255, 255, 255, 0.4),
+                transparent);
+        pointer-events: none;
+    }
+
+    .glass-liquid {
+        background: linear-gradient(135deg,
+                rgba(15, 23, 42, 0.9) 0%,
+                rgba(30, 58, 95, 0.85) 50%,
+                rgba(15, 23, 42, 0.9) 100%) !important;
+    }
+
+    @keyframes evidenceSlideIn {
+        from {
+            opacity: 0;
+            transform: scale(0.9) translateY(-20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+        }
+    }
+
+    .evidence-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        position: relative;
+        z-index: 100;
+    }
+
+    .evidence-modal-header h3 {
+        margin: 0;
+        font-size: 1.25rem;
+        color: #fff;
+    }
+
+    .evidence-modal-close {
+        background: rgba(255, 255, 255, 0.08);
+        border: none;
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 1.25rem;
+        cursor: pointer;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        transition: all 0.2s;
+        position: relative;
+        z-index: 100;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .evidence-modal-close:hover {
+        color: #fff;
+        background: rgba(239, 68, 68, 0.5);
+        transform: scale(1.1);
+    }
+
+    .evidence-modal-body {
+        color: rgba(255, 255, 255, 0.9);
+    }
+
+    .evidence-section {
+        margin-bottom: 1rem;
+    }
+
+    .evidence-section-title {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.5);
+        margin-bottom: 0.5rem;
+        letter-spacing: 0.05em;
+    }
+
+    .evidence-tag {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        background: rgba(34, 197, 94, 0.2);
+        color: #22c55e;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        margin-right: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .evidence-tag.source {
+        background: rgba(96, 165, 250, 0.2);
+        color: #60a5fa;
+    }
+
+    .evidence-description {
+        font-size: 0.9rem;
+        color: rgba(255, 255, 255, 0.7);
+        line-height: 1.5;
+    }
+
+    .evidence-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #60a5fa;
+        text-decoration: none;
+        font-size: 0.9rem;
+        padding: 0.5rem 0;
+    }
+
+    .evidence-link:hover {
+        text-decoration: underline;
+    }
+
+    .evidence-meta-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        font-size: 0.85rem;
+    }
+
+    .evidence-meta-label {
+        color: rgba(255, 255, 255, 0.5);
+    }
+
+    .evidence-meta-value {
+        color: rgba(255, 255, 255, 0.9);
+    }
+
+    /* Evidence code snippet styles */
+    .evidence-tabs {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .evidence-tab {
+        padding: 0.4rem 0.8rem;
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        border-radius: 4px;
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .evidence-tab.active {
+        background: rgba(96, 165, 250, 0.3);
+        color: #60a5fa;
+    }
+
+    .evidence-code-block {
+        background: rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin-bottom: 0.75rem;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 0.75rem;
+        color: #a5f3fc;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+
+    .evidence-match-label {
+        font-size: 0.7rem;
+        color: rgba(255, 255, 255, 0.4);
+        text-transform: uppercase;
+        margin-bottom: 0.25rem;
+    }
+
+    .evidence-match-value {
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 0.8rem;
+        color: #fbbf24;
+        background: rgba(251, 191, 36, 0.1);
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+    }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Global function for closing evidence modal - MUST be outside IIFE
+    function closeEvidenceModal() {
+        var modal = document.getElementById('evidenceModal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+    }
+</script>
+<script>
+    (function () {
+        // Category configuration with proper API names matching Wappalyzer categories
+        const CATEGORIES = [
+            { id: 'cms', name: 'CMS', api: 'cms' },
+            { id: 'programming', name: 'Programming Language', api: 'programming languages' },
+            { id: 'ui', name: 'UI Frameworks', api: 'ui frameworks' },
+            { id: 'webframework', name: 'Web Framework', api: 'web frameworks' },
+            { id: 'database', name: 'Database', api: 'databases' },
+            { id: 'proxies', name: 'Reverse Proxies', api: 'reverse proxies' },
+            { id: 'security', name: 'Security', api: 'security' },
+            { id: 'ssl', name: 'SSL/TLS Certificate', api: 'ssl-tls-certificate-authorities' },
+            { id: 'cdn', name: 'CDN', api: 'cdn' },
+            { id: 'os', name: 'Operating System', api: 'operating systems' }
+        ];
+
+        // Tech with children - uses exact category names from Wappalyzer
+        const TECH_CHILDREN = {
+            'wordpress': [
+                { name: 'WordPress Plugins', api: 'wordpress plugins' },
+                { name: 'WordPress Themes', api: 'wordpress themes' }
+            ],
+            'drupal': [
+                { name: 'Drupal Modules', api: 'drupal modules' }
+            ],
+            'joomla': [
+                { name: 'Joomla Extensions', api: 'joomla extensions' }
+            ]
+        };
+
+        // Navigation state
+        let navStack = [];
+        let currentView = null;
+        const charts = {};
+        const COLORS = ['#22c55e', '#60a5fa', '#fbbf24', '#f472b6', '#a78bfa', '#fb923c'];
+
+        // Escape HTML
+        function esc(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // Helper function to delay
+        function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // Initialize charts with staggered API calls to avoid rate limit
+        async function init() {
+            for (let i = 0; i < CATEGORIES.length; i++) {
+                const cat = CATEGORIES[i];
+                // Add delay between requests to avoid rate limit (150ms = max 6/sec = 360/min < 60 limit)
+                if (i > 0) await delay(150);
+
+                try {
+                    const res = await fetch(`/api/category/${encodeURIComponent(cat.api)}/technologies`);
+                    if (!res.ok) {
+                        console.error('API error:', cat.id, res.status);
+                        continue;
+                    }
+                    const data = await res.json();
+                    const techs = data.technologies || [];
+
+                    // Update count
+                    const total = techs.reduce((sum, t) => sum + (t.count || 0), 0);
+                    const countEl = document.getElementById(`count-${cat.id}`);
+                    if (countEl) countEl.textContent = total.toLocaleString();
+
+                    // Create chart
+                    const ctx = document.getElementById(`chart-${cat.id}`);
+                    if (ctx && techs.length > 0) {
+                        charts[cat.id] = new Chart(ctx, {
+                            type: 'bar',
+                            data: {
+                                labels: techs.slice(0, 5).map(t => t.tech?.substring(0, 15) || 'Unknown'),
+                                datasets: [{
+                                    data: techs.slice(0, 5).map(t => t.count),
+                                    backgroundColor: COLORS,
+                                    borderRadius: 4
+                                }]
+                            },
+                            options: {
+                                indexAxis: 'y',
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: { legend: { display: false } },
+                                scales: {
+                                    x: { display: false },
+                                    y: {
+                                        grid: { display: false },
+                                        ticks: { color: 'rgba(255,255,255,0.7)', font: { size: 9 } }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                } catch (err) {
+                    console.error('Failed to load:', cat.id, err);
+                }
+            }
+        }
+
+        // Open Layer 2 - Category view
+        window.openCategory = function (apiName, displayName) {
+            navStack = [{ type: 'category', api: apiName, name: displayName }];
+            currentView = { type: 'category', api: apiName, name: displayName };
+
+            document.getElementById('layer2Modal').classList.add('active');
+            document.getElementById('modal-title').textContent = displayName;
+            document.getElementById('layer2BackBtn').textContent = '← Close';
+
+            updateBreadcrumb();
+            loadCategoryContent(apiName);
+        };
+
+        // Open Tech view - shows websites using this tech
+        window.openTech = function (techName) {
+            navStack.push({ type: 'tech', name: techName });
+            currentView = { type: 'tech', name: techName };
+
+            document.getElementById('modal-title').textContent = techName;
+            document.getElementById('layer2BackBtn').textContent = '← Back to Category';
+
+            updateBreadcrumb();
+            loadTechContent(techName);
+        };
+
+        // Open website detail Layer 3
+        window.openWebsite = function (domain) {
+            document.getElementById('layer3Modal').classList.add('active');
+            document.getElementById('website-title').textContent = domain;
+            loadWebsiteTechStack(domain);
+        };
+
+        // Update breadcrumb
+        function updateBreadcrumb() {
+            const container = document.getElementById('breadcrumb');
+            let html = '';
+
+            navStack.forEach((item, idx) => {
+                if (idx > 0) html += '<span class="breadcrumb-separator">→</span>';
+                const isLast = idx === navStack.length - 1;
+                html += `<span class="breadcrumb-item ${isLast ? 'active' : ''}" onclick="navigateTo(${idx})">${esc(item.name)}</span>`;
+            });
+
+            container.innerHTML = html;
+        }
+
+        // Navigate to breadcrumb item
+        window.navigateTo = function (idx) {
+            if (idx >= navStack.length - 1) return;
+
+            navStack = navStack.slice(0, idx + 1);
+            const item = navStack[idx];
+            currentView = item;
+
+            document.getElementById('modal-title').textContent = item.name;
+
+            if (item.type === 'category') {
+                document.getElementById('layer2BackBtn').textContent = '← Close';
+                loadCategoryContent(item.api);
+            } else if (item.type === 'tech') {
+                document.getElementById('layer2BackBtn').textContent = '← Back to Category';
+                loadTechContent(item.name);
+            }
+
+            updateBreadcrumb();
+        };
+
+        // Handle back button
+        window.handleLayer2Back = function () {
+            if (navStack.length <= 1) {
+                closeAllModals();
+            } else {
+                navStack.pop();
+                const prev = navStack[navStack.length - 1];
+                currentView = prev;
+
+                document.getElementById('modal-title').textContent = prev.name;
+
+                if (prev.type === 'category') {
+                    document.getElementById('layer2BackBtn').textContent = '← Close';
+                    loadCategoryContent(prev.api);
+                } else {
+                    document.getElementById('layer2BackBtn').textContent = '← Back';
+                    loadTechContent(prev.name);
+                }
+
+                updateBreadcrumb();
+            }
+        };
+
+        // Load category content
+        async function loadCategoryContent(apiName) {
+            const content = document.getElementById('modal-content');
+            const tabs = document.getElementById('modal-tabs');
+
+            content.innerHTML = '<div class="loading-text">Loading technologies...</div>';
+            tabs.innerHTML = '<button class="report-tab active">Technologies</button>';
+
+            try {
+                const res = await fetch(`/api/category/${encodeURIComponent(apiName)}/technologies`);
+                const data = await res.json();
+                const techs = data.technologies || [];
+
+                if (techs.length === 0) {
+                    content.innerHTML = '<div class="loading-text">No technologies found in this category</div>';
+                    return;
+                }
+
+                content.innerHTML = `
+        <div class="report-list">
+          ${techs.map(t => `
+            <div class="report-item" onclick="openTech('${esc(t.tech)}')">
+              <span class="report-item-name">${esc(t.tech)}</span>
+              <span class="report-item-count">${(t.count || 0).toLocaleString()} sites</span>
+              <span class="report-item-arrow">→</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+            } catch (err) {
+                content.innerHTML = '<div class="loading-text">Error loading data. Please try again.</div>';
+                console.error('Load category error:', err);
+            }
+        }
+
+        // Load tech content - websites + child tabs
+        async function loadTechContent(techName) {
+            const content = document.getElementById('modal-content');
+            const tabs = document.getElementById('modal-tabs');
+            const techLower = techName.toLowerCase();
+            const children = TECH_CHILDREN[techLower] || [];
+
+            // Build tabs
+            let tabsHtml = '<button class="report-tab active" onclick="switchTechTab(\'websites\')">Websites</button>';
+            children.forEach((child, idx) => {
+                tabsHtml += `<button class="report-tab" onclick="switchTechTab('child-${idx}', '${esc(child.api)}')">${esc(child.name)}</button>`;
+            });
+            tabs.innerHTML = tabsHtml;
+
+            // Load websites
+            content.innerHTML = '<div class="loading-text">Loading websites...</div>';
+
+            try {
+                // Try the tech domains API
+                const res = await fetch(`/api/tech/${encodeURIComponent(techName)}/domains`);
+                const data = await res.json();
+                let domains = data.domains || [];
+
+                if (domains.length === 0) {
+                    content.innerHTML = '<div class="loading-text">No websites found using this technology</div>';
+                    return;
+                }
+
+                // Show all domains (scrollable modal) with numbering
+                content.innerHTML = `
+        <div class="report-list">
+          <div style="margin-bottom:0.5rem;color:rgba(255,255,255,0.6);font-size:0.85rem;">${domains.length} websites using ${techName}</div>
+          ${domains.map((d, idx) => {
+                    const domain = typeof d === 'string' ? d : (d.domain || d.name || d);
+                    return `
+              <div class="report-item" onclick="openWebsite('${esc(domain)}')">
+                <span style="color:rgba(255,255,255,0.4);font-size:0.8rem;min-width:35px;margin-right:8px;">${idx + 1}.</span>
+                <span class="report-item-name">${esc(domain)}</span>
+                <span class="report-item-arrow">→</span>
+              </div>
+            `;
+                }).join('')}
+        </div>
+      `;
+            } catch (err) {
+                content.innerHTML = '<div class="loading-text">Error loading websites. Please try again.</div>';
+                console.error('Load tech error:', err);
+            }
+        }
+
+        // Switch tech tab
+        window.switchTechTab = async function (tabId, childApi) {
+            document.querySelectorAll('.report-tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+
+            const content = document.getElementById('modal-content');
+
+            if (tabId === 'websites') {
+                loadTechContent(currentView.name);
+                return;
+            }
+
+            // Load child category
+            content.innerHTML = '<div class="loading-text">Loading...</div>';
+
+            try {
+                const res = await fetch(`/api/category/${encodeURIComponent(childApi)}/technologies`);
+                const data = await res.json();
+                const techs = data.technologies || [];
+
+                if (techs.length === 0) {
+                    content.innerHTML = '<div class="loading-text">No items found in this category</div>';
+                    return;
+                }
+
+                content.innerHTML = `
+        <div class="report-list">
+          ${techs.map(t => `
+            <div class="report-item" onclick="openTech('${esc(t.tech)}')">
+              <span class="report-item-name">${esc(t.tech)}</span>
+              <span class="report-item-count">${(t.count || 0).toLocaleString()} sites</span>
+              <span class="report-item-arrow">→</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+            } catch (err) {
+                content.innerHTML = '<div class="loading-text">Error loading data</div>';
+            }
+        };
+
+        // Load website tech stack
+        async function loadWebsiteTechStack(domain) {
+            const container = document.getElementById('website-tech-stack');
+            container.innerHTML = '<div class="loading-text">Loading tech stack...</div>';
+
+            try {
+                const res = await fetch(`/api/domain/${encodeURIComponent(domain)}/detail`);
+                const data = await res.json();
+
+                // Extract metadata - use field names that match API response
+                const scanData = data.selected_scan || data.latest || data || {};
+                // API returns finished_at (epoch timestamp)
+                const scanTs = scanData.finished_at || scanData.started_at || data.finished_at || data.started_at || null;
+                // API returns payload_bytes
+                const payload = scanData.payload_bytes || data.payload_bytes || null;
+
+                // Try multiple response formats for techs
+                let techs = [];
+                if (scanData.technologies) {
+                    techs = scanData.technologies;
+                } else if (data.technologies) {
+                    techs = data.technologies;
+                } else if (Array.isArray(data)) {
+                    techs = data;
+                }
+
+                // Build metadata header
+                let metaHtml = '<div class="website-meta">';
+                metaHtml += `
+                  <div class="website-meta-item">
+                    <div class="website-meta-label">Technologies</div>
+                    <div class="website-meta-value">${techs.length}</div>
+                  </div>
+                `;
+
+                if (scanTs) {
+                    // API returns epoch in seconds, JS Date needs milliseconds
+                    const scanDate = new Date(scanTs * 1000);
+                    const formattedDate = scanDate.toLocaleDateString('id-ID', {
+                        day: 'numeric', month: 'short', year: 'numeric'
+                    });
+                    metaHtml += `
+                      <div class="website-meta-item">
+                        <div class="website-meta-label">Last Scan</div>
+                        <div class="website-meta-value">${formattedDate}</div>
+                      </div>
+                    `;
+                }
+
+                if (payload) {
+                    const payloadKB = (payload / 1024).toFixed(1);
+                    metaHtml += `
+                      <div class="website-meta-item">
+                        <div class="website-meta-label">Payload</div>
+                        <div class="website-meta-value">${payloadKB} KB</div>
+                      </div>
+                    `;
+                }
+
+                // Count categories
+                const catSet = new Set();
+                techs.forEach(t => {
+                    if (t.categories && t.categories.length) catSet.add(t.categories[0]);
+                    else if (t.category) catSet.add(t.category);
+                });
+                metaHtml += `
+                  <div class="website-meta-item">
+                    <div class="website-meta-label">Categories</div>
+                    <div class="website-meta-value">${catSet.size}</div>
+                  </div>
+                `;
+                metaHtml += '</div>';
+
+                if (techs.length === 0) {
+                    container.innerHTML = metaHtml + '<div class="loading-text">No technologies detected for this website</div>';
+                    return;
+                }
+
+                // Group by category
+                const grouped = {};
+                techs.forEach(t => {
+                    let cat = 'Other';
+                    if (t.categories && t.categories.length > 0) {
+                        cat = Array.isArray(t.categories) ? t.categories[0] : t.categories;
+                    } else if (t.category) {
+                        cat = t.category;
+                    }
+                    if (!grouped[cat]) grouped[cat] = [];
+                    grouped[cat].push(t);
+                });
+
+                // Sort categories alphabetically
+                const sortedCats = Object.keys(grouped).sort();
+
+                container.innerHTML = metaHtml + sortedCats.map(cat => {
+                    const items = grouped[cat];
+                    return `
+                      <div class="report-stack-group">
+                        <div class="report-stack-title">${esc(cat)} (${items.length})</div>
+                        <div>
+                          ${items.map(t => {
+                        // Build evidence info
+                        let evidenceHtml = '';
+                        const evidenceTypes = [];
+                        if (t.headers) evidenceTypes.push('Headers');
+                        if (t.scripts) evidenceTypes.push('Scripts');
+                        if (t.meta) evidenceTypes.push('Meta');
+                        if (t.html) evidenceTypes.push('HTML');
+                        if (t.implies && t.implies.length > 0) evidenceTypes.push('Implied');
+
+                        if (evidenceTypes.length > 0 || t.description || t.website) {
+                            evidenceHtml = `<div class="tech-evidence" style="font-size:0.7rem;color:rgba(255,255,255,0.5);margin-top:2px;">`;
+                            if (evidenceTypes.length > 0) {
+                                evidenceHtml += `<span style="background:rgba(255,255,255,0.1);padding:1px 4px;border-radius:3px;margin-right:4px;">${evidenceTypes.join(', ')}</span>`;
+                            }
+                            if (t.confidence) {
+                                evidenceHtml += `<span style="color:#22c55e;">${t.confidence}%</span>`;
+                            }
+                            if (t.website) {
+                                evidenceHtml += ` <a href="${esc(t.website)}" target="_blank" style="color:#60a5fa;text-decoration:none;">↗</a>`;
+                            }
+                            evidenceHtml += `</div>`;
+                            if (t.description) {
+                                evidenceHtml += `<div style="font-size:0.65rem;color:rgba(255,255,255,0.4);margin-top:2px;max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.description)}</div>`;
+                            }
+                        }
+
+                        return `
+                              <div class="report-stack-item" style="display:inline-block;margin:3px;padding:6px 10px;background:rgba(255,255,255,0.05);border-radius:6px;vertical-align:top;cursor:pointer;" onclick='showEvidencePopup(${JSON.stringify(t).replace(/'/g, "&#39;")})'>
+                                <div>
+                                  <strong>${esc(t.name || t.tech)}</strong>
+                                  ${t.version ? `<span class="report-stack-version" style="color:#fbbf24;font-size:0.75rem;margin-left:4px;">v${t.version}</span>` : ''}
+                                </div>
+                                ${evidenceHtml}
+                              </div>
+                            `;
+                    }).join('')}
+                        </div>
+                      </div>
+                    `;
+                }).join('');
+            } catch (err) {
+                container.innerHTML = '<div class="loading-text">Error loading tech stack</div>';
+                console.error('Load website error:', err);
+            }
+        }
+
+        // Close modals
+        window.closeAllModals = function () {
+            document.getElementById('layer2Modal').classList.remove('active');
+            document.getElementById('layer3Modal').classList.remove('active');
+            navStack = [];
+            currentView = null;
+        };
+
+        window.closeLayer3 = function () {
+            document.getElementById('layer3Modal').classList.remove('active');
+        };
+
+        // Evidence popup functions
+        window.showEvidencePopup = function (tech) {
+            const modal = document.getElementById('evidenceModal');
+            const nameEl = document.getElementById('evidence-tech-name');
+            const bodyEl = document.getElementById('evidence-body');
+
+            // Set title with version
+            nameEl.textContent = tech.name || tech.tech || 'Technology';
+            if (tech.version) {
+                nameEl.textContent += ` v${tech.version}`;
+            }
+
+            // Build evidence content
+            let html = '';
+
+            // Detection sources section
+            const sources = [];
+            if (tech.headers) sources.push('HTTP Headers');
+            if (tech.scripts) sources.push('JavaScript');
+            if (tech.meta) sources.push('Meta Tags');
+            if (tech.html) sources.push('HTML Content');
+            if (tech.implies && tech.implies.length > 0) sources.push('Implied by other tech');
+
+            if (sources.length > 0) {
+                html += `<div class="evidence-section">
+                    <div class="evidence-section-title">Detection Sources</div>
+                    ${sources.map(s => `<span class="evidence-tag source">${esc(s)}</span>`).join('')}
+                </div>`;
+            }
+
+            // Confidence section
+            if (tech.confidence) {
+                html += `<div class="evidence-section">
+                    <div class="evidence-section-title">Confidence</div>
+                    <span class="evidence-tag">${tech.confidence}%</span>
+                </div>`;
+            }
+
+            // Categories section
+            if (tech.categories && tech.categories.length > 0) {
+                const cats = Array.isArray(tech.categories) ? tech.categories : [tech.categories];
+                html += `<div class="evidence-section">
+                    <div class="evidence-section-title">Categories</div>
+                    ${cats.map(c => `<span class="evidence-tag">${esc(c)}</span>`).join('')}
+                </div>`;
+            }
+
+            // Description section
+            if (tech.description) {
+                html += `<div class="evidence-section">
+                    <div class="evidence-section-title">Description</div>
+                    <p class="evidence-description">${esc(tech.description)}</p>
+                </div>`;
+            }
+
+            // Website link section
+            if (tech.website) {
+                html += `<div class="evidence-section">
+                    <div class="evidence-section-title">Official Website</div>
+                    <a href="${esc(tech.website)}" target="_blank" class="evidence-link">
+                        ${esc(tech.website)} ↗
+                    </a>
+                </div>`;
+            }
+
+            // Evidence Artifacts section (pattern, scriptSrc, html snippets + evidence array)
+            const evidenceArr = (tech.evidence && tech.evidence.length > 0) ? tech.evidence : [];
+            let hasEvidence = evidenceArr.length > 0 || tech.scriptSrc || tech.pattern || tech.match || tech.html || tech.url || tech.certIssuer || tech.scripts;
+
+            if (hasEvidence) {
+                html += `<div class="evidence-section">
+                    <div class="evidence-section-title">Evidence</div>
+                    <p style="font-size:0.8rem;color:rgba(255,255,255,0.5);margin-bottom:0.75rem;">Snippet, headers, or matches we captured as proof of detection.</p>`;
+
+                // If we have evidence array from scan_utils, display it nicely
+                if (evidenceArr.length > 0) {
+                    // Group evidence by source type
+                    const sourceTypes = [...new Set(evidenceArr.map(e => e.source || 'unknown'))];
+
+                    if (sourceTypes.length > 0) {
+                        html += `<div class="evidence-tabs">
+                            ${sourceTypes.map((src, i) => `<button class="evidence-tab${i === 0 ? ' active' : ''}" onclick="switchEvidenceTab(this, '${src}')">${src}</button>`).join('')}
+                        </div>`;
+                    }
+
+                    // Show evidence entries grouped by source
+                    sourceTypes.forEach((srcType, idx) => {
+                        const srcEvidence = evidenceArr.filter(e => (e.source || 'unknown') === srcType);
+                        const displayBlock = idx === 0 ? '' : 'display:none;';
+
+                        srcEvidence.forEach(ev => {
+                            let content = '';
+                            if (ev.url) content += ev.url + '\\n';
+                            if (ev.snippet) content += ev.snippet + '\\n';
+                            if (ev.value) content += ev.value + '\\n';
+                            if (!content && ev.pattern) content = ev.pattern;
+                            if (!content) content = JSON.stringify(ev, null, 2);
+
+                            html += `<div class="evidence-code-block" data-evidence="${srcType}" style="${displayBlock}">${esc(content.trim())}</div>`;
+                        });
+                    });
+                } else {
+                    // Fallback to direct fields (pattern, scriptSrc, etc)
+                    let evidenceTabs = [];
+                    if (tech.pattern) evidenceTabs.push('pattern');
+                    if (tech.scriptSrc || tech.scripts) evidenceTabs.push('scriptSrc');
+                    if (tech.html) evidenceTabs.push('html');
+                    if (tech.url) evidenceTabs.push('url');
+                    if (tech.certIssuer) evidenceTabs.push('certIssuer');
+
+                    if (evidenceTabs.length > 0) {
+                        html += `<div class="evidence-tabs">
+                            ${evidenceTabs.map((tab, i) => `<button class="evidence-tab${i === 0 ? ' active' : ''}" onclick="switchEvidenceTab(this, '${tab}')">${tab}</button>`).join('')}
+                        </div>`;
+                    }
+
+                    // Show evidence content
+                    const scriptVal = tech.scriptSrc || tech.scripts;
+                    if (scriptVal) {
+                        const srcValue = typeof scriptVal === 'string' ? scriptVal : (Array.isArray(scriptVal) ? scriptVal.join('\\n') : JSON.stringify(scriptVal));
+                        html += `<div class="evidence-code-block" data-evidence="scriptSrc">${esc(srcValue)}</div>`;
+                    }
+                    if (tech.pattern) {
+                        const patternValue = typeof tech.pattern === 'string' ? tech.pattern : JSON.stringify(tech.pattern);
+                        html += `<div class="evidence-code-block" data-evidence="pattern" style="${scriptVal ? 'display:none;' : ''}">${esc(patternValue)}</div>`;
+                    }
+                    if (tech.html) {
+                        const htmlValue = typeof tech.html === 'string' ? tech.html : JSON.stringify(tech.html);
+                        html += `<div class="evidence-code-block" data-evidence="html" style="display:none;">${esc(htmlValue)}</div>`;
+                    }
+                    if (tech.url) {
+                        const urlValue = typeof tech.url === 'string' ? tech.url : JSON.stringify(tech.url);
+                        html += `<div class="evidence-code-block" data-evidence="url" style="display:none;">${esc(urlValue)}</div>`;
+                    }
+                    if (tech.certIssuer) {
+                        const certValue = typeof tech.certIssuer === 'string' ? tech.certIssuer : JSON.stringify(tech.certIssuer);
+                        html += `<div class="evidence-code-block" data-evidence="certIssuer" style="display:none;">${esc(certValue)}</div>`;
+                    }
+                }
+
+                // Match section
+                if (tech.match) {
+                    const matchValue = typeof tech.match === 'string' ? tech.match : JSON.stringify(tech.match);
+                    html += `<div class="evidence-match-label">MATCH:</div>
+                            <div class="evidence-match-value">${esc(matchValue)}</div>`;
+                }
+
+                html += `</div>`;
+            }
+
+            // Additional metadata
+            let metaHtml = '';
+            if (tech.cpe) {
+                metaHtml += `<div class="evidence-meta-row">
+                    <span class="evidence-meta-label">CPE</span>
+                    <span class="evidence-meta-value">${esc(tech.cpe)}</span>
+                </div>`;
+            }
+            if (tech.implies && tech.implies.length > 0) {
+                metaHtml += `<div class="evidence-meta-row">
+                    <span class="evidence-meta-label">Implies</span>
+                    <span class="evidence-meta-value">${esc(tech.implies.join(', '))}</span>
+                </div>`;
+            }
+            if (tech.requires && tech.requires.length > 0) {
+                metaHtml += `<div class="evidence-meta-row">
+                    <span class="evidence-meta-label">Requires</span>
+                    <span class="evidence-meta-value">${esc(tech.requires.join(', '))}</span>
+                </div>`;
+            }
+
+            if (metaHtml) {
+                html += `<div class="evidence-section">
+                    <div class="evidence-section-title">Additional Info</div>
+                    ${metaHtml}
+                </div>`;
+            }
+
+            if (!html) {
+                html = '<div class="loading-text">No detailed evidence available for this technology</div>';
+            }
+
+            bodyEl.innerHTML = html;
+            modal.classList.add('active');
+        };
+
+        // Note: closeEvidenceModal is defined globally in a separate script block above
+
+        // Switch between evidence tabs
+        window.switchEvidenceTab = function (btn, tabName) {
+            // Update active tab button
+            const tabs = btn.parentElement.querySelectorAll('.evidence-tab');
+            tabs.forEach(t => t.classList.remove('active'));
+            btn.classList.add('active');
+
+            // Show/hide evidence code blocks
+            const section = btn.closest('.evidence-section');
+            const blocks = section.querySelectorAll('.evidence-code-block');
+            blocks.forEach(block => {
+                if (block.dataset.evidence === tabName) {
+                    block.style.display = 'block';
+                } else {
+                    block.style.display = 'none';
+                }
+            });
+        };
+
+        // Card click handlers
+        document.querySelectorAll('.report-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const cat = CATEGORIES.find(c => c.api === card.dataset.category);
+                if (cat) {
+                    openCategory(cat.api, cat.name);
+                } else {
+                    // Fallback for direct category names
+                    openCategory(card.dataset.category, card.querySelector('.report-card-title').textContent);
+                }
+            });
+        });
+
+        // Initialize
+        init();
+    })();
+</script>
+{% endblock %}

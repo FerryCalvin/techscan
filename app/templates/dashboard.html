@@ -1498,18 +1498,21 @@
     if (!result || typeof result !== 'object') {
       return null;
     }
-    const durationMs = Number(result.duration_ms);
-    if (Number.isFinite(durationMs) && durationMs >= 0) {
-      return durationMs;
-    }
-    const durationSeconds = Number(result.duration);
-    if (Number.isFinite(durationSeconds) && durationSeconds >= 0) {
-      return durationSeconds * 1000;
-    }
+    // PRIORITY 1: Calculate from timestamps (most accurate for total scan time)
     const started = normaliseTimestamp(result.started_at ?? result.startedAt ?? result.timestamp);
     const finished = normaliseTimestamp(result.finished_at ?? result.finishedAt ?? result.completed_at ?? result.completedAt);
     if (started !== null && finished !== null && finished >= started) {
       return finished - started;
+    }
+    // PRIORITY 2: Use duration_ms if available
+    const durationMs = Number(result.duration_ms);
+    if (Number.isFinite(durationMs) && durationMs >= 0) {
+      return durationMs;
+    }
+    // PRIORITY 3: Use duration in seconds
+    const durationSeconds = Number(result.duration);
+    if (Number.isFinite(durationSeconds) && durationSeconds >= 0) {
+      return durationSeconds * 1000;
     }
     return null;
 

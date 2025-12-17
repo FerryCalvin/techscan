@@ -89,6 +89,12 @@ def stats_page():
     """Render statistics dashboard page (front-end loads data from /api/stats)."""
     return render_template('stats.html')
 
+
+@ui_bp.route('/report')
+def report_page():
+    """Render report page for executive presentations with hierarchical drill-down."""
+    return render_template('report.html')
+
 @ui_bp.route('/_routes')
 def list_routes():
     """Diagnostic: list all registered routes (methods + rule + endpoint)."""
@@ -212,7 +218,7 @@ def api_stats():
                         """
                            SELECT tech_name,
                                COALESCE(NULLIF(categories, ''), 'Uncategorized') AS cat_label,
-                               COUNT(*) AS c
+                               COUNT(DISTINCT domain) AS c
                         FROM domain_techs
                            GROUP BY tech_name, COALESCE(NULLIF(categories, ''), 'Uncategorized')
                         ORDER BY c DESC
@@ -226,16 +232,16 @@ def api_stats():
                     cur.execute(
                                 """
                                     SELECT category, c FROM (
-                                    SELECT LOWER(trim(x)) AS category, COUNT(*) AS c
+                                    SELECT LOWER(trim(x)) AS category, COUNT(DISTINCT domain) AS c
                                         FROM (
-                                        SELECT unnest(string_to_array(categories, ',')) AS x
+                                        SELECT domain, unnest(string_to_array(categories, ',')) AS x
                                         FROM domain_techs
                                         WHERE categories IS NOT NULL
                                             ) t
                                             WHERE trim(x) <> ''
                                             GROUP BY LOWER(trim(x))
                                             UNION ALL
-                                            SELECT 'uncategorized' AS category, COUNT(*) FROM domain_techs WHERE categories IS NULL OR trim(categories) = ''
+                                            SELECT 'uncategorized' AS category, COUNT(DISTINCT domain) FROM domain_techs WHERE categories IS NULL OR trim(categories) = ''
                                             ) q
                                             ORDER BY c DESC
                                             LIMIT 60
@@ -612,12 +618,47 @@ def api_domain_detail(domain: str):
     for t in technologies:
         if not isinstance(t, dict):
             continue
-        norm_tech.append({
+        # Get detection_raw for fallback evidence extraction
+        detection_raw = t.get('detection_raw') or {}
+        tech_entry = {
             'name': t.get('name'),
             'version': t.get('version'),
             'categories': t.get('categories') or [],
-            'confidence': t.get('confidence')
-        })
+            'confidence': t.get('confidence'),
+            # Basic info
+            'website': t.get('website'),
+            'description': t.get('description'),
+            'icon': t.get('icon'),
+            'cpe': t.get('cpe'),
+            # Wappalyzer evidence/detection fields (check detection_raw as fallback)
+            'headers': t.get('headers') or detection_raw.get('headers'),
+            'scripts': t.get('scripts') or detection_raw.get('scripts'),
+            'scriptSrc': t.get('scriptSrc') or detection_raw.get('scriptSrc'),
+            'meta': t.get('meta') or detection_raw.get('meta'),
+            'html': t.get('html') or detection_raw.get('html'),
+            'url': t.get('url') or detection_raw.get('url'),
+            'cookies': t.get('cookies') or detection_raw.get('cookies'),
+            'dom': t.get('dom') or detection_raw.get('dom'),
+            'xpath': t.get('xpath') or detection_raw.get('xpath'),
+            'js': t.get('js') or detection_raw.get('js'),
+            'css': t.get('css') or detection_raw.get('css'),
+            'robots': t.get('robots') or detection_raw.get('robots'),
+            'text': t.get('text') or detection_raw.get('text'),
+            'certIssuer': t.get('certIssuer') or detection_raw.get('certIssuer'),
+            # Pattern/match data
+            'pattern': t.get('pattern') or detection_raw.get('pattern'),
+            'match': t.get('match') or detection_raw.get('match'),
+            'regex': t.get('regex') or detection_raw.get('regex'),
+            # Relationships
+            'implies': t.get('implies') or detection_raw.get('implies'),
+            'requires': t.get('requires') or detection_raw.get('requires'),
+            'excludes': t.get('excludes') or detection_raw.get('excludes'),
+            # Evidence array (normalized evidence from scan_utils)
+            'evidence': t.get('evidence') or [],
+        }
+        # Clean up None values
+        tech_entry = {k: v for k, v in tech_entry.items() if v is not None}
+        norm_tech.append(tech_entry)
     tiered_hint_meta = None
     raw_blob = active_scan.get('raw') if active_scan else None
     if isinstance(raw_blob, dict):
@@ -1162,7 +1203,7 @@ def api_tech_domains(tech_name: str):
                     FROM domain_techs 
                     WHERE LOWER(tech_name) = LOWER(%s)
                     ORDER BY domain
-                    LIMIT 500
+                    LIMIT 2000
                 """, (tech_name,))
                 domains = [r[0] for r in cur.fetchall()]
         hint_meta = {}
@@ -1186,6 +1227,105 @@ def api_category_technologies(category_name: str):
     Handles both explicit category labels (split from comma-separated field) and the
     synthetic "uncategorized" bucket (rows where categories is NULL/empty).
     """
+    # Map of technologies to their CORRECT categories (used to filter wrong-category results)
+    TECH_CATEGORY_OVERRIDE = {
+        # JavaScript Libraries - NOT CDN
+        'jquery': 'javascript libraries',
+        'jquery ui': 'javascript libraries',
+        'jquery migrate': 'javascript libraries',
+        'jquery cdn': 'javascript libraries',
+        'react': 'javascript libraries',
+        'vue.js': 'javascript libraries',
+        'moment.js': 'javascript libraries',
+        'lodash': 'javascript libraries',
+        'axios': 'javascript libraries',
+        
+        # JavaScript Frameworks - NOT Web Servers, NOT Programming Languages
+        'angular': 'javascript frameworks',
+        'angularjs': 'javascript frameworks',
+        'next.js': 'javascript frameworks',
+        'nuxt.js': 'javascript frameworks',
+        'nuxt': 'javascript frameworks',
+        'gatsby': 'javascript frameworks',
+        'express': 'javascript frameworks',
+        'express.js': 'javascript frameworks',
+        'nest.js': 'javascript frameworks',
+        'nestjs': 'javascript frameworks',
+        'meteor': 'javascript frameworks',
+        'ember.js': 'javascript frameworks',
+        
+        # JavaScript Runtimes - NOT Programming Languages
+        'node.js': 'javascript runtimes',
+        'deno': 'javascript runtimes',
+        'bun': 'javascript runtimes',
+        
+        # Build Tools - NOT Programming Languages
+        'typescript': 'javascript libraries',
+        'babel': 'javascript libraries',
+        'webpack': 'javascript libraries',
+        'vite': 'javascript libraries',
+        
+        # UI/CSS Frameworks
+        'bootstrap': 'ui frameworks',
+        'tailwind css': 'css frameworks',
+        'foundation': 'ui frameworks',
+        'bulma': 'css frameworks',
+        
+        # Font Scripts - NOT CDN
+        'font awesome': 'font scripts',
+        'google font api': 'font scripts',
+        'google hosted libraries': 'cdn',
+        
+        # CDN only
+        'cloudflare': 'cdn',
+        'jsdelivr': 'cdn',
+        'cdnjs': 'cdn',
+        
+        # Programming Languages (actual languages only)
+        'php': 'programming languages',
+        'python': 'programming languages',
+        'ruby': 'programming languages',
+        'java': 'programming languages',
+        'go': 'programming languages',
+        
+        # Web Servers only
+        'nginx': 'web servers',
+        'apache': 'web servers',
+        'apache http server': 'web servers',
+        'litespeed': 'web servers',
+        'caddy': 'web servers',
+        'iis': 'web servers',
+        'tengine': 'web servers',
+        
+        # WordPress Plugins
+        'wpml': 'wordpress plugins',
+        'wordpress multilingual plugin (wpml)': 'wordpress plugins',
+        'slider revolution': 'wordpress plugins',
+        'elementor': 'wordpress plugins',
+        'yoast seo': 'wordpress plugins',
+        'contact form 7': 'wordpress plugins',
+        'woocommerce': 'e-commerce',
+        
+        # JavaScript Libraries (from uncategorized)
+        'datatables': 'javascript libraries',
+        'datatables.net': 'javascript libraries',
+        'gsap': 'javascript libraries',
+        'three.js': 'javascript libraries',
+        'chart.js': 'javascript libraries',
+        'd3.js': 'javascript libraries',
+        'highcharts': 'javascript libraries',
+        
+        # Security
+        'sucuri': 'security',
+        'bitninja': 'security',
+        'imunify360': 'security',
+        'imunify360-webshield': 'security',
+        
+        # Analytics
+        'tableau': 'analytics',
+        'hotjar': 'analytics',
+    }
+
     normalized = (category_name or '').strip().lower()
     if not normalized:
         return jsonify({'category': category_name, 'technologies': []})
@@ -1212,7 +1352,7 @@ def api_category_technologies(category_name: str):
                 key=lambda x: x['count'],
                 reverse=True
             )
-            return jsonify({'category': category_name, 'technologies': techs[:25]})
+            return jsonify({'category': category_name, 'technologies': techs})
 
         from ..db import get_conn
         with get_conn() as conn:
@@ -1220,22 +1360,21 @@ def api_category_technologies(category_name: str):
                 if normalized == 'uncategorized':
                     cur.execute(
                         """
-                        SELECT tech_name, COUNT(*) AS count
+                        SELECT tech_name, COUNT(DISTINCT domain) AS count
                         FROM domain_techs
                         WHERE categories IS NULL
                            OR trim(categories) = ''
                            OR LOWER(categories) = 'uncategorized'
                         GROUP BY tech_name
                         ORDER BY count DESC
-                        LIMIT 25
                         """
                     )
                 else:
                     cur.execute(
                         """
-                        SELECT tech_name, COUNT(*) AS count
+                        SELECT tech_name, COUNT(DISTINCT domain) AS count
                         FROM (
-                            SELECT tech_name,
+                            SELECT domain, tech_name,
                                    LOWER(trim(cat_val)) AS category_value
                             FROM domain_techs
                             CROSS JOIN LATERAL unnest(string_to_array(categories, ',')) AS cat(cat_val)
@@ -1244,11 +1383,22 @@ def api_category_technologies(category_name: str):
                         WHERE category_value = %s
                         GROUP BY tech_name
                         ORDER BY count DESC
-                        LIMIT 25
                         """,
                         (normalized,)
                     )
                 techs = [{'tech': r[0], 'count': r[1], 'category': category_name} for r in cur.fetchall()]
+                
+                # Filter out technologies that belong to a different category per override
+                def should_include(tech_item):
+                    tech_lower = tech_item['tech'].lower()
+                    correct_cat = TECH_CATEGORY_OVERRIDE.get(tech_lower)
+                    if correct_cat is None:
+                        # No override - keep if not uncategorized category
+                        return normalized != 'uncategorized' or tech_lower not in TECH_CATEGORY_OVERRIDE
+                    # Has override - only include if correct category matches requested
+                    return correct_cat == normalized
+                
+                techs = [t for t in techs if should_include(t)]
                 return jsonify({'category': category_name, 'technologies': techs})
     except Exception as e:
         _log.exception('category_technologies_failed category=%s err=%s', category_name, e)

@@ -357,6 +357,49 @@ def extract_host(value: str) -> str:
         host_part = v2
     return host_part.lower()
 
+
+def extract_url_with_path(value: str) -> str:
+    """Normalize URL but KEEP the path for unique endpoint identification.
+    - Strips protocol (http/https)
+    - Removes credentials, port, query, fragment
+    - Keeps path (for fkg.unair.ac.id/blog vs fkg.unair.ac.id/shop)
+    - Lowercases result
+    - Removes trailing slash
+    """
+    v = (value or '').strip()
+    if not v:
+        return v
+    # Add scheme if starts with //
+    if v.startswith('//'):
+        v = 'http:' + v
+    if '://' in v:
+        # Split off scheme
+        v2 = v.split('://', 1)[1]
+    else:
+        v2 = v
+    # Remove query/fragment but KEEP path
+    for sep in ['?', '#']:
+        if sep in v2:
+            v2 = v2.split(sep, 1)[0]
+    # Remove credentials
+    if '@' in v2:
+        v2 = v2.split('@', 1)[1]
+    # Handle port: extract host:port and path separately
+    if '/' in v2:
+        host_port, path = v2.split('/', 1)
+        path = '/' + path
+    else:
+        host_port = v2
+        path = ''
+    # Remove port from host
+    if ':' in host_port:
+        host_part = host_port.split(':', 1)[0]
+    else:
+        host_part = host_port
+    # Combine and normalize
+    result = (host_part + path).lower().rstrip('/')
+    return result
+
 def validate_domain(raw: str) -> str:
     """Return a normalized domain or raise ValueError.
     - Lowercase
@@ -2247,16 +2290,18 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
 def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, timeout: int = 45, fresh: bool = False, retries: int = 0, ttl: int | None = None, full: bool = False) -> List[Dict[str, Any]]:
     log = logging.getLogger('techscan.bulk')
     original_inputs = [(d or '').strip() for d in domains]
-    filtered: List[str] = []
+    filtered: List[str] = []  # hosts only (for validation/scanning)
+    normalized_urls: List[str] = []  # full URLs with paths (for database storage)
     index_map: List[int] = []
     invalid_persisted: Dict[int, bool] = {}
     prefilled_errors: Dict[int, Dict[str, Any]] = {}
     for idx_raw, cleaned in enumerate(original_inputs):
         host = extract_host(cleaned)
+        url_with_path = extract_url_with_path(cleaned)  # Keep path for unique endpoint
         if not host:
             prefilled_errors[idx_raw] = {
                 'status': 'error',
-                'domain': cleaned or (domains[idx_raw] or ''),
+                'domain': url_with_path or cleaned or (domains[idx_raw] or ''),
                 'input_value': cleaned,
                 'error': 'empty domain input',
                 'timestamp': int(time.time())
@@ -2277,14 +2322,14 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
         if not DOMAIN_RE.match(host):
             prefilled_errors[idx_raw] = {
                 'status': 'error',
-                'domain': host,
+                'domain': url_with_path or host,
                 'input_value': cleaned,
                 'error': 'invalid domain format',
                 'timestamp': int(time.time())
             }
             log.warning('bulk scan invalid domain index=%d raw=%r normalized=%s', idx_raw, domains[idx_raw], host)
             if _persist_failure_scan(
-                host,
+                url_with_path or host,
                 mode='bulk-precheck',
                 timeout_used=timeout,
                 retries=0,
@@ -2293,7 +2338,8 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
             ):
                 prefilled_errors[idx_raw]['persisted_db'] = True
             continue
-        filtered.append(host.lower())
+        filtered.append(host.lower())  # host only for scanning
+        normalized_urls.append(url_with_path)  # full URL with path for storage
         index_map.append(idx_raw)
 
     results_filtered: List[Dict[str, Any]] = [None] * len(filtered)  # type: ignore
@@ -2307,7 +2353,7 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
             if payload is None:
                 payload = {
                     'status': 'error',
-                    'domain': filtered[filtered_idx],
+                    'domain': normalized_urls[filtered_idx],  # Use URL with path
                     'input_value': original_inputs[orig_idx],
                     'error': 'scan result missing',
                     'timestamp': int(time.time())
@@ -2315,7 +2361,7 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
             else:
                 payload.setdefault('status', 'ok')
                 payload.setdefault('timestamp', int(time.time()))
-                payload.setdefault('domain', filtered[filtered_idx])
+                payload.setdefault('domain', normalized_urls[filtered_idx])  # Use URL with path
                 payload.setdefault('input_value', original_inputs[orig_idx])
             final[orig_idx] = payload
         for i in range(len(final)):
@@ -2323,7 +2369,7 @@ def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, ti
                 raw_input = original_inputs[i]
                 final[i] = {
                     'status': 'error',
-                    'domain': extract_host(raw_input) or raw_input or '',
+                    'domain': extract_url_with_path(raw_input) or raw_input or '',  # Use URL with path
                     'input_value': raw_input,
                     'error': 'scan result missing',
                     'timestamp': int(time.time())
@@ -2564,18 +2610,21 @@ def bulk_quick_then_deep(domains: List[str], wappalyzer_path: str, concurrency: 
         max_pct = float(os.environ.get('TECHSCAN_BULK_DEEP_MAX_PCT','0'))
     except ValueError:
         max_pct = 0.0
-    filtered: List[str] = []
+    filtered: List[str] = []  # host-only for validation/scanning
+    normalized_urls_two: List[str] = []  # full URLs with paths for storage
     index_map: List[int] = []
     for i, raw_value in enumerate(original_inputs):
-        d2 = extract_host(raw_value)
+        d2 = extract_host(raw_value)  # host-only for validation
+        url_with_path = extract_url_with_path(raw_value)  # full URL with path for storage
         if DOMAIN_RE.match(d2):
             filtered.append(d2.lower())
+            normalized_urls_two.append(url_with_path)
             index_map.append(i)
         else:
-            stripped = d2 or raw_value
-            if stripped:
+            stripped_url = url_with_path or d2 or raw_value
+            if stripped_url:
                 if _persist_failure_scan(
-                    stripped,
+                    stripped_url,
                     mode='bulk-precheck',
                     timeout_used=bulk_timeout,
                     retries=0,
@@ -2664,7 +2713,7 @@ def bulk_quick_then_deep(domains: List[str], wappalyzer_path: str, concurrency: 
         for entry in entries:
             if not entry or entry.get('status') == 'ok' or entry.get('persisted_db'):
                 continue
-            dom_key = entry.get('domain') or extract_host(entry.get('input_value') or '')
+            dom_key = entry.get('domain') or extract_url_with_path(entry.get('input_value') or '')
             if not dom_key:
                 continue
             raw_meta = {
@@ -2693,14 +2742,14 @@ def bulk_quick_then_deep(domains: List[str], wappalyzer_path: str, concurrency: 
             r.setdefault('input_value', original_inputs[orig_i])
             results[orig_i] = r
         else:
-            fallback = r or {'status':'error','domain': filtered[local_i] if local_i < len(filtered) else None,'error':'unknown'}
+            fallback = r or {'status':'error','domain': normalized_urls_two[local_i] if local_i < len(normalized_urls_two) else None,'error':'unknown'}
             fallback.setdefault('input_value', original_inputs[orig_i])
             results[orig_i] = fallback
     # Fill None for invalid domains
     for i, _ in enumerate(domains):
         if results[i] is None:
             raw_value = original_inputs[i]
-            dom_key = extract_host(raw_value) or raw_value
+            dom_key = extract_url_with_path(raw_value) or raw_value
             results[i] = {'status':'error','domain': dom_key or raw_value, 'error':'invalid domain', 'input_value': raw_value}
             if dom_key and _persist_failure_scan(
                 dom_key,

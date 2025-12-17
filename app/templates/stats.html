@@ -299,25 +299,130 @@
 </script>
 <script>
   const CATEGORY_TITLE_OVERRIDES = {
+    // JavaScript
     'javascript libraries': 'JavaScript Libraries',
+    'javascript library': 'JavaScript Libraries',
+    'js libraries': 'JavaScript Libraries',
     'javascript frameworks': 'JavaScript Frameworks',
+    'javascript framework': 'JavaScript Frameworks',
+    'js frameworks': 'JavaScript Frameworks',
+    'js framework': 'JavaScript Frameworks',
+
+    // Web Frameworks
     'web frameworks': 'Web Frameworks',
+    'web framework': 'Web Frameworks',
+    'frameworks': 'Web Frameworks',
+
+    // UI/CSS
     'ui frameworks': 'UI Frameworks',
+    'ui framework': 'UI Frameworks',
     'css frameworks': 'CSS Frameworks',
-    'content management system': 'Content Management Systems',
-    'content management systems': 'Content Management Systems',
+    'css framework': 'CSS Frameworks',
+    'css': 'CSS Frameworks',
+
+    // CMS
+    'content management system': 'CMS',
+    'content management systems': 'CMS',
+    'content management': 'CMS',
+    'cms': 'CMS',
+
+    // Programming Languages
     'programming languages': 'Programming Languages',
-    'icon sets': 'Icon Sets',
-    'marketing automation': 'Marketing Automation',
-    'analytics': 'Analytics',
+    'programming language': 'Programming Languages',
+    'languages': 'Programming Languages',
+
+    // E-commerce
     'e-commerce': 'E-commerce',
     'ecommerce': 'E-commerce',
-    'ssl/tls certificate authorities': 'SSL/TLS Certificate Authorities',
+    'e-commerce platforms': 'E-commerce',
+    'ecommerce platforms': 'E-commerce',
+
+    // Analytics
+    'analytics': 'Analytics',
+    'web analytics': 'Analytics',
+    'site analytics': 'Analytics',
+
+    // Tag Managers
+    'tag managers': 'Tag Managers',
+    'tag manager': 'Tag Managers',
+
+    // CDN
     'cdn': 'CDN',
-    'cdn providers': 'CDN Providers',
-    'cms': 'CMS',
+    'cdn providers': 'CDN',
+    'content delivery network': 'CDN',
+
+    // Web Servers
+    'web servers': 'Web Servers',
+    'web server': 'Web Servers',
+    'servers': 'Web Servers',
+
+    // JavaScript Runtimes
+    'javascript runtimes': 'JavaScript Runtimes',
+    'javascript runtime': 'JavaScript Runtimes',
+    'js runtimes': 'JavaScript Runtimes',
+    'runtime': 'JavaScript Runtimes',
+
+    // Reverse Proxies
+    'reverse proxies': 'Reverse Proxies',
+    'reverse proxy': 'Reverse Proxies',
+
+    // Databases
+    'databases': 'Databases',
+    'database': 'Databases',
+    'database management': 'Databases',
+
+    // Security
+    'security': 'Security',
+    'ssl/tls certificate authorities': 'Security',
+    'ssl': 'Security',
+
+    // SEO
+    'seo': 'SEO',
+    'search engine optimization': 'SEO',
+
+    // WordPress
+    'wordpress plugins': 'WordPress Plugins',
+    'wordpress plugin': 'WordPress Plugins',
+    'wordpress themes': 'WordPress Themes',
+    'wordpress theme': 'WordPress Themes',
+
+    // Font/Icons
+    'font scripts': 'Font Scripts',
+    'icon sets': 'Icon Sets',
+    'fonts': 'Font Scripts',
+    'icons': 'Icon Sets',
+
+    // Marketing
+    'marketing automation': 'Marketing Automation',
+    'marketing': 'Marketing Automation',
+    'advertising': 'Advertising',
+    'a/b testing': 'A/B Testing',
+
+    // Miscellaneous
     'miscellaneous': 'Miscellaneous',
-    'hosting': 'Hosting Services'
+    'misc': 'Miscellaneous',
+    'other': 'Miscellaneous',
+
+    // Hosting
+    'hosting': 'Hosting',
+    'hosting services': 'Hosting',
+    'paas': 'Hosting',
+
+    // Live Chat
+    'live chat': 'Live Chat',
+    'chat': 'Live Chat',
+
+    // Video
+    'video players': 'Video Players',
+    'video': 'Video Players',
+
+    // Rich Text
+    'rich text editors': 'Rich Text Editors',
+    'text editors': 'Rich Text Editors',
+
+    // PWA
+    'progressive web apps': 'Progressive Web Apps',
+    'pwa': 'Progressive Web Apps'
   };
 
   const CATEGORY_UPPER_TOKENS = new Set(['api', 'cdn', 'cms', 'css', 'dns', 'erp', 'http', 'https', 'id', 'pdf', 'php', 'redis', 'rest', 'seo', 'sql', 'ssl', 'tls', 'ui', 'ux']);
@@ -435,7 +540,14 @@
 
   function normalizeCategoryKey(label) {
     if (label === undefined || label === null) return '';
-    return String(label).trim().toLowerCase();
+    const lowered = String(label).trim().toLowerCase();
+    // Check if there's an override - if so, return the canonical form's key
+    const override = CATEGORY_TITLE_OVERRIDES[lowered];
+    if (override) {
+      // Return the lowercase of the canonical form for consistent grouping
+      return override.toLowerCase();
+    }
+    return lowered;
   }
 
   function formatCategoryLabel(label) {
@@ -519,12 +631,188 @@
 
   const UNCATEGORIZED_LABEL = 'Uncategorized';
 
+  // Fallback categories for common technologies missing categories in database
+  const TECH_CATEGORY_FALLBACK = {
+    // JavaScript Libraries
+    'jquery': 'JavaScript Libraries',
+    'jquery ui': 'JavaScript Libraries',
+    'jquery migrate': 'JavaScript Libraries',
+    'jquery cdn': 'JavaScript Libraries',
+    'react': 'JavaScript Libraries',
+    'vue.js': 'JavaScript Libraries',
+    'angular': 'JavaScript Frameworks',
+    'angularjs': 'JavaScript Frameworks',
+    'alpine.js': 'JavaScript Libraries',
+    'moment.js': 'JavaScript Libraries',
+    'lodash': 'JavaScript Libraries',
+    'underscore.js': 'JavaScript Libraries',
+    'axios': 'JavaScript Libraries',
+    'core-js': 'JavaScript Libraries',
+    'swiper': 'JavaScript Libraries',
+    'slick': 'JavaScript Libraries',
+    'owl carousel': 'JavaScript Libraries',
+    'datatables': 'JavaScript Libraries',
+    'marked': 'JavaScript Libraries',
+    'highlight.js': 'JavaScript Libraries',
+    'prism': 'JavaScript Libraries',
+
+    // JavaScript Frameworks (NOT just libraries, NOT web servers, NOT programming languages)
+    'next.js': 'JavaScript Frameworks',
+    'nuxt.js': 'JavaScript Frameworks',
+    'nuxt': 'JavaScript Frameworks',
+    'gatsby': 'JavaScript Frameworks',
+    'svelte': 'JavaScript Frameworks',
+    'sveltekit': 'JavaScript Frameworks',
+    'remix': 'JavaScript Frameworks',
+    'solid': 'JavaScript Frameworks',
+    'astro': 'JavaScript Frameworks',
+    'express': 'JavaScript Frameworks',
+    'express.js': 'JavaScript Frameworks',
+    'koa': 'JavaScript Frameworks',
+    'fastify': 'JavaScript Frameworks',
+    'hapi': 'JavaScript Frameworks',
+    'nest.js': 'JavaScript Frameworks',
+    'nestjs': 'JavaScript Frameworks',
+    'adonis': 'JavaScript Frameworks',
+    'meteor': 'JavaScript Frameworks',
+    'ember.js': 'JavaScript Frameworks',
+    'ember': 'JavaScript Frameworks',
+    'backbone.js': 'JavaScript Libraries',
+    'backbone': 'JavaScript Libraries',
+    'knockout.js': 'JavaScript Libraries',
+    'knockout': 'JavaScript Libraries',
+    'polymer': 'JavaScript Libraries',
+    'lit': 'JavaScript Libraries',
+    'preact': 'JavaScript Libraries',
+    'inferno': 'JavaScript Libraries',
+    'mithril': 'JavaScript Libraries',
+    'htmx': 'JavaScript Libraries',
+    'stimulus': 'JavaScript Libraries',
+    'turbo': 'JavaScript Libraries',
+    'hotwire': 'JavaScript Libraries',
+
+    // UI/CSS Frameworks
+    'bootstrap': 'UI Frameworks',
+    'tailwind css': 'CSS Frameworks',
+    'foundation': 'UI Frameworks',
+    'bulma': 'CSS Frameworks',
+    'materialize css': 'UI Frameworks',
+    'semantic ui': 'UI Frameworks',
+
+    // Font/Icons
+    'font awesome': 'Font Scripts',
+    'google font api': 'Font Scripts',
+    'material icons': 'Font Scripts',
+    'bootstrap icons': 'Font Scripts',
+    'feather icons': 'Icon Sets',
+    'ionicons': 'Icon Sets',
+
+    // WordPress
+    'wpml': 'WordPress Plugins',
+    'wordpress multilingual plugin (wpml)': 'WordPress Plugins',
+    'slider revolution': 'WordPress Plugins',
+    'elementor': 'WordPress Plugins',
+    'yoast seo': 'WordPress Plugins',
+    'contact form 7': 'WordPress Plugins',
+    'woocommerce': 'E-commerce',
+
+    // Security
+    'sucuri': 'Security',
+    'bitninja': 'Security',
+    'imunify360': 'Security',
+    'imunify360-webshield': 'Security',
+    'cloudflare': 'CDN',
+
+    // Analytics/Marketing
+    'google analytics': 'Analytics',
+    'google tag manager': 'Tag Managers',
+    'facebook pixel': 'Advertising',
+    'hotjar': 'Analytics',
+    'tableau': 'Analytics',
+
+    // Servers
+    'nginx': 'Web Servers',
+    'apache': 'Web Servers',
+    'litespeed': 'Web Servers',
+    'tengine': 'Web Servers',
+    'iis': 'Web Servers',
+    'caddy': 'Web Servers',
+
+    // Programming Languages (actual languages only)
+    'php': 'Programming Languages',
+    'python': 'Programming Languages',
+    'ruby': 'Programming Languages',
+    'java': 'Programming Languages',
+    'c#': 'Programming Languages',
+    'perl': 'Programming Languages',
+    'lua': 'Programming Languages',
+
+    // JavaScript Runtimes (NOT programming languages)
+    'node.js': 'JavaScript Runtimes',
+    'deno': 'JavaScript Runtimes',
+    'bun': 'JavaScript Runtimes',
+
+    // Build Tools & Transpilers
+    'typescript': 'JavaScript Libraries',
+    'babel': 'JavaScript Libraries',
+    'webpack': 'JavaScript Libraries',
+    'vite': 'JavaScript Libraries',
+    'esbuild': 'JavaScript Libraries',
+    'parcel': 'JavaScript Libraries',
+    'rollup': 'JavaScript Libraries',
+    'go': 'Programming Languages',
+
+    // CMS
+    'wordpress': 'CMS',
+    'joomla': 'CMS',
+    'drupal': 'CMS',
+    'magento': 'E-commerce',
+    'shopify': 'E-commerce',
+
+    // Databases
+    'mysql': 'Databases',
+    'postgresql': 'Databases',
+    'mongodb': 'Databases',
+    'redis': 'Databases',
+
+    // Video
+    'youtube': 'Video Players',
+    'vimeo': 'Video Players',
+    'video.js': 'Video Players',
+
+    // Other common
+    'esf': 'Security',
+    'ghs': 'Hosting',
+    'awselb': 'Load Balancers',
+    'bakso': 'Miscellaneous'
+  };
+
+  // Helper: check if a technology name has a known fallback category
+  function hasFallbackCategory(techName) {
+    if (!techName) return false;
+    return !!TECH_CATEGORY_FALLBACK[String(techName).toLowerCase()];
+  }
+
+  // Helper: get fallback category for a technology
+  function getFallbackCategory(techName) {
+    if (!techName) return null;
+    return TECH_CATEGORY_FALLBACK[String(techName).toLowerCase()] || null;
+  }
+
   function normalizeTechEntry(item) {
     const techName = item && (item.tech || item.name) ? String(item.tech || item.name) : '-';
     let categories = normalizeCategories(item ? (item.categories ?? item.category) : null);
-    if (!categories.length) {
+
+    // ALWAYS override category if we have a correction for this tech
+    // This fixes wrong categories from Wappalyzer (e.g., Node.js in "Programming Languages")
+    const overrideCat = TECH_CATEGORY_FALLBACK[techName.toLowerCase()];
+    if (overrideCat) {
+      categories = [overrideCat];
+    } else if (!categories.length) {
+      // Only use Uncategorized if no override and no existing categories
       categories = [UNCATEGORIZED_LABEL];
     }
+
     return Object.assign({}, item, {
       tech: techName,
       categories,
@@ -579,10 +867,19 @@
     });
 
     (techs || []).forEach(tech => {
-      const catList = normalizeCategories(tech ? (tech.categories || tech.category) : null);
-      if (!catList.length) return;
+      let catList = normalizeCategories(tech ? (tech.categories || tech.category) : null);
       const techName = tech && (tech.tech || tech.name) ? String(tech.tech || tech.name) : null;
       const techCount = Number(tech && tech.count) || 0;
+
+      // ALWAYS apply category override if we have one (fixes wrong categories from Wappalyzer)
+      if (techName) {
+        const overrideCat = TECH_CATEGORY_FALLBACK[techName.toLowerCase()];
+        if (overrideCat) {
+          catList = [overrideCat];
+        }
+      }
+
+      if (!catList.length) return;
       catList.forEach(label => {
         const entry = ensureEntry(label);
         if (!entry) return;
@@ -1245,7 +1542,7 @@
       const data = await res.json();
 
       if (data.technologies && data.technologies.length > 0) {
-        const techs = data.technologies.slice(0, 10); // Top 10
+        const techs = data.technologies; // Show all technologies, not just top 10
         const labels = techs.map(t => t.tech);
         const counts = techs.map(t => t.count);
 
@@ -1398,7 +1695,7 @@
   }
 
   async function hydrateCategoryCard(details) {
-    const { categoryName, displayName, chart, listContainer, palette, totalCount, fallbackData } = details;
+    const { categoryName, displayName, chart, listContainer, palette, totalCount, fallbackData, cardElement } = details;
     if (!categoryName || !chart) return;
 
     const hasMeaningfulFallback = fallbackData
@@ -1416,7 +1713,21 @@
       }
       const payload = await res.json();
       const techs = payload && Array.isArray(payload.technologies) ? payload.technologies : [];
-      const segmentsData = buildCategorySegments(techs, totalCount, displayName);
+
+      // For uncategorized category, recalculate total from filtered techs
+      let effectiveTotalCount = totalCount;
+      if (categoryName.toLowerCase() === 'uncategorized' && techs.length > 0) {
+        effectiveTotalCount = techs.reduce((sum, t) => sum + (Number(t.count) || 0), 0);
+        // Update the count display in the card
+        if (cardElement) {
+          const countEl = cardElement.querySelector('.category-usage-count');
+          if (countEl) {
+            countEl.textContent = effectiveTotalCount ? `${effectiveTotalCount.toLocaleString('en-US')} usages` : 'No usage data';
+          }
+        }
+      }
+
+      const segmentsData = buildCategorySegments(techs, effectiveTotalCount, displayName);
       if (!segmentsData.segments.length) {
         throw new Error('empty category segments');
       }
@@ -1541,7 +1852,8 @@
           listContainer,
           palette: CATEGORY_SEGMENT_PALETTE,
           totalCount,
-          fallbackData
+          fallbackData,
+          cardElement: chartDiv
         });
       }, 50);
     });
@@ -2591,134 +2903,134 @@
   }
 
   /* Explicit light mode class support */
-  .light body {
+  body.light {
     background: #f5f5f5;
   }
 
-  .light .mini-card {
+  body.light .mini-card {
     background: rgba(248, 248, 248, 1);
     border: 1px solid rgba(0, 0, 0, 0.2);
   }
 
-  .light .mini-label,
-  .light .chart-title {
+  body.light .mini-label,
+  body.light .chart-title {
     color: #333 !important;
   }
 
-  .light .mini-value,
-  .light .mini-value-small {
+  body.light .mini-value,
+  body.light .mini-value-small {
     color: #000 !important;
   }
 
-  .light .health-tag {
+  body.light .health-tag {
     color: #000 !important;
   }
 
-  .light .tech-table {
+  body.light .tech-table {
     color: #000 !important;
   }
 
-  .light .tech-table thead th {
+  body.light .tech-table thead th {
     border-bottom: 2px solid rgba(0, 0, 0, 0.25);
     color: #374151 !important;
     font-weight: 700;
     background: rgba(249, 250, 251, 0.95);
   }
 
-  .light .tech-table tbody td {
+  body.light .tech-table tbody td {
     border-bottom: 1px solid rgba(0, 0, 0, 0.15);
     color: #111 !important;
   }
 
-  .light .tech-table tbody tr {
+  body.light .tech-table tbody tr {
     color: #111 !important;
     background: #ffffff;
   }
 
-  .light .tech-table tbody tr:nth-child(even) {
+  body.light .tech-table tbody tr:nth-child(even) {
     background: #f9fafb;
   }
 
-  .light .tech-table tr:hover {
+  body.light .tech-table tr:hover {
     background: #f1f5f9;
   }
 
-  .light .modal-content {
+  body.light .modal-content {
     background: rgba(255, 255, 255, 0.98);
     border: 1px solid rgba(0, 0, 0, 0.25);
     color: #000 !important;
   }
 
-  .light .modal-content h3,
-  .light .modal-content h4 {
+  body.light .modal-content h3,
+  body.light .modal-content h4 {
     color: #000 !important;
   }
 
-  .light .modal-content p {
+  body.light .modal-content p {
     color: #333 !important;
   }
 
-  .light .modal-content li {
+  body.light .modal-content li {
     color: #111 !important;
   }
 
-  .light .category-card {
+  body.light .category-card {
     background: rgba(248, 248, 248, 1) !important;
     border: 1px solid rgba(0, 0, 0, 0.2) !important;
   }
 
-  .light .category-card h4 {
+  body.light .category-card h4 {
     color: #000 !important;
   }
 
-  .light .category-card:hover {
+  body.light .category-card:hover {
     background: rgba(255, 255, 255, 1) !important;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
   }
 
-  .light .modal-close-btn {
+  body.light .modal-close-btn {
     background: rgba(0, 0, 0, 0.15);
     color: #000 !important;
   }
 
-  .light .modal-close-btn-small {
+  body.light .modal-close-btn-small {
     background: rgba(0, 0, 0, 0.1);
     color: #000 !important;
   }
 
-  .light .modal-subtitle {
+  body.light .modal-subtitle {
     color: #555 !important;
   }
 
-  .light .modal-subtitle-small {
+  body.light .modal-subtitle-small {
     color: #555 !important;
   }
 
-  .light .table-index {
+  body.light .table-index {
     opacity: 1;
     color: #666 !important;
   }
 
-  .light .table-category {
+  body.light .table-category {
     opacity: 1;
     color: #444 !important;
   }
 
-  .light .confidence-label {
+  body.light .confidence-label {
     opacity: 1;
     color: #666 !important;
   }
 
-  .light .category-usage-count {
+  body.light .category-usage-count {
     color: #2563eb !important;
   }
 
-  .light .loading-text {
+  body.light .loading-text {
     opacity: 1;
     color: #666 !important;
   }
 
-  .light .hero-lead {
+  body.light .hero-lead {
     opacity: 1;
     color: #333 !important;
   }
