@@ -41,8 +41,8 @@ jobs:
       - name: Ruff (lint)
         run: |
           ruff --version
-          # Report lint errors but don't fail build (non-blocking for now)
-          ruff check app tests scripts || true
+          # Fail build on lint errors (enforced)
+          ruff check app tests scripts
       - name: pip-audit (dependencies)
         run: |
           pip-audit -V
@@ -123,14 +123,15 @@ jobs:
               time.sleep(2)
           raise SystemExit(f'Postgres not ready: {last}')
           PY
-      - name: Run tests
+      - name: Run tests with coverage
         run: |
+          pip install pytest-cov
           if [ "${{ inputs.run_node_scanner }}" = "true" ]; then
-            pytest -q || python -m unittest discover -s tests -p 'test_*.py'
+            pytest --cov=app --cov-report=term-missing --cov-fail-under=50 -q || python -m unittest discover -s tests -p 'test_*.py'
           else
-            pytest -q -k "not playwright" || python -m unittest discover -s tests -p 'test_*.py'
+            pytest --cov=app --cov-report=term-missing --cov-fail-under=50 -q -k "not playwright" || python -m unittest discover -s tests -p 'test_*.py'
           fi
       - name: Bandit security scan
         run: |
-          # Report security issues but don't fail (0 High, only Low/Medium)
-          bandit -r app -q || true
+          # Fail build on security issues (enforced)
+          bandit -r app -q -lll

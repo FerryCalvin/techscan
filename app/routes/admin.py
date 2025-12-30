@@ -14,18 +14,47 @@ import random
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
+_ADMIN_TOKEN_WARNING_LOGGED = False
 
 def _check_auth():
+    """Check admin authentication.
+    
+    Security policy:
+    - If TECHSCAN_ADMIN_TOKEN is set: require matching token
+    - If TECHSCAN_ADMIN_OPEN=1: allow without token (dev mode only)
+    - Otherwise: block all requests (secure default)
+    """
+    global _ADMIN_TOKEN_WARNING_LOGGED
     token_required = os.environ.get('TECHSCAN_ADMIN_TOKEN')
-    if not token_required:  # open if not set
+    
+    if token_required:
+        # Token configured - check header or query param
+        provided = request.headers.get('X-Admin-Token') or request.args.get('admin_token')
+        return provided == token_required
+    
+    # No token configured - check if dev mode explicitly enabled
+    if os.environ.get('TECHSCAN_ADMIN_OPEN', '0') == '1':
+        if not _ADMIN_TOKEN_WARNING_LOGGED:
+            logging.getLogger('techscan.admin').warning(
+                'TECHSCAN_ADMIN_OPEN=1: Admin endpoints open without authentication! '
+                'Set TECHSCAN_ADMIN_TOKEN for production.'
+            )
+            _ADMIN_TOKEN_WARNING_LOGGED = True
         return True
-    provided = request.headers.get('X-Admin-Token')
-    return provided == token_required
+    
+    # Secure default: block if no token configured and not in dev mode
+    if not _ADMIN_TOKEN_WARNING_LOGGED:
+        logging.getLogger('techscan.admin').warning(
+            'Admin auth rejected: TECHSCAN_ADMIN_TOKEN not configured. '
+            'Set TECHSCAN_ADMIN_TOKEN or TECHSCAN_ADMIN_OPEN=1 for development.'
+        )
+        _ADMIN_TOKEN_WARNING_LOGGED = True
+    return False
 
 @admin_bp.before_request
 def admin_auth():
     if not _check_auth():
-        return jsonify({'error': 'unauthorized'}), 401
+        return jsonify({'error': 'unauthorized', 'hint': 'Set X-Admin-Token header or configure TECHSCAN_ADMIN_TOKEN'}), 401
 
 @admin_bp.route('/cache/flush', methods=['POST'])
 def cache_flush():

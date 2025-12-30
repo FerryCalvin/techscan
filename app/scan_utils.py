@@ -16,6 +16,7 @@ from .evidence_utils import (
 )
 
 DOMAIN_RE = re.compile(r'^(?!-)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$')
+IPV4_RE = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')  # Pre-compiled for SSRF check
 CACHE_TTL = 300  # default seconds
 # Default heuristic budget for quick single scan mode (tuned via perf harness)
 QUICK_DEFAULT_BUDGET_MS = 700
@@ -402,14 +403,58 @@ def extract_url_with_path(value: str) -> str:
 
 def validate_domain(raw: str) -> str:
     """Return a normalized domain or raise ValueError.
-    - Lowercase
+    
+    Security validations:
+    - Lowercase and strip whitespace
     - Strip trailing dot
     - IDNA (punycode) encode/decode round trip for validation
     - Reject if regex mismatch
+    - Block private/internal hostnames (SSRF protection)
+    - Enforce maximum length
+    - Reject dangerous characters
     """
     d = (raw or '').strip().lower().rstrip('.')
     if not d:
         raise ValueError('empty domain')
+    
+    # Length check (prevent buffer overflow / DoS)
+    if len(d) > 253:
+        raise ValueError('domain too long (max 253 chars)')
+    
+    # Check for dangerous characters that could be used for injection
+    dangerous_chars = ['<', '>', '"', "'", '\\', '\n', '\r', '\t', '\x00']
+    for c in dangerous_chars:
+        if c in d:
+            raise ValueError('domain contains invalid characters')
+    
+    # Block internal/private hostnames (SSRF protection)
+    blocked_patterns = [
+        'localhost',
+        '127.0.0.1',
+        '0.0.0.0',
+        '::1',
+        '10.',
+        '172.16.', '172.17.', '172.18.', '172.19.',
+        '172.20.', '172.21.', '172.22.', '172.23.',
+        '172.24.', '172.25.', '172.26.', '172.27.',
+        '172.28.', '172.29.', '172.30.', '172.31.',
+        '192.168.',
+        '169.254.',  # Link-local
+        'fc00:',     # IPv6 private
+        'fe80:',     # IPv6 link-local
+        '.internal',
+        '.local',
+        '.localdomain',
+        '.localhost',
+    ]
+    for pattern in blocked_patterns:
+        if d.startswith(pattern) or d.endswith(pattern) or d == pattern.rstrip('.'):
+            raise ValueError('domain appears to be internal/private (SSRF blocked)')
+    
+    # Block pure IP addresses (should use domain names)
+    if IPV4_RE.match(d):
+        raise ValueError('IP addresses not allowed, use domain names')
+    
     # Basic fast path
     if DOMAIN_RE.match(d):
         return d
@@ -1755,6 +1800,7 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
 
     Returns normalized result with engine='unified' and detailed phases timing.
     """
+    logging.getLogger('techscan.unified').info('scan_unified called domain=%s budget_ms=%s', domain, budget_ms)
     t0 = time.time()
     domain = validate_domain(extract_host(domain))
     phases: Dict[str, int] = {}
@@ -1868,9 +1914,9 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
         return sum(1 for t in ts if t.get('name'))
     # Threshold for triggering Node fallbacks
     try:
-        unified_min_tech = int(os.environ.get('TECHSCAN_UNIFIED_MIN_TECH', '15'))
+        unified_min_tech = int(os.environ.get('TECHSCAN_UNIFIED_MIN_TECH', '25'))
     except ValueError:
-        unified_min_tech = 15
+        unified_min_tech = 25
     # Allow minimum budget override before node fallbacks kick in (default 4000ms)
     try:
         fallback_min_budget_ms = int(os.environ.get('TECHSCAN_FALLBACK_MIN_BUDGET_MS', '4000') or '4000')
@@ -1883,8 +1929,10 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
         fast_full_ms = 0
     micro_used = False
     node_full_used = False
+    current_count = count_signal(techs)
+    logging.getLogger('techscan.unified').debug('fallback_check domain=%s tech_count=%s min_threshold=%s budget_ms=%s', domain, current_count, unified_min_tech, budget_ms)
     # Micro fallback is gated by TECHSCAN_ULTRA_FALLBACK_MICRO (default enabled)
-    if count_signal(techs) < unified_min_tech and os.environ.get('TECHSCAN_ULTRA_FALLBACK_MICRO', '1') == '1' and fallback_min_budget_ms <= budget_ms:
+    if current_count <= unified_min_tech and os.environ.get('TECHSCAN_ULTRA_FALLBACK_MICRO', '1') == '1' and fallback_min_budget_ms <= budget_ms:
         try:
             # One-shot micro: short cap, no adaptive retry, and resource blocking on
             micro_start = time.time()
@@ -2053,22 +2101,38 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
             return re.sub(r'[^a-z0-9]+', ' ', n.lower()).strip()
 
         def _should_merge(name_a: str, name_b: str) -> bool:
-            # Exact equality or substring relation should merge (e.g., 'apache' vs 'apache http server')
+            # Only merge truly duplicate entries, NOT related but distinct technologies
+            # e.g., DON'T merge: jQuery vs jQuery UI vs jQuery Migrate (distinct libs)
+            # e.g., DON'T merge: Elementor vs Essential Addons for Elementor (distinct plugins)
             if not name_a or not name_b:
                 return False
+            # Exact equality - definitely merge
             if name_a == name_b:
                 return True
-            if name_a in name_b or name_b in name_a:
-                return True
-            # token overlap: simple Jaccard on tokens
-            sa = set(name_a.split())
-            sb = set(name_b.split())
-            if not sa or not sb:
+            # Stricter: only merge if one is exact prefix + version suffix or very minor variant
+            # e.g., "wordpress" vs "wordpress 6.0" should merge
+            # e.g., "jquery" vs "jquery ui" should NOT merge (ui is not a version)
+            tokens_a = name_a.split()
+            tokens_b = name_b.split()
+            # If token counts differ by more than 1, likely different tech
+            if abs(len(tokens_a) - len(tokens_b)) > 1:
                 return False
-            inter = sa.intersection(sb)
-            union = sa.union(sb)
-            if len(inter) >= 1 and (len(inter) / len(union)) >= 0.5:
+            # If exactly same tokens (just different order/spacing), merge
+            if set(tokens_a) == set(tokens_b):
                 return True
+            # If shorter is exact match of longer minus last token AND last token looks like version
+            def looks_like_version(t: str) -> bool:
+                return bool(re.match(r'^[\d\.]+$', t)) or t in ('sniff', 'latest', 'stable')
+            if len(tokens_a) < len(tokens_b):
+                shorter, longer = tokens_a, tokens_b
+            else:
+                shorter, longer = tokens_b, tokens_a
+            # Check if shorter matches longer prefix and remaining is version-like
+            if shorter == longer[:len(shorter)]:
+                remaining = longer[len(shorter):]
+                if len(remaining) == 1 and looks_like_version(remaining[0]):
+                    return True
+            # Otherwise, don't merge - they're distinct technologies
             return False
 
         def _parse_version_tuple(v: str | None) -> tuple:
@@ -2285,6 +2349,46 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
             version_audit.audit_versions(out)
         except Exception:
             pass
+    # --- Assign default categories to well-known technologies lacking them ---
+    try:
+        CATEGORY_FALLBACKS = {
+            'jquery': ['JavaScript libraries'],
+            'jquery ui': ['JavaScript libraries'],
+            'jquery migrate': ['JavaScript libraries'],
+            'font awesome': ['Font scripts'],
+            'wpml': ['Translation', 'WordPress plugins'],
+            'wordpress multilingual plugin': ['Translation', 'WordPress plugins'],
+            'tailwind css': ['UI frameworks'],
+            'tailwindcss': ['UI frameworks'],
+            'doubleclick floodlight': ['Advertising'],
+            'google adsense': ['Advertising'],
+            'bootstrap': ['UI frameworks'],
+            'react': ['JavaScript frameworks'],
+            'vue.js': ['JavaScript frameworks'],
+            'angular': ['JavaScript frameworks'],
+            'lodash': ['JavaScript libraries'],
+            'underscore.js': ['JavaScript libraries'],
+            'modernizr': ['JavaScript libraries'],
+            'axios': ['JavaScript libraries'],
+            'wordpress': ['CMS', 'Blogs'],
+            'nginx': ['Web servers', 'Reverse proxies'],
+            'apache': ['Web servers'],
+        }
+        for t in out.get('technologies', []) or []:
+            cats = t.get('categories') or []
+            if not cats:
+                name_lower = (t.get('name') or '').lower().strip()
+                for key, fallback_cats in CATEGORY_FALLBACKS.items():
+                    if key in name_lower or name_lower.startswith(key.split()[0]):
+                        t['categories'] = fallback_cats
+                        # Also update main categories dict
+                        for c in fallback_cats:
+                            bucket = out.setdefault('categories', {}).setdefault(c, [])
+                            if not any(b.get('name') == t.get('name') for b in bucket):
+                                bucket.append({'name': t.get('name'), 'version': t.get('version')})
+                        break
+    except Exception:
+        pass
     return out
 
 def scan_bulk(domains: List[str], wappalyzer_path: str, concurrency: int = 4, timeout: int = 45, fresh: bool = False, retries: int = 0, ttl: int | None = None, full: bool = False) -> List[Dict[str, Any]]:

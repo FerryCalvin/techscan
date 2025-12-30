@@ -35,22 +35,26 @@
             <div class="report-card-count"><span id="count-database">-</span> usages</div>
         </div>
 
-        <!-- Row 2 -->
+        <!-- Row 2 (4-4 layout: removed reverse proxies and ssl-tls) -->
+        <!-- Reverse Proxies - disabled for 4-4 layout
         <div class="report-card glass-surface" data-category="reverse proxies">
             <h3 class="report-card-title">Reverse Proxies</h3>
             <div class="report-card-chart"><canvas id="chart-proxies"></canvas></div>
             <div class="report-card-count"><span id="count-proxies">-</span> usages</div>
         </div>
+        -->
         <div class="report-card glass-surface" data-category="security">
             <h3 class="report-card-title">Security</h3>
             <div class="report-card-chart"><canvas id="chart-security"></canvas></div>
             <div class="report-card-count"><span id="count-security">-</span> usages</div>
         </div>
+        <!-- SSL/TLS Certificate - disabled for 4-4 layout
         <div class="report-card glass-surface" data-category="ssl-tls-certificate-authorities">
             <h3 class="report-card-title">SSL/TLS Certificate</h3>
             <div class="report-card-chart"><canvas id="chart-ssl"></canvas></div>
             <div class="report-card-count"><span id="count-ssl">-</span> usages</div>
         </div>
+        -->
         <div class="report-card glass-surface" data-category="cdn">
             <h3 class="report-card-title">CDN</h3>
             <div class="report-card-chart"><canvas id="chart-cdn"></canvas></div>
@@ -152,7 +156,7 @@
 
     .report-grid {
         display: grid;
-        grid-template-columns: repeat(5, 1fr);
+        grid-template-columns: repeat(4, 1fr);
         gap: 1.25rem;
         margin-bottom: 2rem;
     }
@@ -165,6 +169,8 @@
         background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
         border: 1px solid rgba(255, 255, 255, 0.1);
         backdrop-filter: blur(20px);
+        overflow: hidden;
+        min-height: 180px;
     }
 
     .report-card:hover {
@@ -176,14 +182,16 @@
     .report-card-title {
         font-size: 0.9rem;
         font-weight: 600;
-        margin-bottom: 1rem;
+        margin-bottom: 0.75rem;
         text-align: center;
         color: rgba(255, 255, 255, 0.9);
     }
 
     .report-card-chart {
-        height: 120px;
-        margin-bottom: 0.75rem;
+        height: 110px;
+        margin-bottom: 0.5rem;
+        padding-right: 5px;
+        overflow: hidden;
     }
 
     .report-card-count {
@@ -775,6 +783,7 @@
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 <script>
     // Global function for closing evidence modal - MUST be outside IIFE
     function closeEvidenceModal() {
@@ -787,15 +796,16 @@
 <script>
     (function () {
         // Category configuration with proper API names matching Wappalyzer categories
+        // Note: Reverse Proxies and SSL/TLS Certificate disabled for 4-4 layout
         const CATEGORIES = [
             { id: 'cms', name: 'CMS', api: 'cms' },
             { id: 'programming', name: 'Programming Language', api: 'programming languages' },
             { id: 'ui', name: 'UI Frameworks', api: 'ui frameworks' },
             { id: 'webframework', name: 'Web Framework', api: 'web frameworks' },
             { id: 'database', name: 'Database', api: 'databases' },
-            { id: 'proxies', name: 'Reverse Proxies', api: 'reverse proxies' },
+            // { id: 'proxies', name: 'Reverse Proxies', api: 'reverse proxies' },  // disabled
             { id: 'security', name: 'Security', api: 'security' },
-            { id: 'ssl', name: 'SSL/TLS Certificate', api: 'ssl-tls-certificate-authorities' },
+            // { id: 'ssl', name: 'SSL/TLS Certificate', api: 'ssl-tls-certificate-authorities' },  // disabled
             { id: 'cdn', name: 'CDN', api: 'cdn' },
             { id: 'os', name: 'Operating System', api: 'operating systems' }
         ];
@@ -858,7 +868,7 @@
                         charts[cat.id] = new Chart(ctx, {
                             type: 'bar',
                             data: {
-                                labels: techs.slice(0, 5).map(t => t.tech?.substring(0, 15) || 'Unknown'),
+                                labels: techs.slice(0, 5).map(t => t.tech?.substring(0, 10) || 'Unknown'),
                                 datasets: [{
                                     data: techs.slice(0, 5).map(t => t.count),
                                     backgroundColor: COLORS,
@@ -869,15 +879,28 @@
                                 indexAxis: 'y',
                                 responsive: true,
                                 maintainAspectRatio: false,
-                                plugins: { legend: { display: false } },
+                                layout: {
+                                    padding: { right: 35 }
+                                },
+                                plugins: {
+                                    legend: { display: false },
+                                    datalabels: {
+                                        anchor: 'end',
+                                        align: 'end',
+                                        color: 'rgba(255,255,255,0.9)',
+                                        font: { size: 9, weight: 'bold' },
+                                        formatter: (value) => value?.toLocaleString() || ''
+                                    }
+                                },
                                 scales: {
                                     x: { display: false },
                                     y: {
                                         grid: { display: false },
-                                        ticks: { color: 'rgba(255,255,255,0.7)', font: { size: 9 } }
+                                        ticks: { color: 'rgba(255,255,255,0.7)', font: { size: 8 } }
                                     }
                                 }
-                            }
+                            },
+                            plugins: [ChartDataLabels]
                         });
                     }
                 } catch (err) {

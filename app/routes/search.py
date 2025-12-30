@@ -117,9 +117,9 @@ def category_suggest():
 
 @search_bp.route('/domain', methods=['GET'])
 def domain_lookup():
-    """Return current technologies (merged view) for a single domain.
+    """Return current technologies (from latest scan) for a single domain.
     Params: domain=example.com
-    Response: {domain, count, technologies:[{name, version, categories, first_seen, last_seen}]}
+    Response: {domain, count, technologies:[{name, version, categories}], categories:{}}
     """
     raw = (request.args.get('domain') or '').strip().lower()
     if not raw:
@@ -128,23 +128,82 @@ def domain_lookup():
         dom = validate_domain(extract_host(raw))
     except ValueError:
         return jsonify({'error':'invalid domain'}), 400
-    rows = _db.get_domain_techs(dom)
-    # Normalize shape to match other endpoints: name/version/categories
-    techs = [
-        {
-            'name': r['tech_name'],
-            'version': r['version'],
-            'categories': r['categories'],
-            'first_seen': r['first_seen'],
-            'last_seen': r['last_seen']
-        } for r in rows
-    ]
+    
+    # Get technologies from latest scan (not historical domain_techs)
+    duration_ms = None
+    payload_bytes = None
+    scan_time = None
+    try:
+        with _db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute('''
+                    SELECT technologies_json, finished_at, duration_ms, payload_bytes, started_at
+                    FROM scans 
+                    WHERE domain = %s 
+                    ORDER BY finished_at DESC 
+                    LIMIT 1
+                ''', (dom,))
+                row = cur.fetchone()
+        
+        if row and row[0]:
+            techs_raw = row[0] if isinstance(row[0], list) else []
+            # Normalize technologies
+            techs = []
+            seen = set()  # dedupe by (name, version)
+            for t in techs_raw:
+                if not isinstance(t, dict) or not t.get('name'):
+                    continue
+                key = (t.get('name', ''), t.get('version', '') or '')
+                if key in seen:
+                    continue
+                seen.add(key)
+                techs.append({
+                    'name': t.get('name'),
+                    'version': t.get('version'),
+                    'categories': t.get('categories') if isinstance(t.get('categories'), list) else [],
+                    'confidence': t.get('confidence'),
+                })
+            scan_time = row[1].timestamp() if row[1] else None
+            duration_ms = row[2]
+            payload_bytes = row[3]
+            # Calculate duration from timestamps if not stored
+            if duration_ms is None and row[4] and row[1]:
+                try:
+                    duration_ms = int((row[1] - row[4]).total_seconds() * 1000)
+                except:
+                    pass
+        else:
+            # Fallback to domain_techs if no scan found
+            rows = _db.get_domain_techs(dom)
+            techs = [
+                {
+                    'name': r['tech_name'],
+                    'version': r['version'],
+                    'categories': r['categories'],
+                }
+                for r in rows
+            ]
+    except Exception as e:
+        logging.getLogger('techscan.search').error('domain_lookup error: %s', e)
+        return jsonify({'error': 'lookup failed'}), 500
+    
     # Aggregate categories panel style
     cats = {}
     for t in techs:
         for c in t.get('categories') or []:
-            cats.setdefault(c, []).append({'name': t['name'], 'version': t.get('version')})
-    return jsonify({'domain': dom, 'count': len(techs), 'technologies': techs, 'categories': cats})
+            if isinstance(c, str):
+                cats.setdefault(c, []).append({'name': t['name'], 'version': t.get('version')})
+    
+    return jsonify({
+        'domain': dom, 
+        'count': len(techs), 
+        'technologies': techs, 
+        'categories': cats,
+        'scan_time': scan_time,
+        'duration_ms': duration_ms,
+        'duration': round(duration_ms / 1000, 2) if duration_ms else None,
+        'payload_bytes': payload_bytes
+    })
 
 @search_bp.route('/history', methods=['GET'])
 def history():

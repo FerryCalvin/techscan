@@ -1,5 +1,6 @@
 import os
 import logging
+import pathlib
 from flask import Flask
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -10,6 +11,8 @@ def create_app():
     os.environ.setdefault('TECHSCAN_PERSIST_BROWSER', '1')
     os.environ.setdefault('TECHSCAN_UNIFIED', '1')
     os.environ.setdefault('TECHSCAN_FORCE_FULL', '1')
+    # Force Node fallback threshold to 25 (override any inherited env var)
+    os.environ['TECHSCAN_UNIFIED_MIN_TECH'] = '25'
     # Fail-fast defaults so unreachable hosts surface as explicit errors instead of slow 0-tech scans
     os.environ.setdefault('TECHSCAN_PREFLIGHT', '1')
     os.environ.setdefault('TECHSCAN_DNS_NEG_CACHE', '600')
@@ -17,7 +20,9 @@ def create_app():
     # Optional template auto-reload for development (to pick up index.html JS edits without restart)
     if os.environ.get('TECHSCAN_TEMPLATE_AUTO_RELOAD','0') == '1':
         app.config['TEMPLATES_AUTO_RELOAD'] = True
-    app.config['WAPPALYZER_PATH'] = os.environ.get('WAPPALYZER_PATH', r'd:\wappalyzer\wappalyzer3\wappalyzer-master')
+    # Default WAPPALYZER_PATH to local npm installation
+    _default_wapp = pathlib.Path(__file__).parent.parent / 'node_scanner' / 'node_modules' / 'wappalyzer'
+    app.config['WAPPALYZER_PATH'] = os.environ.get('WAPPALYZER_PATH', str(_default_wapp))
 
     # Logging configuration
     level_name = os.environ.get('TECHSCAN_LOG_LEVEL', 'INFO').upper()
@@ -119,6 +124,34 @@ def create_app():
             # Defensive: if registration still fails for any reason, log and continue
             logging.getLogger(__name__).warning('Tech blueprint registration skipped due to error: %s', ve)
 
+    # Security Headers - applied to all responses
+    @app.after_request
+    def add_security_headers(response):
+        """Add security headers to all responses.
+        
+        These headers help protect against common web vulnerabilities:
+        - X-Content-Type-Options: Prevents MIME type sniffing
+        - X-Frame-Options: Prevents clickjacking
+        - X-XSS-Protection: Legacy XSS protection (modern browsers use CSP)
+        - Referrer-Policy: Controls referrer information leakage
+        - Content-Security-Policy: Restricts resource loading (can be customized via env)
+        """
+        # Don't add headers to OPTIONS preflight requests
+        if response.status_code == 204:
+            return response
+        
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        
+        # Content-Security-Policy (customizable via env, default restrictive)
+        csp = os.environ.get('TECHSCAN_CSP', "default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src 'self' fonts.gstatic.com; img-src 'self' data:;")
+        if csp:
+            response.headers['Content-Security-Policy'] = csp
+        
+        return response
+
     # If persistent browser mode requested, attempt to ensure the persistent
     # Node scanner daemon is started at application startup. This avoids a
     # situation where the first scans after a restart fall back to lighter
@@ -178,7 +211,6 @@ def create_app():
     app.config['TECHSCAN_VERSION'] = os.environ.get('TECHSCAN_VERSION', '0.3.0')
     # Attempt to read short commit for logging (best-effort)
     try:
-        import pathlib
         root = pathlib.Path(__file__).resolve().parent.parent
         head = root / '.git' / 'HEAD'
         short = 'unknown'

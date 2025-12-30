@@ -207,14 +207,14 @@ async function getPrimaryPage(site) {
         if (ctx && typeof ctx.pages === 'function') {
           allPages.push(...(ctx.pages() || []))
         }
-      } catch {}
+      } catch { }
     })
     // Fallback to default context pages if none collected
     if (!allPages.length) {
       try {
         const defaultPages = await site.driver.browser.pages()
         if (Array.isArray(defaultPages)) allPages.push(...defaultPages)
-      } catch {}
+      } catch { }
     }
     let page = null
     if (allPages.length) {
@@ -233,19 +233,19 @@ async function getPrimaryPage(site) {
     if (browser && typeof browser.newPage === 'function') {
       const freshPage = await browser.newPage()
       if (freshPage) {
-        try { await freshPage.setUserAgent('Mozilla/5.0 (TechScan)') } catch {}
+        try { await freshPage.setUserAgent('Mozilla/5.0 (TechScan)') } catch { }
         const fallbackUrl = url
         const timeout = parseInt(process.env.TECHSCAN_NAV_TIMEOUT || '15000', 10)
         try {
           await freshPage.goto(fallbackUrl, { waitUntil: 'domcontentloaded', timeout: timeout || 15000 })
-        } catch {}
+        } catch { }
         if (isUsable(freshPage)) {
           site._techscanPrimaryPage = freshPage
           return freshPage
         }
       }
     }
-  } catch {}
+  } catch { }
   return null
 }
 
@@ -267,16 +267,16 @@ async function collectHintMeta(site) {
       const fontHits = []
       const serviceWorkers = []
       const addRuntime = (cond, payload) => { if (cond) runtimeHits.push(payload) }
-      try { addRuntime(Boolean(window.__NEXT_DATA__), { name: 'Next.js', label: 'next-data-inline' }) } catch {}
-      try { addRuntime(Boolean(window.__NUXT__), { name: 'Nuxt.js', label: 'nuxt-inline' }) } catch {}
-      try { addRuntime(Boolean(window.__remixManifest), { name: 'Remix', label: 'remix-manifest' }) } catch {}
-      try { addRuntime(Boolean(window.Livewire), { name: 'Livewire', label: 'livewire-runtime' }) } catch {}
-      try { addRuntime(Boolean(window.Inertia), { name: 'Inertia.js', label: 'inertia-runtime' }) } catch {}
-      try { addRuntime(Boolean(window.Alpine), { name: 'Alpine.js', label: 'alpine-runtime' }) } catch {}
-      try { addRuntime(Boolean(window.Shopify), { name: 'Shopify', label: 'shopify-runtime' }) } catch {}
-      try { addRuntime(Boolean(window.drupalSettings), { name: 'Drupal', label: 'drupal-settings' }) } catch {}
+      try { addRuntime(Boolean(window.__NEXT_DATA__), { name: 'Next.js', label: 'next-data-inline' }) } catch { }
+      try { addRuntime(Boolean(window.__NUXT__), { name: 'Nuxt.js', label: 'nuxt-inline' }) } catch { }
+      try { addRuntime(Boolean(window.__remixManifest), { name: 'Remix', label: 'remix-manifest' }) } catch { }
+      try { addRuntime(Boolean(window.Livewire), { name: 'Livewire', label: 'livewire-runtime' }) } catch { }
+      try { addRuntime(Boolean(window.Inertia), { name: 'Inertia.js', label: 'inertia-runtime' }) } catch { }
+      try { addRuntime(Boolean(window.Alpine), { name: 'Alpine.js', label: 'alpine-runtime' }) } catch { }
+      try { addRuntime(Boolean(window.Shopify), { name: 'Shopify', label: 'shopify-runtime' }) } catch { }
+      try { addRuntime(Boolean(window.drupalSettings), { name: 'Drupal', label: 'drupal-settings' }) } catch { }
       let importMap = false
-      try { importMap = Boolean(document.querySelector('script[type="importmap"]')) } catch {}
+      try { importMap = Boolean(document.querySelector('script[type="importmap"]')) } catch { }
       try {
         document.querySelectorAll('link[rel="manifest"]').forEach(node => {
           const href = node.getAttribute('href') || ''
@@ -287,7 +287,7 @@ async function collectHintMeta(site) {
             manifestHits.push(href)
           }
         })
-      } catch {}
+      } catch { }
       try {
         document.querySelectorAll('link[href],script[src]').forEach(node => {
           const ref = node.getAttribute('href') || node.getAttribute('src') || ''
@@ -301,7 +301,7 @@ async function collectHintMeta(site) {
             fontHits.push({ name: 'PrimeIcons', label: 'asset' })
           }
         })
-      } catch {}
+      } catch { }
       try {
         document.querySelectorAll('input[name]').forEach(input => {
           const name = (input.getAttribute('name') || '').toLowerCase()
@@ -314,7 +314,7 @@ async function collectHintMeta(site) {
             formHits.push({ name: 'Django', label: 'django_csrf' })
           }
         })
-      } catch {}
+      } catch { }
       try {
         if (navigator.serviceWorker) {
           if (navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL) {
@@ -324,26 +324,26 @@ async function collectHintMeta(site) {
             try {
               const regs = await navigator.serviceWorker.getRegistrations()
               regs.forEach(reg => {
-                ;['installing','waiting','active'].forEach(state => {
+                ;['installing', 'waiting', 'active'].forEach(state => {
                   const worker = reg[state]
                   if (worker && worker.scriptURL) {
                     serviceWorkers.push(worker.scriptURL)
                   }
                 })
               })
-            } catch {}
+            } catch { }
           }
         }
-      } catch {}
+      } catch { }
       let cspText = ''
       try {
         const metaTag = document.querySelector('meta[http-equiv="Content-Security-Policy"]')
         if (metaTag) {
           cspText = metaTag.getAttribute('content') || ''
         }
-      } catch {}
+      } catch { }
       let cookieString = ''
-      try { cookieString = document.cookie || '' } catch {}
+      try { cookieString = document.cookie || '' } catch { }
       return {
         runtimeHits,
         formHits,
@@ -407,7 +407,7 @@ async function collectHintMeta(site) {
         meta.cookie_hits = dedupeObjects(hits).slice(0, 10)
       }
     }
-  } catch {}
+  } catch { }
   if ((!meta.cookie_hits || !meta.cookie_hits.length) && domData && domData.cookieString) {
     const rawNames = domData.cookieString.split(';').map(chunk => chunk.split('=')[0].trim()).filter(Boolean)
     if (rawNames.length) {
@@ -453,23 +453,23 @@ async function collectExtras(site) {
           if (window && window.jQuery && window.jQuery.fn && window.jQuery.fn.jquery) {
             globals.jquery = String(window.jQuery.fn.jquery)
           }
-        } catch {}
+        } catch { }
         try {
           if (window && window.Vue && window.Vue.version) {
             globals.vue = String(window.Vue.version)
           }
-        } catch {}
+        } catch { }
         try {
           if (window && window.angular && window.angular.version && window.angular.version.full) {
             globals.angularjs = String(window.angular.version.full)
           }
-        } catch {}
+        } catch { }
         let bodyClasses = []
         try {
           if (document.body && document.body.className) {
             bodyClasses = document.body.className.split(/\s+/).filter(Boolean)
           }
-        } catch {}
+        } catch { }
         return {
           metas,
           scripts,
@@ -534,13 +534,13 @@ async function run() {
   //  - If unset => block only for fast (non-full) mode (previous default)
   const shouldBlock = blockResourcesEnv === '0' ? false : (blockResourcesEnv === '1' ? true : (!full))
   // Allow custom resource types list (comma separated) else default
-  const customTypes = (process.env.TECHSCAN_BLOCK_RESOURCE_TYPES || '').split(',').map(s=>s.trim()).filter(Boolean)
-  const blockTypes = customTypes.length ? customTypes : ['image','media','font']
+  const customTypes = (process.env.TECHSCAN_BLOCK_RESOURCE_TYPES || '').split(',').map(s => s.trim()).filter(Boolean)
+  const blockTypes = customTypes.length ? customTypes : ['image', 'media', 'font']
   // Optional size threshold in KB (abort images/media larger than this)
   let sizeThresholdKB = 0
   if (process.env.TECHSCAN_BLOCK_MAX_KB) {
-    const v = parseInt(process.env.TECHSCAN_BLOCK_MAX_KB,10)
-    if (!isNaN(v) && v>0) sizeThresholdKB = v
+    const v = parseInt(process.env.TECHSCAN_BLOCK_MAX_KB, 10)
+    if (!isNaN(v) && v > 0) sizeThresholdKB = v
   }
   const baseWait = full ? 15000 : 10000
   const maxWait = navTimeout && navTimeout > 0 ? navTimeout : baseWait
@@ -566,8 +566,8 @@ async function run() {
       if (page && process.env.TECHSCAN_INTERACT === '1') {
         await page.waitForTimeout(1200)
         await page.evaluate(() => {
-          try { window.scrollBy(0, window.innerHeight * 0.8) } catch {}
-          try { window.scrollBy(0, window.innerHeight * 0.8) } catch {}
+          try { window.scrollBy(0, window.innerHeight * 0.8) } catch { }
+          try { window.scrollBy(0, window.innerHeight * 0.8) } catch { }
         })
         await page.waitForTimeout(800)
       }
@@ -584,7 +584,7 @@ async function run() {
             try {
               const type = req.resourceType()
               if (blockTypes.includes(type)) return req.abort()
-            } catch {}
+            } catch { }
             req.continue()
           })
           if (sizeThresholdKB > 0) {
@@ -594,17 +594,17 @@ async function run() {
                   const req = resp.request()
                   if (!req) return
                   const type = req.resourceType()
-                  if (!['image','media'].includes(type)) return
+                  if (!['image', 'media'].includes(type)) return
                   const lenH = resp.headers()['content-length']
                   if (lenH) {
-                    const bytes = parseInt(lenH,10)
-                    if (!isNaN(bytes) && bytes/1024 > sizeThresholdKB) {
-                      try { req.abort() } catch {}
+                    const bytes = parseInt(lenH, 10)
+                    if (!isNaN(bytes) && bytes / 1024 > sizeThresholdKB) {
+                      try { req.abort() } catch { }
                     }
                   }
-                } catch {}
+                } catch { }
               })
-            } catch {}
+            } catch { }
           }
           page._techscanInterception = true
         }
@@ -675,6 +675,12 @@ async function run() {
               } else if (window.$ && window.$.ui && window.$.ui.version) {
                 out.jqueryUiVersion = window.$.ui.version
               }
+              // jQuery Migrate
+              if (window.jQuery && window.jQuery.migrateVersion) {
+                out.jqueryMigrateVersion = window.jQuery.migrateVersion
+              } else if (window.$ && window.$.migrateVersion) {
+                out.jqueryMigrateVersion = window.$.migrateVersion
+              }
               // TinyMCE 4/5+ exposes tinymce.majorVersion/minorVersion; v3 exposes tinyMCE.majorVersion
               if (window.tinymce && window.tinymce.majorVersion) {
                 const mv = window.tinymce.majorVersion
@@ -693,6 +699,9 @@ async function run() {
             if (detection.jqueryUiVersion && !techs.find(t => t.name === 'jQuery UI')) {
               techs.push({ name: 'jQuery UI', version: detection.jqueryUiVersion, categories: ['JavaScript libraries'], confidence: 50, evidence: [] })
             }
+            if (detection.jqueryMigrateVersion && !techs.find(t => t.name === 'jQuery Migrate')) {
+              techs.push({ name: 'jQuery Migrate', version: detection.jqueryMigrateVersion, categories: ['JavaScript libraries'], confidence: 50, evidence: [] })
+            }
             if (detection.tinymceVersion && !techs.find(t => t.name.toLowerCase() === 'tinymce')) {
               techs.push({ name: 'TinyMCE', version: detection.tinymceVersion, categories: ['Rich text editors'], confidence: 55, evidence: [] })
             }
@@ -709,7 +718,7 @@ async function run() {
                 if (linkOrScript) result.cdn = true
                 try {
                   if (document.body && /tailwind/i.test(document.body.className || '')) result.bodyFlag = true
-                } catch {}
+                } catch { }
                 const classElems = Array.from(document.querySelectorAll('[class]'))
                 let hits = 0; let total = 0; const prefixSet = new Set()
                 const utilRe = /^(?:sm:|md:|lg:|xl:|2xl:|dark:)?(?:p[trblxy]?-[0-9]+|m[trblxy]?-[0-9]+|bg-[a-z0-9-:\/]+|text-[a-z0-9-:\/]+|flex|grid|inline-flex|hidden|block|inline-block|items-[a-z-]+|justify-[a-z-]+|gap-[0-9]+|w-[0-9\/]+|h-[0-9\/]+|rounded(?:-[a-z0-9]+)?|shadow(?:-[a-z0-9]+)?|aspect-[a-z0-9/]+|place-[a-z-]+|top-[0-9]+|left-[0-9]+|right-[0-9]+|bottom-[0-9]+|translate-[xy]-[0-9]+)/
@@ -719,7 +728,7 @@ async function run() {
                     total++
                     if (utilRe.test(tok)) {
                       hits++
-                      const core = tok.replace(/^(sm:|md:|lg:|xl:|2xl:|dark:)/,'').split('-')[0]
+                      const core = tok.replace(/^(sm:|md:|lg:|xl:|2xl:|dark:)/, '').split('-')[0]
                       prefixSet.add(core)
                     }
                   }
@@ -780,7 +789,7 @@ async function run() {
               try {
                 const mg = document.querySelector('meta[name="generator"]')
                 if (mg) out.metaGenerator = (mg.getAttribute('content') || '').trim()
-              } catch {}
+              } catch { }
               // Capture ?ver= or v= query params in common script/link assets
               try {
                 const assets = []
@@ -791,7 +800,7 @@ async function run() {
                   if (m) assets.push(m[1])
                 })
                 out.assetVersions = assets.slice(0, 20)
-              } catch {}
+              } catch { }
               return out
             })
             if (versionHints) {
@@ -807,12 +816,12 @@ async function run() {
               // If many asset ?ver= share same version and a tech lacks version, attempt weak fill (skip if already have version)
               if (versionHints.assetVersions && versionHints.assetVersions.length) {
                 const freq = {}
-                versionHints.assetVersions.forEach(v => { freq[v] = (freq[v]||0)+1 })
-                const sorted = Object.entries(freq).sort((a,b)=>b[1]-a[1])
+                versionHints.assetVersions.forEach(v => { freq[v] = (freq[v] || 0) + 1 })
+                const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1])
                 if (sorted.length && sorted[0][1] >= 2) {
                   const common = sorted[0][0]
                   // Fill popular CMS or library placeholders without versions
-                  const candidateNames = ['WordPress','WooCommerce','Elementor','jQuery']
+                  const candidateNames = ['WordPress', 'WooCommerce', 'Elementor', 'jQuery']
                   candidateNames.forEach(name => {
                     const t = techs.find(tt => tt.name === name)
                     if (t && !t.version) t.version = common
@@ -837,16 +846,16 @@ async function run() {
             const out = { ytcfg: false, polymer: false, ytPlayer: false, scripts: 0 }
             try {
               if (window.ytcfg && typeof window.ytcfg.get === 'function') out.ytcfg = true
-            } catch {}
+            } catch { }
             try {
               if (window.Polymer || (window.webcomponents && window.webcomponents.readyTime)) out.polymer = true
-            } catch {}
+            } catch { }
             try {
               if (window.ytplayer || window.yt) out.ytPlayer = true
-            } catch {}
+            } catch { }
             try {
               out.scripts = document.querySelectorAll('script').length
-            } catch {}
+            } catch { }
             return out
           })
           const strong = yt && (yt.ytcfg && yt.ytPlayer)
@@ -855,7 +864,7 @@ async function run() {
             techs.push({
               name: 'YouTube Platform',
               version: null,
-              categories: ['Video platforms','CDN'],
+              categories: ['Video platforms', 'CDN'],
               confidence: strong ? 80 : 55,
               evidence: []
             })
@@ -881,17 +890,17 @@ async function run() {
                 const m = src.match(/react@([0-9]+\.[0-9]+\.[0-9]+)/i)
                 if (m) { out.reactVersion = m[1]; break }
               }
-            } catch {}
+            } catch { }
             try {
               if (window.Vue || window.__VUE_DEVTOOLS_GLOBAL_HOOK__) out.vue = true
               if (window.Vue && window.Vue.version) out.vueVersion = window.Vue.version
-            } catch {}
+            } catch { }
             try {
               // Angular: presence of ng-version attribute or window.ng.coreTokens
               const ngRoot = document.querySelector('[ng-version]')
               if (ngRoot) { out.angular = true; out.angularVersion = ngRoot.getAttribute('ng-version') }
               if (!out.angular && window.ng && window.ng.coreTokens) out.angular = true
-            } catch {}
+            } catch { }
             return out
           })
           // React
@@ -952,7 +961,7 @@ async function run() {
     console.error(e.message || String(e))
     process.exit(2)
   } finally {
-    try { await wappalyzer.destroy() } catch {}
+    try { await wappalyzer.destroy() } catch { }
   }
 }
 

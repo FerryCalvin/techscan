@@ -1,0 +1,138 @@
+CATEGORY AUDIT REPORT
+============================================================
+
+
+PROGRAMMING LANGUAGES
+----------------------------------------
+Total: 7
+  - PHP: 547
+  - Python: 5
+  - Go: 2
+  - Ruby: 2
+  - Ruby on Rails: 2
+  - Perl: 1
+  - Google Analytics: 1
+
+WEB SERVERS
+----------------------------------------
+Total: 6
+  - LiteSpeed: 309
+  - Nginx: 231
+  - Apache: 159
+  - Apache HTTP Server: 143
+  - Caddy: 1
+  - Akka HTTP: 1
+
+JAVASCRIPT LIBRARIES
+----------------------------------------
+Total: 52
+  - jQuery UI: 359
+  - jQuery: 346
+  - jQuery Migrate: 229
+  - core-js: 187
+  - OWL Carousel: 149
+  - Swiper: 104
+  - Moment.js: 51
+  - Isotope: 46
+  - Lightbox: 39
+  - React: 36
+  - Modernizr: 35
+  - SweetAlert2: 30
+  - Slick: 24
+  - Glider.js: 24
+  - Select2: 23
+  ... and 37 more
+
+JAVASCRIPT FRAMEWORKS
+----------------------------------------
+Total: 20
+  - Alpine.js: 15
+  - toastr: 14
+  - AngularJS: 9
+  - RequireJS: 9
+  - MooTools: 9
+  - Svelte: 5
+  - Handlebars: 4
+  - Prototype: 4
+  - Next.js: 3
+  - Angular: 3
+  - styled-components: 2
+  - Emotion: 2
+  - Zone.js: 1
+  - Express: 1
+  - JSS: 1
+  ... and 5 more
+
+JAVASCRIPT RUNTIMES
+----------------------------------------
+Total: 0
+
+CDN
+----------------------------------------
+Total: 11
+  - Cloudflare: 50
+  - jsDelivr: 47
+  - cdnjs: 45
+  - Google Hosted Libraries: 27
+  - Unpkg: 15
+  - Bunny Fonts: 6
+  - Bunny: 4
+  - Cloudflare Browser Insights: 1
+  - Amazon CloudFront: 1
+  - Amazon S3: 1
+  - Imgix: 1
+
+UI FRAMEWORKS
+----------------------------------------
+Total: 9
+  - Bootstrap: 246
+  - Animate.css: 148
+  - UIKit: 19
+  - Bootstrap Icons: 2
+  - ZURB Foundation: 1
+  - Vuetify: 1
+  - CivicTheme: 1
+  - Marko: 1
+  - MUI: 1
+
+CSS FRAMEWORKS
+----------------------------------------
+Total: 0
+
+CMS
+----------------------------------------
+Total: 9
+  - WordPress: 557
+  - TYPO3 CMS: 153
+  - Joomla: 41
+  - WordPress Multisite: 15
+  - WordPress (sniff): 9
+  - Drupal: 2
+  - Odoo: 2
+  - Omeka: 1
+  - Contentful: 1
+
+ANALYTICS
+----------------------------------------
+Total: 10
+  - Google Analytics: 875
+  - Site Kit: 121
+  - MonsterInsights: 18
+  - Matomo Analytics: 17
+  - Histats: 4
+  - Google Ads Conversion Tracking: 2
+  - Microsoft Clarity: 2
+  - Grafana: 1
+  - Adobe Analytics: 1
+  - Cloudflare Browser Insights: 1
+
+UNCATEGORIZED
+----------------------------------------
+Total: 4
+  - ESF: 1
+  - ghs: 1
+  - awselb: 1
+  - bakso: 1
+
+
+SUMMARY: All correct

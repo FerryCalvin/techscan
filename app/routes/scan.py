@@ -562,6 +562,7 @@ def scan_single_impl():
             _db.save_scan(meta_for_db, result.get('cached', False), timeout_used)
         except Exception as persist_ex:
             logging.getLogger('techscan.scan').warning('persist_failed domain=%s err=%s', domain, persist_ex)
+        
         return jsonify(result)
     except Exception as e:
         # Log full traceback to help diagnose UnboundLocalError or other issues
@@ -916,6 +917,11 @@ def scan_bulk_route_impl():
     except Exception as bulk_persist_ex:
         logging.getLogger('techscan.bulk').warning('bulk_persist_failed err=%s', bulk_persist_ex)
 
+    # Clear status message for developers monitoring logs
+    logging.getLogger('techscan.bulk').info(
+        '✓ BULK SCAN FINISHED | domains=%d | success=%d | errors=%d | batch_id=%s | Ready for next scan',
+        len(results), ok, len(results) - ok, batch_id or 'none'
+    )
     return jsonify({'count': len(results), 'ok': ok, 'batch_id': batch_id, 'error_summary': buckets, 'results': results})
 
 @bp.route('/scan/cancelled', methods=['POST'])
@@ -1035,3 +1041,187 @@ def export_csv():
         writer.writerow(row)
     csv_data = output.getvalue()
     return Response(csv_data, mimetype='text/csv', headers={'Content-Disposition': 'attachment; filename=techscan_export.csv'})
+
+
+# ============ Async Scan Endpoints ============
+
+@bp.route('/scan/async', methods=['POST'])
+def scan_async():
+    """Submit scan job that runs in background.
+    
+    Returns job_id immediately. Client can poll /api/job/<id> for status.
+    This allows scan to continue even if user navigates away.
+    """
+    from ..job_queue import get_job_queue, init_job_queue
+    from ..scan_utils import scan_unified
+    
+    data = request.get_json(force=True, silent=True) or {}
+    domain = data.get('domain', '').strip().lower()
+    
+    if not domain:
+        return jsonify({'error': 'domain required'}), 400
+    
+    # Validate domain
+    host = extract_host(domain)
+    if not host or not DOMAIN_RE.match(host):
+        return jsonify({'error': 'Invalid domain format'}), 400
+    
+    # Initialize job queue with scan function
+    jq = get_job_queue()
+    # Always set scan function to ensure correct budget_ms
+    wapp_path = current_app.config['WAPPALYZER_PATH']
+    jq._scan_fn = lambda d, wpath=wapp_path, **opts: scan_unified(d, wpath, budget_ms=45000)
+    if not jq._started:
+        jq.start_worker()
+    
+    # Submit job
+    options = {}
+    if data.get('quick'):
+        options['quick'] = True
+    if data.get('deep'):
+        options['deep'] = True
+    
+    job_id = jq.submit_single(domain, options)
+    
+    return jsonify({
+        'job_id': job_id,
+        'status': 'pending',
+        'domain': domain,
+        'message': 'Scan submitted. Poll /api/job/<id> for status.'
+    })
+
+
+@bp.route('/bulk/async', methods=['POST'])
+def bulk_async():
+    """Submit bulk scan job that runs in background.
+    
+    Returns job_id immediately. Client can poll /api/job/<id> for status.
+    """
+    from ..job_queue import get_job_queue, init_job_queue
+    from ..scan_utils import scan_unified
+    
+    data = request.get_json(force=True, silent=True) or {}
+    domains = data.get('domains', [])
+    
+    if not domains:
+        return jsonify({'error': 'domains array required'}), 400
+    
+    if not isinstance(domains, list):
+        return jsonify({'error': 'domains must be array'}), 400
+    
+    # Clean and validate domains
+    clean_domains = []
+    for d in domains:
+        if not isinstance(d, str):
+            continue
+        host = extract_host(d.strip().lower())
+        if host and DOMAIN_RE.match(host):
+            clean_domains.append(host)
+    
+    if not clean_domains:
+        return jsonify({'error': 'No valid domains provided'}), 400
+    
+    # Initialize job queue
+    jq = get_job_queue()
+    # Always set scan function to ensure correct budget_ms
+    wapp_path = current_app.config['WAPPALYZER_PATH']
+    jq._scan_fn = lambda d, wpath=wapp_path, **opts: scan_unified(d, wpath, budget_ms=45000)
+    if not jq._started:
+        jq.start_worker()
+    
+    # Submit bulk job
+    job_id = jq.submit_bulk(clean_domains)
+    
+    return jsonify({
+        'job_id': job_id,
+        'status': 'pending',
+        'total': len(clean_domains),
+        'message': 'Bulk scan submitted. Poll /api/job/<id> for status.'
+    })
+
+
+@bp.route('/api/job/<job_id>', methods=['GET'])
+def get_job_status(job_id: str):
+    """Get status of a scan job.
+    
+    Returns current status, progress, and result when completed.
+    """
+    from ..job_queue import get_job_queue
+    import json
+    
+    if not job_id:
+        return jsonify({'error': 'job_id required'}), 400
+    
+    jq = get_job_queue()
+    job = jq.get_job(job_id)
+    
+    if not job:
+        return jsonify({'error': 'Job not found', 'job_id': job_id}), 404
+    
+    # Parse domains for response
+    domains = []
+    try:
+        domains = json.loads(job.get('domains', '[]'))
+    except:
+        pass
+    
+    response = {
+        'job_id': job.get('id'),
+        'type': job.get('type'),
+        'status': job.get('status'),
+        'progress': job.get('progress', 0),
+        'total': job.get('total', 1),
+        'completed': job.get('completed', 0),
+        'domains': domains[:10] if len(domains) > 10 else domains,  # limit response size
+        'domains_count': len(domains),
+        'error': job.get('error'),
+        'created_at': job.get('created_at'),
+        'updated_at': job.get('updated_at'),
+        'finished_at': job.get('finished_at'),
+    }
+    
+    # Include result for single completed jobs
+    if job.get('status') == 'completed' and job.get('type') == 'single':
+        if job.get('result'):
+            try:
+                response['result'] = json.loads(job.get('result'))
+            except:
+                response['result'] = job.get('result')
+    
+    # Include results summary for bulk completed jobs
+    if job.get('status') == 'completed' and job.get('type') == 'bulk':
+        if job.get('results'):
+            try:
+                response['results'] = json.loads(job.get('results'))
+            except:
+                pass
+    
+    return jsonify(response)
+
+
+@bp.route('/api/jobs', methods=['GET'])
+def list_jobs():
+    """List recent scan jobs."""
+    from ..job_queue import get_job_queue
+    
+    limit = request.args.get('limit', 20, type=int)
+    limit = max(1, min(limit, 100))
+    
+    jq = get_job_queue()
+    jobs = jq.get_recent_jobs(limit=limit)
+    
+    # Simplify response
+    return jsonify({
+        'jobs': [{
+            'job_id': j.get('id'),
+            'type': j.get('type'),
+            'status': j.get('status'),
+            'progress': j.get('progress', 0),
+            'total': j.get('total', 1),
+            'completed': j.get('completed', 0),
+            'error': j.get('error'),
+            'created_at': j.get('created_at'),
+            'updated_at': j.get('updated_at'),
+        } for j in jobs],
+        'count': len(jobs)
+    })

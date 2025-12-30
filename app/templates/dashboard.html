@@ -1570,19 +1570,80 @@
     const requestToken = createClientRequestToken('single');
     singleRequestToken = requestToken;
     setLoading(true);
+
     let data;
     try {
       // Abort previous in-flight single scan if any
       if (singleController) { try { singleController.abort(); } catch (_) { } }
       singleController = new AbortController();
-      const res = await fetch('/scan', {
+
+      // Submit async job
+      const submitRes = await fetch('/scan/async', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain, fast_full, client_request_id: requestToken, client_context: 'single' }),
+        body: JSON.stringify({ domain, fast_full }),
         signal: singleController.signal
       });
-      data = await res.json();
-      if (!res.ok) { throw new Error(data.error || ('HTTP ' + res.status)); }
+      const submitData = await submitRes.json();
+      if (!submitRes.ok) { throw new Error(submitData.error || ('HTTP ' + submitRes.status)); }
+
+      const jobId = submitData.job_id;
+      if (!jobId) { throw new Error('No job_id returned'); }
+
+      // Save to localStorage for recovery if user navigates away
+      if (window.TechScanJobs) {
+        window.TechScanJobs.addPendingJob(jobId, 'single', domain);
+      }
+
+      statusLine.textContent = 'Processing...';
+
+      // Poll for job completion
+      let completed = false;
+      let pollCount = 0;
+      const maxPolls = 120; // 2 minutes max
+
+      while (!completed && pollCount < maxPolls) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second interval
+        pollCount++;
+
+        try {
+          const statusRes = await fetch(`/api/job/${jobId}`, { signal: singleController.signal });
+          if (!statusRes.ok) { continue; }
+          const jobStatus = await statusRes.json();
+
+          if (jobStatus.status === 'completed') {
+            completed = true;
+            // Remove from pending since we got result
+            if (window.TechScanJobs) {
+              window.TechScanJobs.removePendingJob(jobId);
+            }
+            // Fetch full result from database
+            const resultRes = await fetch(`/domain?domain=${encodeURIComponent(domain)}`);
+            if (resultRes.ok) {
+              data = await resultRes.json();
+            } else {
+              // Use result from job if available
+              data = jobStatus.result || { domain, technologies: [] };
+            }
+          } else if (jobStatus.status === 'failed') {
+            throw new Error(jobStatus.error || 'Scan failed');
+          } else {
+            // Update progress display
+            const progress = jobStatus.progress || 0;
+            statusLine.textContent = `Processing... ${progress}%`;
+          }
+        } catch (pollErr) {
+          if (pollErr.name === 'AbortError') { throw pollErr; }
+          console.warn('Poll error:', pollErr);
+        }
+      }
+
+      if (!completed) {
+        statusLine.textContent = 'Scan running in background. Check Websites page for results.';
+        setLoading(false);
+        return;
+      }
+
     } catch (err) {
       if (err.name === 'AbortError') {
         failScanProgress('Cancelled');
@@ -1814,6 +1875,168 @@
       errorCell.textContent = '';
     }
   }
+
+  // === Bulk State Persistence ===
+  const BULK_STATE_KEY = 'techscan_bulk_state';
+
+  function persistBulkState(jobId, domains, results, progress, status) {
+    try {
+      const state = {
+        jobId,
+        domains,
+        results: results || [],
+        progress: progress || 0,
+        status: status || 'running',
+        updatedAt: Date.now()
+      };
+      localStorage.setItem(BULK_STATE_KEY, JSON.stringify(state));
+    } catch (e) { console.warn('Failed to persist bulk state:', e); }
+  }
+
+  function getBulkState() {
+    try {
+      const raw = localStorage.getItem(BULK_STATE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) { return null; }
+  }
+
+  function clearBulkState() {
+    try { localStorage.removeItem(BULK_STATE_KEY); } catch (e) { }
+  }
+
+  function restoreBulkTable(state) {
+    if (!state || !state.domains) return;
+    // Clear existing rows
+    bulkTbody.innerHTML = '';
+    queueResults.length = 0;
+
+    // Restore domains
+    state.domains.forEach((domain, idx) => {
+      const tr = addRow(idx, domain);
+      const result = (state.results || [])[idx];
+      if (result) {
+        rowUpdate(tr, result);
+        queueResults.push({ domain, ...result });
+      }
+    });
+
+    // Update progress
+    const pct = state.progress || 0;
+    if (bulkProgress) { bulkProgress.style.width = pct + '%'; }
+    if (bulkProgressText) { bulkProgressText.textContent = pct + '%'; }
+
+    // Update stats
+    const completed = (state.results || []).filter(r => r && r.status).length;
+    bulkStats.textContent = `Recovered: ${completed}/${state.domains.length} (${pct}%)`;
+
+    // Make download visible if there are results
+    const dlBtn = document.getElementById('bulk-download-bottom');
+    if (dlBtn && queueResults.length > 0) {
+      dlBtn.classList.remove('is-hidden');
+    }
+  }
+
+  // Recovery callbacks for TechScanJobs
+  window.showRecoveredJobProgress = function (jobData) {
+    if (!jobData) return;
+    const state = getBulkState();
+    if (!state || state.jobId !== jobData.id) return;
+
+    const pct = jobData.progress || 0;
+    if (bulkProgress) { bulkProgress.style.width = pct + '%'; }
+    if (bulkProgressText) { bulkProgressText.textContent = pct + '%'; }
+    bulkStats.textContent = `Progress: ${jobData.completed || 0}/${jobData.total || state.domains.length} (${pct}%)`;
+
+    // Update persisted state
+    persistBulkState(state.jobId, state.domains, state.results, pct, 'running');
+  };
+
+  window.showRecoveredJobResult = async function (jobData) {
+    if (!jobData) return;
+    const state = getBulkState();
+
+    // Handle bulk job completion
+    if (jobData.results && Array.isArray(jobData.results)) {
+      const domains = state ? state.domains : jobData.results.map(r => r.domain);
+      // Restore table with final results
+      bulkTbody.innerHTML = '';
+      queueResults.length = 0;
+
+      domains.forEach((domain, idx) => {
+        const tr = addRow(idx, domain);
+        const result = jobData.results[idx] || { domain, status: 'unknown' };
+        rowUpdate(tr, result);
+        queueResults.push({ domain, ...result });
+      });
+
+      if (bulkProgress) { bulkProgress.style.width = '100%'; }
+      if (bulkProgressText) { bulkProgressText.textContent = '100%'; }
+      bulkStats.textContent = `Completed: ${jobData.results.length} domains`;
+
+      const dlBtn = document.getElementById('bulk-download-bottom');
+      if (dlBtn && queueResults.length > 0) {
+        dlBtn.classList.remove('is-hidden');
+      }
+
+      clearBulkState();
+    } else if (jobData.result) {
+      // Single job result - display in single scan area
+      const data = typeof jobData.result === 'string' ? JSON.parse(jobData.result) : jobData.result;
+      if (data && typeof renderSingleResult === 'function') {
+        renderSingleResult(data);
+      }
+    }
+  };
+
+  // Check for pending bulk state on page load
+  function checkBulkRecovery() {
+    const state = getBulkState();
+    if (!state) return;
+
+    // Check if state is less than 1 hour old and not completed
+    if (Date.now() - state.updatedAt > 3600000) {
+      clearBulkState();
+      return;
+    }
+
+    if (state.status === 'completed') {
+      restoreBulkTable(state);
+      clearBulkState();
+      return;
+    }
+
+    // Restore table with current state
+    restoreBulkTable(state);
+
+    // If job exists, resume polling
+    if (state.jobId && window.TechScanJobs) {
+      bulkStats.textContent = 'Resuming scan...';
+      window.TechScanJobs.startPolling(state.jobId, {
+        onProgress: (data) => {
+          window.showRecoveredJobProgress(data);
+        },
+        onComplete: (data) => {
+          window.showRecoveredJobResult(data);
+        },
+        onError: (data, err) => {
+          bulkStats.textContent = 'Error: ' + (err || 'Unknown error');
+          clearBulkState();
+        },
+        onNotFound: () => {
+          bulkStats.textContent = 'Job expired or completed';
+          clearBulkState();
+        }
+      });
+    }
+  }
+
+  // Run recovery check on load
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', checkBulkRecovery);
+  } else {
+    setTimeout(checkBulkRecovery, 200);
+  }
   function buildCSV(results) {
     const header = ['domain', 'status', 'engine', 'tech_count', 'payload_bytes', 'technologies', 'error'];
     const lines = [header.join(',')];
@@ -1935,8 +2158,7 @@
       currentBulkTokens = [];
       bulkRunToken = null;
     } else {
-      // Parallel bulk endpoint
-      // Show indeterminate bar while waiting for server response
+      // Parallel bulk endpoint - use async for background processing
       bulkProgress.style.width = '0%';
       bulkProgressInd.style.display = 'block';
       bulkBtn.classList.add('is-loading');
@@ -1945,26 +2167,83 @@
       try {
         if (bulkController) { try { bulkController.abort(); } catch (_) { } }
         bulkController = new AbortController();
-        const res = await fetch('/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ domains, fast_full }), signal: bulkController.signal });
-        const data = await res.json();
-        if (!res.ok) { throw new Error(data.error || ('HTTP ' + res.status)); }
-        const results = data.results || [];
-        // Switch off indeterminate, switch to determinate updates while rendering
-        bulkProgressInd.style.display = 'none';
-        const shimmer = bulkBtn.querySelector('.bulk-btn-indeterminate'); if (shimmer) { shimmer.remove(); }
-        const pbar = bulkBtn.querySelector('.btn-progress'); if (pbar) { pbar.style.transition = 'width .2s ease'; }
-        updateBulkButton('Rendering', results.length ? 0 : undefined);
-        results.forEach((r, idx) => {
-          const tr = addRow(idx, r.domain || domains[idx]);
-          rowUpdate(tr, r || {});
-          queueResults.push({ domain: r.domain || domains[idx], ...(r || {}) });
-          updateProgress(idx + 1, results.length);
-          const pct = Math.round(((idx + 1) / results.length) * 100);
-          if (pbar) { pbar.style.width = pct + '%'; }
-          updateBulkButton('Rendering', pct);
-          bulkProcessedCount = idx + 1;
+
+        // Submit async bulk job
+        const submitRes = await fetch('/bulk/async', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domains }),
+          signal: bulkController.signal
         });
-        bulkProcessedCount = results.length;
+        const submitData = await submitRes.json();
+        if (!submitRes.ok) { throw new Error(submitData.error || ('HTTP ' + submitRes.status)); }
+
+        const jobId = submitData.job_id;
+        if (!jobId) { throw new Error('No job_id returned'); }
+
+        // Save to localStorage for recovery
+        if (window.TechScanJobs) {
+          window.TechScanJobs.addPendingJob(jobId, 'bulk', `${domains.length} domains`);
+        }
+        // Persist bulk state for table recovery
+        persistBulkState(jobId, domains, [], 0, 'running');
+
+        bulkStats.textContent = `Job submitted: ${domains.length} domains`;
+
+        // Poll for job completion
+        let completed = false;
+        let pollCount = 0;
+        const maxPolls = 600; // 10 minutes max for bulk
+
+        while (!completed && pollCount < maxPolls) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          pollCount++;
+
+          try {
+            const statusRes = await fetch(`/api/job/${jobId}`, { signal: bulkController.signal });
+            if (!statusRes.ok) { continue; }
+            const jobStatus = await statusRes.json();
+
+            // Update progress
+            const pct = jobStatus.progress || 0;
+            if (bulkProgress) { bulkProgress.style.width = pct + '%'; }
+            bulkProgressInd.style.display = 'none';
+            updateBulkButton('Processing', pct);
+            bulkStats.textContent = `Progress: ${jobStatus.completed || 0}/${jobStatus.total || domains.length} (${pct}%)`;
+
+            // Update persisted state during polling
+            persistBulkState(jobId, domains, jobStatus.results || [], pct, 'running');
+
+            if (jobStatus.status === 'completed') {
+              completed = true;
+              if (window.TechScanJobs) {
+                window.TechScanJobs.removePendingJob(jobId);
+              }
+              // Clear bulk state since complete
+              clearBulkState();
+              // Show results in table
+              const results = jobStatus.results || [];
+              results.forEach((r, idx) => {
+                const tr = addRow(idx, r.domain || domains[idx]);
+                rowUpdate(tr, r || {});
+                queueResults.push({ domain: r.domain || domains[idx], ...(r || {}) });
+              });
+              bulkProcessedCount = results.length;
+            } else if (jobStatus.status === 'failed') {
+              throw new Error(jobStatus.error || 'Bulk scan failed');
+            }
+          } catch (pollErr) {
+            if (pollErr.name === 'AbortError') { throw pollErr; }
+            console.warn('Bulk poll error:', pollErr);
+          }
+        }
+
+        if (!completed) {
+          bulkStats.textContent = 'Bulk scan running in background. Check Websites page for results.';
+        } else {
+          bulkStats.textContent = `Completed: ${bulkProcessedCount}/${domains.length}`;
+        }
+
         // Done
         const bbar = bulkBtn.querySelector('.btn-progress');
         if (bbar) {
@@ -1974,7 +2253,6 @@
         } else {
           resetBulkButton();
         }
-        bulkStats.textContent = `Completed: ${data.ok}/${data.count}`;
       } catch (err) {
         if (err.name === 'AbortError') {
           bulkError.textContent = 'Cancelled';
@@ -2047,8 +2325,274 @@
     }
   };
 
+  // Handler for recovered job results - render to UI
+  window.showRecoveredJobResult = async function (jobData) {
+    if (!jobData) return;
+
+    // Helper to format bytes
+    function formatBytesSimple(bytes) {
+      if (!bytes || bytes <= 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let i = 0;
+      while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
+      return bytes.toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+    }
+
+    // Get domain from job
+    const domains = jobData.domains || [];
+    const domain = domains[0] || '';
+
+    if (!domain) {
+      console.warn('No domain in job data');
+      return;
+    }
+
+    // Fetch full scan result from database
+    try {
+      const res = await fetch(`/domain?domain=${encodeURIComponent(domain)}`);
+      if (!res.ok) {
+        console.warn('Failed to fetch domain data');
+        return;
+      }
+      const data = await res.json();
+
+      // Update UI elements
+      const statusLine = document.getElementById('status-line');
+      const resultsBox = document.getElementById('results');
+      const categoryGroups = document.getElementById('category-groups');
+      const metaLine = document.getElementById('meta-line');
+      const rawPre = document.getElementById('raw-json');
+
+      if (statusLine) {
+        statusLine.textContent = `Recovered scan completed for ${domain}`;
+        statusLine.style.color = '#10b981';
+      }
+
+      if (resultsBox && categoryGroups) {
+        const techs = data.technologies || [];
+        const durationText = data.duration ? `${data.duration}s` : 'n/a';
+        const payloadText = data.payload_bytes ? formatBytesSimple(data.payload_bytes) : 'n/a';
+
+        // Set global variables for modal to work
+        window._latestScan = data;
+        window._latestTechs = techs;
+        techs.forEach((t, i) => { t.__dashIdx = i; });
+
+        // Update meta line
+        if (metaLine) {
+          metaLine.innerHTML = `<span>Domain: <strong>${data.domain || domain}</strong></span>` +
+            `<span>Technologies: ${techs.length}</span>` +
+            `<span>Duration: ${durationText}</span>` +
+            `<span>Payload: ${payloadText}</span>`;
+        }
+
+        // Group by category - use global index for techCard
+        if (techs.length && typeof getPrimaryCategory === 'function' && typeof techCard === 'function') {
+          const groups = {};
+          techs.forEach((t, globalIdx) => {
+            const cat = getPrimaryCategory(t);
+            const key = cat || 'Other';
+            (groups[key] = groups[key] || []).push({ tech: t, idx: globalIdx });
+          });
+          const ordered = Object.keys(groups).sort();
+
+          categoryGroups.innerHTML = ordered.map(cat => {
+            const cards = groups[cat].map(item => techCard(item.tech, false, item.idx)).join('');
+            return `<div class="category-group"><h4>${cat}</h4><div class="tech-grid">${cards}</div></div>`;
+          }).join('');
+        } else if (techs.length) {
+          categoryGroups.innerHTML = `<div class="small-note">${techs.length} technologies detected</div>`;
+        } else {
+          categoryGroups.innerHTML = '<div class="small-note">(No technologies detected)</div>';
+        }
+
+        // Update raw JSON
+        if (rawPre) {
+          rawPre.textContent = JSON.stringify(data, null, 2);
+        }
+
+        // Show results box
+        resultsBox.style.display = 'block';
+        resultsBox.classList.add('fade-in');
+      }
+    } catch (err) {
+      console.error('Error showing recovered job result:', err);
+    }
+  };
+
+  // Handler for progress updates
+  window.showRecoveredJobProgress = function (jobData) {
+    if (!jobData) return;
+    const statusLine = document.getElementById('status-line');
+    if (statusLine) {
+      const domain = (jobData.domains && jobData.domains[0]) || 'unknown';
+      statusLine.textContent = `Background scan: ${domain} - ${jobData.progress || 0}%`;
+      statusLine.style.color = '#3b82f6';
+    }
+  };
+
 
 </script>
+
+<!-- Job Recovery and Polling for Persistent Scans -->
+<script>
+  (function () {
+    const JOB_STORAGE_KEY = 'techscan_pending_jobs';
+    const POLL_INTERVAL = 2000; // 2 seconds
+    let pollingIntervals = {};
+
+    function getStoredJobs() {
+      try {
+        const stored = localStorage.getItem(JOB_STORAGE_KEY);
+        return stored ? JSON.parse(stored) : {};
+      } catch (e) { return {}; }
+    }
+
+    function saveStoredJobs(jobs) {
+      try {
+        localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(jobs));
+      } catch (e) { console.warn('Failed to save jobs:', e); }
+    }
+
+    function addPendingJob(jobId, type, domain) {
+      const jobs = getStoredJobs();
+      jobs[jobId] = { type, domain, createdAt: Date.now() };
+      saveStoredJobs(jobs);
+    }
+
+    function removePendingJob(jobId) {
+      const jobs = getStoredJobs();
+      delete jobs[jobId];
+      saveStoredJobs(jobs);
+    }
+
+    async function pollJobStatus(jobId, callbacks) {
+      try {
+        const res = await fetch(`/api/job/${jobId}`);
+        if (!res.ok) {
+          if (res.status === 404) {
+            removePendingJob(jobId);
+            if (callbacks.onNotFound) callbacks.onNotFound(jobId);
+            return null;
+          }
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const job = await res.json();
+
+        if (callbacks.onProgress) {
+          callbacks.onProgress(job);
+        }
+
+        if (job.status === 'completed') {
+          removePendingJob(jobId);
+          if (callbacks.onComplete) callbacks.onComplete(job);
+          return job;
+        }
+
+        if (job.status === 'failed') {
+          removePendingJob(jobId);
+          if (callbacks.onError) callbacks.onError(job, job.error);
+          return job;
+        }
+
+        // Still running, continue polling
+        return null;
+      } catch (err) {
+        console.warn('Poll error:', err);
+        return null;
+      }
+    }
+
+    function startPolling(jobId, callbacks) {
+      if (pollingIntervals[jobId]) return;
+
+      const poll = async () => {
+        const result = await pollJobStatus(jobId, callbacks);
+        if (result) {
+          clearInterval(pollingIntervals[jobId]);
+          delete pollingIntervals[jobId];
+        }
+      };
+
+      poll(); // immediate first poll
+      pollingIntervals[jobId] = setInterval(poll, POLL_INTERVAL);
+    }
+
+    function stopPolling(jobId) {
+      if (pollingIntervals[jobId]) {
+        clearInterval(pollingIntervals[jobId]);
+        delete pollingIntervals[jobId];
+      }
+    }
+
+    // Check for pending jobs on page load
+    function checkPendingJobs() {
+      const jobs = getStoredJobs();
+      const pendingIds = Object.keys(jobs);
+
+      if (pendingIds.length === 0) return;
+
+      console.log('Found pending jobs:', pendingIds.length);
+
+      pendingIds.forEach(jobId => {
+        const job = jobs[jobId];
+        // Only poll jobs less than 1 hour old
+        if (Date.now() - job.createdAt > 3600000) {
+          removePendingJob(jobId);
+          return;
+        }
+
+        startPolling(jobId, {
+          onProgress: (data) => {
+            console.log(`Job ${jobId}: ${data.status} ${data.progress}%`);
+            // Update UI with recovered job progress
+            if (window.showRecoveredJobProgress) {
+              window.showRecoveredJobProgress(data);
+            }
+          },
+          onComplete: (data) => {
+            console.log(`Job ${jobId} completed`);
+            if (window.showRecoveredJobResult) {
+              window.showRecoveredJobResult(data);
+            } else {
+              // Show notification
+              const domain = job.domain || 'Domain';
+              const msg = `Scan for ${domain} completed! Refresh to see results.`;
+              if (typeof statusLine !== 'undefined' && statusLine) {
+                statusLine.textContent = msg;
+                statusLine.style.color = '#10b981';
+              }
+            }
+          },
+          onError: (data, error) => {
+            console.log(`Job ${jobId} failed:`, error);
+          },
+          onNotFound: () => {
+            console.log(`Job ${jobId} not found, removing`);
+          }
+        });
+      });
+    }
+
+    // Expose for use by scan handlers
+    window.TechScanJobs = {
+      addPendingJob,
+      removePendingJob,
+      startPolling,
+      stopPolling,
+      getStoredJobs,
+      checkPendingJobs
+    };
+
+    // Auto-check on load
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', checkPendingJobs);
+    } else {
+      setTimeout(checkPendingJobs, 100);
+    }
+  })();
+</script>
+
 <style>
   @keyframes indeterm {
     0% {

@@ -58,6 +58,8 @@ CMS_PATTERNS: List[Tuple[str, re.Pattern]] = [
     ('Nuxt.js', re.compile(r'_nuxt/', re.I)),
     ('React', re.compile(r'data-reactroot|react\.development\.js', re.I)),
     ('Vue.js', re.compile(r'Vue\.config|vue\.runtime', re.I)),
+    # Advertising & Tracking
+    ('DoubleClick Floodlight', re.compile(r'fls\.doubleclick\.net|ad\.doubleclick\.net/ddm/|gtag.*DC-|floodlight.*tag', re.I)),
     ('Angular', re.compile(r'angular(?:\.min)?\.js', re.I)),
     ('Alpine.js', re.compile(r'alpine(?:\.min)?\.js', re.I)),
 ]
@@ -79,7 +81,6 @@ WP_PLUGIN_PATTERNS: List[Tuple[str, re.Pattern]] = [
     ('Polylang', re.compile(r'wp-content/plugins/polylang', re.I)),
     ('Rank Math SEO', re.compile(r'wp-content/plugins/seo-by-rank-math', re.I)),
     ('UpdraftPlus', re.compile(r'wp-content/plugins/updraftplus', re.I)),
-    ('Slider Revolution', re.compile(r'wp-content/plugins/revslider', re.I)),
 ]
 
 WP_THEME_PATTERNS: List[Tuple[str, re.Pattern]] = [
@@ -87,13 +88,20 @@ WP_THEME_PATTERNS: List[Tuple[str, re.Pattern]] = [
 ]
 
 LIB_PATTERNS: List[Tuple[str, re.Pattern]] = [
-    ('jQuery', re.compile(r'jquery[-\.](\d[\w\.\-]*)\.js', re.I)),
-    ('jQuery Migrate', re.compile(r'jquery-migrate(?:\.min)?-(\d[\w\.\-]*)\.js', re.I)),
+    ('jQuery', re.compile(r'jquery[-.](\d[\w.-]*)\.js', re.I)),
+    # Match jquery-ui, jquery/ui, jquery.ui.core patterns
+    ('jQuery UI', re.compile(r'jquery[/.]ui|jquery-ui', re.I)),
+    # Match jquery-migrate or jquery/migrate patterns  
+    ('jQuery Migrate', re.compile(r'jquery[/-]migrate', re.I)),
     ('React', re.compile(r'react(?:\.production)?(?:\.min)?\.js', re.I)),
     ('Vue.js', re.compile(r'vue(?:\.runtime)?(?:\.min)?\.js', re.I)),
     ('AngularJS', re.compile(r'angular(?:\.min)?\.js', re.I)),
     ('Alpine.js', re.compile(r'alpine(?:\.min)?\.js', re.I)),
+    ('Tailwind CSS', re.compile(r'tailwind(?:css)?(?:\.min)?\.css', re.I)),
 ]
+
+# Skip window-based version fallback for these techs (prone to inheriting wrong version from nearby scripts)
+SKIP_VERSION_WINDOW_FALLBACK = frozenset({'jQuery UI', 'jQuery Migrate', 'WordPress Multilingual Plugin (WPML)'})
 
 # Database management panels exposure (low confidence, simple patterns)
 DB_PANEL_PATTERNS: List[Tuple[str, re.Pattern]] = [
@@ -133,6 +141,9 @@ CATEGORY_MAP = {
     'AngularJS': ['JavaScript frameworks'],
     'Alpine.js': ['JavaScript libraries'],
     'jQuery': ['JavaScript libraries'],
+    'jQuery UI': ['JavaScript libraries'],
+    'jQuery Migrate': ['JavaScript libraries'],
+    'Tailwind CSS': ['UI frameworks'],
     'Elementor': ['WordPress plugins'],
     'WooCommerce': ['Ecommerce','WordPress plugins'],
     'Contact Form 7': ['WordPress plugins'],
@@ -142,6 +153,7 @@ CATEGORY_MAP = {
     'WP Rocket': ['Caching','WordPress plugins'],
     'Revolution Slider': ['Media','WordPress plugins'],
     'HSTS': ['Security'],
+    'DoubleClick Floodlight': ['Advertising'],
     'HP Smart': ['Device management'],
     'Apache': ['Web servers'],
     'Nginx': ['Web servers','Reverse proxies'],
@@ -569,8 +581,8 @@ def run_heuristic(domain: str, budget_ms: int = 1800, allow_empty_early: bool = 
             if m.groups():
                 # try group 1 or extract from match
                 ver = m.group(1) if m.group(1) and len(m.groups())>=1 else None
-            # Fallback: look for ?ver= near match region (simple)
-            if not ver:
+            # Fallback: look for ?ver= near match region (simple) - but skip for certain techs
+            if not ver and name not in SKIP_VERSION_WINDOW_FALLBACK:
                 span = m.span()
                 window = lower_html[max(0, span[0]-120): span[1]+120]
                 q = VERSION_FROM_QUERY.search(window)
@@ -622,10 +634,12 @@ def run_heuristic(domain: str, budget_ms: int = 1800, allow_empty_early: bool = 
         ('Wordfence', re.compile(r'wp-content/plugins/wordfence', re.I)),
         ('WP Rocket', re.compile(r'wp-content/plugins/wp-rocket', re.I)),
         ('Revolution Slider', re.compile(r'wp-content/plugins/revslider', re.I)),
-        ('jQuery', re.compile(r'jquery[-\.](\d[\w\.\-]*)\.js', re.I)),
-        ('Bootstrap', re.compile(r'bootstrap(?:\.bundle)?[-\.](\d[\w\.\-]*)\.(?:min\.)?(?:js|css)', re.I)),
-        ('Tailwind CSS', re.compile(r'tailwind(?:\.min)?\.css', re.I)),
-        ('DataTables', re.compile(r'datatables(?:\.min)?\.js', re.I)),
+        ('jQuery', re.compile(r'jquery[.-](\d[\w.-]*?)\.(?:min\.)?js', re.I)),
+        ('jQuery UI', re.compile(r'jquery[.-]ui[.-]?(\d[\d.]+)?', re.I)),
+        ('jQuery Migrate', re.compile(r'jquery[.-]migrate[.-]?(\d[\d.]+)?', re.I)),
+        ('Bootstrap', re.compile(r'bootstrap[.-](\d[\w.-]*)', re.I)),
+        ('Tailwind CSS', re.compile(r'tailwind', re.I)),
+        ('DataTables', re.compile(r'datatable', re.I)),
     ]
 
     def _record_version(name: str, ver: str, source: str):

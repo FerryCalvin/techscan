@@ -155,7 +155,26 @@ SCHEMA_STATEMENTS = [
     'CREATE INDEX IF NOT EXISTS idx_domain_techs_lower_name ON domain_techs(LOWER(tech_name));',
     # Legacy functional unique index (kept if already exists).
     # New approach uses update-then-insert so we only need a normal index.
-    'CREATE INDEX IF NOT EXISTS idx_domain_techs_dtv ON domain_techs(domain, tech_name, version);'
+    'CREATE INDEX IF NOT EXISTS idx_domain_techs_dtv ON domain_techs(domain, tech_name, version);',
+    # scan_jobs table for background job queue tracking
+    '''CREATE TABLE IF NOT EXISTS scan_jobs (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        domains JSONB NOT NULL,
+        options JSONB,
+        progress INTEGER DEFAULT 0,
+        total INTEGER DEFAULT 1,
+        completed INTEGER DEFAULT 0,
+        result JSONB,
+        results JSONB,
+        error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        finished_at TIMESTAMPTZ
+    );''',
+    'CREATE INDEX IF NOT EXISTS idx_scan_jobs_status ON scan_jobs(status);',
+    'CREATE INDEX IF NOT EXISTS idx_scan_jobs_created ON scan_jobs(created_at DESC);',
 ]
 
 _pool: dict = {}
@@ -1118,8 +1137,307 @@ def get_db_diagnostics():
                         'domain': row[0],
                         'finished_at': row[1].timestamp()
                     }
-                info['ok'] = True
+        info['ok'] = True
     except Exception as e:
         info['error'] = str(e)
     return info
 
+
+# ============ Scan Job Queue Helpers ============
+
+def save_scan_job(job: dict):
+    """Save a new scan job to database."""
+    if _DB_DISABLED:
+        return
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute('''
+                    INSERT INTO scan_jobs (id, type, status, domains, options, progress, total, completed, result, results, error, created_at, updated_at, finished_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, to_timestamp(%s), to_timestamp(%s), %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                        status = EXCLUDED.status,
+                        progress = EXCLUDED.progress,
+                        completed = EXCLUDED.completed,
+                        result = EXCLUDED.result,
+                        results = EXCLUDED.results,
+                        error = EXCLUDED.error,
+                        updated_at = EXCLUDED.updated_at,
+                        finished_at = EXCLUDED.finished_at
+                ''', (
+                    job.get('id'),
+                    job.get('type', 'single'),
+                    job.get('status', 'pending'),
+                    job.get('domains', '[]'),
+                    job.get('options', '{}'),
+                    job.get('progress', 0),
+                    job.get('total', 1),
+                    job.get('completed', 0),
+                    job.get('result'),
+                    job.get('results'),
+                    job.get('error'),
+                    job.get('created_at'),
+                    job.get('updated_at'),
+                    None if not job.get('finished_at') else f"to_timestamp({job.get('finished_at')})"
+                ))
+    except Exception as e:
+        logging.getLogger('techscan.db').debug(f"save_scan_job error: {e}")
+
+
+def get_scan_job(job_id: str) -> dict | None:
+    """Get scan job by ID."""
+    if _DB_DISABLED:
+        return None
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute('''
+                    SELECT id, type, status, domains, options, progress, total, completed, result, results, error, created_at, updated_at, finished_at
+                    FROM scan_jobs WHERE id = %s
+                ''', (job_id,))
+                row = cur.fetchone()
+                if row:
+                    return {
+                        'id': row[0],
+                        'type': row[1],
+                        'status': row[2],
+                        'domains': row[3] if isinstance(row[3], str) else json.dumps(row[3]) if row[3] else '[]',
+                        'options': row[4] if isinstance(row[4], str) else json.dumps(row[4]) if row[4] else '{}',
+                        'progress': row[5],
+                        'total': row[6],
+                        'completed': row[7],
+                        'result': row[8] if isinstance(row[8], str) else json.dumps(row[8]) if row[8] else None,
+                        'results': row[9] if isinstance(row[9], str) else json.dumps(row[9]) if row[9] else None,
+                        'error': row[10],
+                        'created_at': row[11].timestamp() if row[11] else None,
+                        'updated_at': row[12].timestamp() if row[12] else None,
+                        'finished_at': row[13].timestamp() if row[13] else None,
+                    }
+    except Exception as e:
+        logging.getLogger('techscan.db').debug(f"get_scan_job error: {e}")
+    return None
+
+
+def update_scan_job(job_id: str, updates: dict):
+    """Update scan job fields."""
+    if _DB_DISABLED:
+        return
+    if not updates:
+        return
+    try:
+        # Build dynamic update
+        set_parts = []
+        values = []
+        for key, val in updates.items():
+            if key in ('id', 'created_at'):
+                continue
+            if key == 'finished_at' and val:
+                set_parts.append(f"{key} = to_timestamp(%s)")
+                values.append(val)
+            elif key == 'updated_at' and val:
+                set_parts.append(f"{key} = to_timestamp(%s)")
+                values.append(val)
+            else:
+                set_parts.append(f"{key} = %s")
+                values.append(val)
+        if not set_parts:
+            return
+        values.append(job_id)
+        sql = f"UPDATE scan_jobs SET {', '.join(set_parts)} WHERE id = %s"
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, tuple(values))
+    except Exception as e:
+        logging.getLogger('techscan.db').debug(f"update_scan_job error: {e}")
+
+
+def get_recent_scan_jobs(limit: int = 20) -> list:
+    """Get recent scan jobs for status display."""
+    if _DB_DISABLED:
+        return []
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute('''
+                    SELECT id, type, status, domains, progress, total, completed, error, created_at, updated_at, finished_at
+                    FROM scan_jobs ORDER BY created_at DESC LIMIT %s
+                ''', (limit,))
+                rows = cur.fetchall()
+                return [{
+                    'id': r[0],
+                    'type': r[1],
+                    'status': r[2],
+                    'domains': r[3] if isinstance(r[3], str) else json.dumps(r[3]) if r[3] else '[]',
+                    'progress': r[4],
+                    'total': r[5],
+                    'completed': r[6],
+                    'error': r[7],
+                    'created_at': r[8].timestamp() if r[8] else None,
+                    'updated_at': r[9].timestamp() if r[9] else None,
+                    'finished_at': r[10].timestamp() if r[10] else None,
+                } for r in rows]
+    except Exception as e:
+        logging.getLogger('techscan.db').debug(f"get_recent_scan_jobs error: {e}")
+    return []
+
+
+# ============ Scheduled Cleanup ============
+# Cleanup old scan records to prevent unbounded database growth.
+# Disabled by default (TECHSCAN_CLEANUP_ENABLED=0).
+# Enable via environment: TECHSCAN_CLEANUP_ENABLED=1
+
+_CLEANUP_THREAD = None
+_CLEANUP_STOP = threading.Event()
+
+
+def cleanup_old_scans(retention_days: int = 90, dry_run: bool = False) -> dict:
+    """Delete old scan records beyond retention period.
+    
+    Args:
+        retention_days: Records older than this will be deleted. Default 90 days.
+        dry_run: If True, only count records without deleting.
+    
+    Returns:
+        dict with: deleted_scans, deleted_domain_techs, deleted_jobs, dry_run flag
+    """
+    if _DB_DISABLED or _is_disabled_runtime():
+        return {'disabled': True, 'message': 'DB is disabled'}
+    
+    log = logging.getLogger('techscan.db')
+    result = {
+        'deleted_scans': 0,
+        'deleted_domain_techs': 0,
+        'deleted_jobs': 0,
+        'retention_days': retention_days,
+        'dry_run': dry_run
+    }
+    
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                # Count old scans
+                cur.execute('''
+                    SELECT COUNT(*) FROM scans 
+                    WHERE finished_at < NOW() - INTERVAL '%s days'
+                ''', (retention_days,))
+                scans_count = cur.fetchone()[0]
+                
+                # Count old domain_techs (not seen in retention period)
+                cur.execute('''
+                    SELECT COUNT(*) FROM domain_techs 
+                    WHERE last_seen < NOW() - INTERVAL '%s days'
+                ''', (retention_days,))
+                techs_count = cur.fetchone()[0]
+                
+                # Count old jobs
+                cur.execute('''
+                    SELECT COUNT(*) FROM scan_jobs 
+                    WHERE created_at < NOW() - INTERVAL '%s days'
+                ''', (retention_days,))
+                jobs_count = cur.fetchone()[0]
+                
+                if dry_run:
+                    result['would_delete_scans'] = scans_count
+                    result['would_delete_domain_techs'] = techs_count
+                    result['would_delete_jobs'] = jobs_count
+                    log.info('cleanup_old_scans DRY RUN: scans=%d techs=%d jobs=%d (retention=%d days)',
+                             scans_count, techs_count, jobs_count, retention_days)
+                else:
+                    # Delete old scans
+                    cur.execute('''
+                        DELETE FROM scans 
+                        WHERE finished_at < NOW() - INTERVAL '%s days'
+                    ''', (retention_days,))
+                    result['deleted_scans'] = cur.rowcount
+                    
+                    # Delete old domain_techs
+                    cur.execute('''
+                        DELETE FROM domain_techs 
+                        WHERE last_seen < NOW() - INTERVAL '%s days'
+                    ''', (retention_days,))
+                    result['deleted_domain_techs'] = cur.rowcount
+                    
+                    # Delete old jobs
+                    cur.execute('''
+                        DELETE FROM scan_jobs 
+                        WHERE created_at < NOW() - INTERVAL '%s days'
+                    ''', (retention_days,))
+                    result['deleted_jobs'] = cur.rowcount
+                    
+                    conn.commit()
+                    log.info('cleanup_old_scans: deleted scans=%d techs=%d jobs=%d (retention=%d days)',
+                             result['deleted_scans'], result['deleted_domain_techs'], 
+                             result['deleted_jobs'], retention_days)
+                    
+    except Exception as e:
+        log.error('cleanup_old_scans error: %s', e)
+        result['error'] = str(e)
+    
+    return result
+
+
+def _cleanup_loop(interval_hours: float, retention_days: int):
+    """Background cleanup loop."""
+    log = logging.getLogger('techscan.db')
+    interval_seconds = interval_hours * 3600
+    log.info('Cleanup scheduler started: interval=%s hours, retention=%s days', 
+             interval_hours, retention_days)
+    
+    while not _CLEANUP_STOP.wait(interval_seconds):
+        try:
+            result = cleanup_old_scans(retention_days=retention_days)
+            log.debug('Scheduled cleanup completed: %s', result)
+        except Exception as e:
+            log.error('Scheduled cleanup failed: %s', e)
+
+
+def start_cleanup_scheduler():
+    """Start background cleanup scheduler if enabled via environment.
+    
+    Environment variables:
+        TECHSCAN_CLEANUP_ENABLED: '1' to enable (default '0' = disabled)
+        TECHSCAN_CLEANUP_DAYS: Retention period in days (default 90)
+        TECHSCAN_CLEANUP_INTERVAL_HOURS: How often to run cleanup (default 24)
+    """
+    global _CLEANUP_THREAD, _CLEANUP_STOP
+    
+    if os.environ.get('TECHSCAN_CLEANUP_ENABLED', '0') != '1':
+        logging.getLogger('techscan.db').debug(
+            'Cleanup scheduler disabled (set TECHSCAN_CLEANUP_ENABLED=1 to enable)')
+        return False
+    
+    if _CLEANUP_THREAD and _CLEANUP_THREAD.is_alive():
+        return True  # Already running
+    
+    try:
+        retention_days = int(os.environ.get('TECHSCAN_CLEANUP_DAYS', '90'))
+    except ValueError:
+        retention_days = 90
+    
+    try:
+        interval_hours = float(os.environ.get('TECHSCAN_CLEANUP_INTERVAL_HOURS', '24'))
+    except ValueError:
+        interval_hours = 24.0
+    
+    _CLEANUP_STOP.clear()
+    t = threading.Thread(
+        target=_cleanup_loop, 
+        args=(interval_hours, retention_days), 
+        daemon=True, 
+        name='db-cleanup-scheduler'
+    )
+    _CLEANUP_THREAD = t
+    t.start()
+    return True
+
+
+def stop_cleanup_scheduler():
+    """Stop the cleanup scheduler if running."""
+    global _CLEANUP_THREAD, _CLEANUP_STOP
+    _CLEANUP_STOP.set()
+    if _CLEANUP_THREAD:
+        try:
+            _CLEANUP_THREAD.join(timeout=2.0)
+        except Exception:
+            pass
+    _CLEANUP_THREAD = None
