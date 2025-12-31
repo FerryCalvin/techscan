@@ -246,12 +246,25 @@ def metrics_prometheus():
         '# TYPE techscan_scans_per_minute gauge',
         f'techscan_scans_per_minute {scans_per_min:.2f}',
     ])
+    
+    # Append metrics from prometheus_client registry (scan duration histogram, etc.)
+    try:
+        from .. import metrics as _metrics
+        if _metrics.PROMETHEUS_AVAILABLE:
+            prometheus_output = _metrics.get_metrics().decode('utf-8')
+            lines.append('')
+            lines.append('# === Prometheus Client Metrics ===')
+            lines.append(prometheus_output)
+    except Exception:
+        pass  # prometheus_client not available or error
+    
     # Timestamp optional
     try:
         body = '\n'.join(lines) + '\n'
         return Response(body, mimetype='text/plain')
     except Exception:
         return Response('# error\n', mimetype='text/plain')
+
 
 
 # Compatibility JSON endpoint used by the UI

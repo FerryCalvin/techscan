@@ -1,7 +1,79 @@
 import logging
 import threading
 import time
-from typing import Dict, Tuple
+import os
+from typing import Dict, Tuple, Optional
+from datetime import datetime
+
+# Try to import python-json-logger, fallback to custom implementation
+try:
+    from pythonjsonlogger import jsonlogger
+    HAS_JSON_LOGGER = True
+except ImportError:
+    HAS_JSON_LOGGER = False
+
+
+class TechScanJsonFormatter(logging.Formatter):
+    """Custom JSON formatter for structured logging.
+    
+    Outputs log records as single-line JSON with consistent fields:
+    - timestamp: ISO 8601 format
+    - level: Log level name
+    - logger: Logger name
+    - message: Log message
+    - Additional fields from record extras
+    """
+    
+    def format(self, record: logging.LogRecord) -> str:
+        import json
+        
+        log_obj = {
+            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'level': record.levelname,
+            'logger': record.name,
+            'message': record.getMessage(),
+        }
+        
+        # Add exception info if present
+        if record.exc_info:
+            log_obj['exception'] = self.formatException(record.exc_info)
+        
+        # Add extra fields commonly used in techscan
+        for key in ('domain', 'duration', 'tech_count', 'status', 'error', 
+                    'batch_id', 'scan_mode', 'retries', 'payload_bytes'):
+            if hasattr(record, key):
+                log_obj[key] = getattr(record, key)
+        
+        return json.dumps(log_obj, ensure_ascii=False)
+
+
+def get_formatter(log_format: Optional[str] = None) -> logging.Formatter:
+    """Get appropriate log formatter based on format setting.
+    
+    Args:
+        log_format: 'json' for JSON output, anything else for text
+    
+    Returns:
+        logging.Formatter instance
+    """
+    if log_format is None:
+        log_format = os.environ.get('TECHSCAN_LOG_FORMAT', 'text')
+    
+    if log_format.lower() == 'json':
+        if HAS_JSON_LOGGER:
+            # Use python-json-logger if available
+            return jsonlogger.JsonFormatter(
+                '%(timestamp)s %(level)s %(name)s %(message)s',
+                rename_fields={'levelname': 'level', 'name': 'logger'},
+                timestamp=True
+            )
+        else:
+            # Use custom formatter
+            return TechScanJsonFormatter()
+    else:
+        # Default text formatter
+        return logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+
 
 _SuppressionKey = Tuple[str, str, int]
 _SuppressionState = Dict[str, float | int]

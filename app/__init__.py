@@ -24,13 +24,25 @@ def create_app():
     _default_wapp = pathlib.Path(__file__).parent.parent / 'node_scanner' / 'node_modules' / 'wappalyzer'
     app.config['WAPPALYZER_PATH'] = os.environ.get('WAPPALYZER_PATH', str(_default_wapp))
 
-    # Logging configuration
+    # Logging configuration with optional JSON format
+    from .logging_utils import get_formatter
     level_name = os.environ.get('TECHSCAN_LOG_LEVEL', 'INFO').upper()
     level = getattr(logging, level_name, logging.INFO)
-    logging.basicConfig(
-        level=level,
-        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
-    )
+    log_format = os.environ.get('TECHSCAN_LOG_FORMAT', 'text')
+    formatter = get_formatter(log_format)
+    
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    # Remove existing handlers to avoid duplicates
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    # Add console handler with appropriate formatter
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(level)
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+    
     # Optional rotating file handler for persistent logs (useful in production)
     log_file = os.environ.get('TECHSCAN_LOG_FILE')
     if log_file:
@@ -40,17 +52,18 @@ def create_app():
             backup = int(os.environ.get('TECHSCAN_LOG_BACKUP_COUNT', '5'))
             fh = RotatingFileHandler(log_file, maxBytes=max_bytes, backupCount=backup)
             fh.setLevel(level)
-            fh.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s'))
-            logging.getLogger().addHandler(fh)
+            fh.setFormatter(formatter)  # Use same formatter for file
+            root_logger.addHandler(fh)
             logging.getLogger(__name__).info(
                 'RotatingFileHandler attached path=%s max_bytes=%d backups=%d',
                 log_file, max_bytes, backup)
         except Exception:
             logging.getLogger(__name__).warning('failed attaching RotatingFileHandler for %s', log_file)
     logging.getLogger('werkzeug').setLevel(logging.WARNING)
-    logging.getLogger(__name__).info('Logging initialized at level %s', level_name)
+    logging.getLogger(__name__).info('Logging initialized level=%s format=%s', level_name, log_format)
     if app.config.get('TEMPLATES_AUTO_RELOAD'):
         logging.getLogger(__name__).info('Template auto reload ENABLED')
+
 
     # Rate limiting configuration
     default_rate = os.environ.get('TECHSCAN_RATE_LIMIT', '60 per minute')
@@ -72,6 +85,11 @@ def create_app():
     from .routes.admin import admin_bp
     from .routes.system import system_bp
     from .routes.search import search_bp
+    # Versioned API blueprint
+    try:
+        from .routes.api_v1 import api_v1 as api_v1_bp
+    except Exception:
+        api_v1_bp = None
     # tech API blueprint (optional) - import safely
     try:
         from .routes.tech import bp as tech_bp
@@ -123,6 +141,15 @@ def create_app():
         except ValueError as ve:
             # Defensive: if registration still fails for any reason, log and continue
             logging.getLogger(__name__).warning('Tech blueprint registration skipped due to error: %s', ve)
+
+    # Register versioned API blueprint
+    if api_v1_bp:
+        try:
+            if 'api_v1' not in app.blueprints:
+                app.register_blueprint(api_v1_bp)
+                logging.getLogger(__name__).info('API v1 blueprint registered at /api/v1/')
+        except Exception as e:
+            logging.getLogger(__name__).warning('API v1 blueprint registration failed: %s', e)
 
     # Security Headers - applied to all responses
     @app.after_request

@@ -175,6 +175,18 @@ SCHEMA_STATEMENTS = [
     );''',
     'CREATE INDEX IF NOT EXISTS idx_scan_jobs_status ON scan_jobs(status);',
     'CREATE INDEX IF NOT EXISTS idx_scan_jobs_created ON scan_jobs(created_at DESC);',
+    # API Keys table for rate limiting
+    '''CREATE TABLE IF NOT EXISTS api_keys (
+        id SERIAL PRIMARY KEY,
+        key_hash TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        rate_limit TEXT DEFAULT '1000 per hour',
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_used_at TIMESTAMPTZ,
+        request_count BIGINT DEFAULT 0
+    );''',
+    'CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);',
 ]
 
 _pool: dict = {}

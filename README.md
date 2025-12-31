@@ -182,6 +182,23 @@ See `.env.example` for complete documentation. Key variables:
 | `TECHSCAN_STATS_AUTO_REFRESH` | `0` | Enable stats auto-refresh |
 | `TECHSCAN_STATS_AUTO_REFRESH_INTERVAL_MS` | `300000` | Refresh interval (5 min) |
 
+### Security
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TECHSCAN_ADMIN_TOKEN` | - | Token for admin endpoints (**required in production**) |
+| `TECHSCAN_ADMIN_OPEN` | `0` | Set `1` to allow admin without token (dev only) |
+| `TECHSCAN_CSP` | (default) | Custom Content-Security-Policy header |
+| `TECHSCAN_UNIFIED_MIN_TECH` | `25` | Node fallback threshold |
+
+### Database Cleanup
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TECHSCAN_CLEANUP_ENABLED` | `0` | Enable scheduled cleanup |
+| `TECHSCAN_CLEANUP_DAYS` | `90` | Retention period in days |
+| `TECHSCAN_CLEANUP_INTERVAL_HOURS` | `24` | Cleanup interval |
+
 ## Production Deployment
 
 ### Using Gunicorn
@@ -261,9 +278,13 @@ pytest -q -k "not playwright"
 
 ## Security
 
-- Bandit security scan: 0 High, 0 Medium vulnerabilities
-- No hardcoded secrets - all credentials via environment
-- Admin endpoints protected by `TECHSCAN_ADMIN_TOKEN`
+- **Authentication**: Admin endpoints require `TECHSCAN_ADMIN_TOKEN` (secure by default)
+- **SSRF Protection**: Private IPs and internal hostnames blocked
+- **Security Headers**: CSP, X-Frame-Options, X-XSS-Protection, Referrer-Policy
+- **Input Validation**: Domain length limits, dangerous character rejection
+- **Rate Limiting**: Per-IP rate limiting with Redis support
+- **CI Security**: Bandit and Ruff scans block builds on issues
+- **No Hardcoded Secrets**: All credentials via environment variables
 
 ## License
 
