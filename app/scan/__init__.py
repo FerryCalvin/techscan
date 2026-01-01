@@ -39,5 +39,31 @@ __all__ = [
     'extract_host',
     'extract_url_with_path',
     'validate_domain',
+    # network.py exports
+    'single_flight_enter',
+    'single_flight_exit',
+    'dns_negative',
+    'dns_add_negative',
+    'preflight',
+    'record_failure',
+    'check_quarantine',
+    'record_success',
+    'classify_error',
+    'persist_failure_scan',
 ]
+
+# Re-export network utilities
+from .network import (
+    single_flight_enter,
+    single_flight_exit,
+    dns_negative,
+    dns_add_negative,
+    preflight,
+    record_failure,
+    check_quarantine,
+    record_success,
+    classify_error,
+    persist_failure_scan,
+)
+
 
