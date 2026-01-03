@@ -15,61 +15,65 @@ from .evidence_utils import (
     infer_snippet,
 )
 
-# Import from extracted modules (Phase 3 refactor)
-from .scan.domain import (
-    DOMAIN_RE,
-    IPV4_RE,
-    TECH_NAME_REWRITES,
-    canonicalize_tech_name,
-    extract_host,
-    extract_url_with_path,
-    validate_domain,
-)
-from .scan.stats import (
-    STATS,
-    _stats_lock,
-    get_stats,
-    synthetic_header_detection,
-    increment_stat,
-    increment_nested_stat,
-    record_duration,
-)
-from .scan.network import (
-    single_flight_enter as _single_flight_enter,
-    single_flight_exit as _single_flight_exit,
-    dns_negative as _dns_negative,
-    dns_add_negative as _dns_add_negative,
-    preflight as _preflight,
-    record_failure as _record_failure,
-    check_quarantine as _check_quarantine,
-    record_success as _record_success,
-    classify_error as _classify_error,
-    persist_failure_scan as _persist_failure_scan,
-    set_stats_reference,
-)
-
-# Wire up stats reference for network module
-set_stats_reference(STATS, _stats_lock)
-
-
-
-# Constants (not imported from modules)
+DOMAIN_RE = re.compile(r'^(?!-)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$')
+IPV4_RE = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')  # Pre-compiled for SSRF check
 CACHE_TTL = 300  # default seconds
-QUICK_DEFAULT_BUDGET_MS = 700  # Default heuristic budget for quick single scan
+# Default heuristic budget for quick single scan mode (tuned via perf harness)
+QUICK_DEFAULT_BUDGET_MS = 700
 # Fast-path toggle ENV flags:
 #   TECHSCAN_SKIP_VERSION_AUDIT=1  -> skip version audit stages
 #   TECHSCAN_DISABLE_SYNTHETIC=1   -> skip synthetic header detection
 #   TECHSCAN_ULTRA_QUICK=1         -> force heuristic-only path inside scan_domain
-
-# In-memory cache
 _lock = threading.Lock()
 _cache: Dict[str, Dict[str, Any]] = {}
+_stats_lock = threading.Lock()
+STATS: Dict[str, Any] = {
+    'start_time': time.time(),
+    'hits': 0,
+    'misses': 0,
+    'mode_hits': {'fast': 0, 'full': 0, 'fast_full': 0},
+    'mode_misses': {'fast': 0, 'full': 0, 'fast_full': 0},
+    'scans': 0,
+    'cache_entries': 0,
+    'synthetic': {'headers': 0, 'tailwind': 0, 'floodlight': 0},
+    'durations': {
+        'fast': {'count': 0, 'total': 0.0},
+        'full': {'count': 0, 'total': 0.0},
+        'fast_full': {'count': 0, 'total': 0.0}
+    },
+    'errors': {'timeout':0,'dns':0,'ssl':0,'conn':0,'quarantine':0,'preflight':0,'other':0},
+    'recent_samples': {
+        'fast': deque(maxlen=200),
+        'full': deque(maxlen=200),
+        'fast_full': deque(maxlen=200)
+    },
+    'phases': {
+        'sniff_ms': 0,
+        'sniff_count': 0,
+        'engine_ms': 0,
+        'engine_count': 0,
+        'synthetic_ms': 0,
+        'synthetic_count': 0,
+        'version_audit_ms': 0,
+        'version_audit_count': 0
+    },
+    'totals': {
+        'scan_count': 0,
+        'total_overall_ms': 0
+    },
+    # Single-flight (duplicate in-flight suppression) metrics
+    'single_flight': {
+        'hits': 0,          # followers that avoided starting a duplicate scan
+        'wait_ms': 0,       # cumulative wait time of followers
+        'inflight': 0       # current number of active leader scans
+    }
+}
 
-# Note: STATS, _stats_lock, TECH_NAME_REWRITES, DOMAIN_RE, IPV4_RE, 
-# canonicalize_tech_name, extract_host, extract_url_with_path, validate_domain,
-# get_stats, synthetic_header_detection are now imported from .scan.* modules above
+TECH_NAME_REWRITES = {
+    'WPML': 'WordPress Multilingual Plugin (WPML)',
+    'Hello Elementor': 'Hello Elementor Theme'
+}
 
-# Regex patterns for version detection (still local as not extracted yet)
 _ASSET_VERSION_QUERY_RE = re.compile(r'[?&](?:ver|v|version)=([0-9]+(?:\.[0-9]+){0,3})', re.I)
 _JQUERY_FILENAME_RE = re.compile(r'jquery(?:\.min)?[-_.]?([0-9]+(?:\.[0-9]+){0,3})', re.I)
 _JQUERY_MIGRATE_FILENAME_RE = re.compile(r'jquery-migrate(?:\.min)?-([0-9]+(?:\.[0-9]+){0,3})', re.I)
@@ -81,11 +85,23 @@ _MATHJAX_FILENAME_RE = re.compile(r'mathjax(?:\.min)?[-_.]?([0-9]+(?:\.[0-9]+){0
 _YUI_FILENAME_RE = re.compile(r'yui(?:doc)?(?:\.min)?[-_.]?([0-9]+(?:\.[0-9]+){0,3})', re.I)
 _TAILWIND_FILENAME_RE = re.compile(r'tailwind(?:\.min)?[-_.]?([0-9]+(?:\.[0-9]+){0,3})', re.I)
 
-# Note: The following are now imported from .scan.network module:
-# _single_flight_enter, _single_flight_exit, _dns_negative, _dns_add_negative,
-# _preflight, _record_failure, _check_quarantine, _record_success, _classify_error
 
+def canonicalize_tech_name(name: str | None) -> str | None:
+    if not name:
+        return name
+    return TECH_NAME_REWRITES.get(name, name)
 
+# Failure tracking & quarantine (domain-level)
+_fail_lock = threading.Lock()
+_fail_map: Dict[str, dict] = {}
+
+# DNS negative cache & preflight
+_dns_neg_lock = threading.Lock()
+_dns_neg: Dict[str, float] = {}
+
+# --------------------------- SINGLE-FLIGHT GUARD ---------------------------
+_single_flight_lock = threading.Lock()
+_single_flight_map: Dict[str, dict] = {}
 
 def _single_flight_enter(cache_key: str) -> bool:
     """Enter single-flight section for given cache_key.
@@ -2077,7 +2093,6 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
         'duration': round(elapsed, 2),
         'phases': phases
     }
-
     # --- Deduplicate / normalize similar technology entries ---
     try:
         def _normalize_name(n: str) -> str:
