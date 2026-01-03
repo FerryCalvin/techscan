@@ -2073,10 +2073,11 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
         'technologies': techs,
         'categories': cats,
         'engine': 'unified',
-        'scan_mode': 'fast',
+        'scan_mode': 'unified',
         'duration': round(elapsed, 2),
         'phases': phases
     }
+
     # --- Deduplicate / normalize similar technology entries ---
     try:
         def _normalize_name(n: str) -> str:
