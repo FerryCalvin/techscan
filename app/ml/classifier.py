@@ -2,12 +2,18 @@
 
 Uses scikit-learn to train and predict technologies
 based on extracted features from web content.
+
+Anti-overfitting measures:
+- Cross-validation for robust accuracy estimation
+- Regularization via max_depth and min_samples constraints
+- Train/validation/test split for honest evaluation
 """
 
 import os
 import json
 import pickle
 import logging
+import numpy as np
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
@@ -15,13 +21,14 @@ from datetime import datetime
 try:
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.preprocessing import MultiLabelBinarizer
-    from sklearn.model_selection import train_test_split
-    from sklearn.metrics import classification_report, accuracy_score
+    from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
+    from sklearn.metrics import classification_report, accuracy_score, hamming_loss
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
 
 from .features import extract_features, features_to_vector, get_extractor
+
 
 logger = logging.getLogger('techscan.ml')
 
@@ -75,53 +82,140 @@ class TechClassifier:
         X: List[List[float]],
         y: List[List[str]],
         test_size: float = 0.2,
+        use_cross_validation: bool = True,
         **kwargs
     ) -> Dict[str, Any]:
-        """Train the classifier.
+        """Train the classifier with anti-overfitting measures.
         
         Args:
             X: Feature vectors (list of feature lists)
             y: Labels (list of technology name lists)
             test_size: Fraction for test split
+            use_cross_validation: Whether to use k-fold CV for robust estimation
             **kwargs: Additional params for RandomForestClassifier
             
         Returns:
-            Dictionary with training metrics
+            Dictionary with training metrics including overfitting indicators
         """
         logger.info(f"Training classifier with {len(X)} samples...")
+        
+        # Convert to numpy array with explicit dtype
+        X_array = np.array(X, dtype=np.float64)
         
         # Convert labels to binary matrix
         y_binary = self.label_binarizer.transform(y)
         
-        # Split data
+        # Split data: train/test
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y_binary, test_size=test_size, random_state=42
+            X_array, y_binary, test_size=test_size, random_state=42
         )
         
-        # Create and train model
+        # Model hyperparameters with regularization
+        n_estimators = kwargs.get('n_estimators', 100)
+        max_depth = kwargs.get('max_depth', 8)  # Reduced from 10 to prevent overfitting
+        min_samples_split = kwargs.get('min_samples_split', 5)
+        min_samples_leaf = kwargs.get('min_samples_leaf', 2)  # New: prevent tiny leaves
+        max_features = kwargs.get('max_features', 'sqrt')  # New: limit features per split
+        
+        # Create model with regularization
+        # Note: oob_score=False because it doesn't work well with multi-output
         self.model = RandomForestClassifier(
-            n_estimators=kwargs.get('n_estimators', 100),
-            max_depth=kwargs.get('max_depth', 10),
-            min_samples_split=kwargs.get('min_samples_split', 5),
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            min_samples_split=min_samples_split,
+            min_samples_leaf=min_samples_leaf,
+            max_features=max_features,
             n_jobs=-1,
-            random_state=42
+            random_state=42,
+            oob_score=False,  # Disabled for multi-output classification
         )
-        
+
+        # Train model
         self.model.fit(X_train, y_train)
+
         self.is_trained = True
         
-        # Evaluate
-        y_pred = self.model.predict(X_test)
+        # Evaluate on train and test sets
+        y_train_pred = self.model.predict(X_train)
+        y_test_pred = self.model.predict(X_test)
+        
+        train_accuracy = accuracy_score(y_train, y_train_pred)
+        test_accuracy = accuracy_score(y_test, y_test_pred)
+        
+        # Calculate hamming loss (better for multi-label)
+        train_hamming = hamming_loss(y_train, y_train_pred)
+        test_hamming = hamming_loss(y_test, y_test_pred)
+        
+        # Cross-validation for robust estimation
+        cv_scores = None
+        cv_mean = None
+        cv_std = None
+        if use_cross_validation and len(X_train) >= 20:
+            try:
+                # Use first column of y for stratification (most common label)
+                # For multi-label, we'll do simple 5-fold
+                from sklearn.model_selection import KFold
+                kf = KFold(n_splits=5, shuffle=True, random_state=42)
+                cv_scores_list = []
+                for train_idx, val_idx in kf.split(X_train):
+                    X_cv_train, X_cv_val = X_train[train_idx], X_train[val_idx]
+                    y_cv_train, y_cv_val = y_train[train_idx], y_train[val_idx]
+                    
+                    cv_model = RandomForestClassifier(
+                        n_estimators=n_estimators,
+                        max_depth=max_depth,
+                        min_samples_split=min_samples_split,
+                        min_samples_leaf=min_samples_leaf,
+                        max_features=max_features,
+                        n_jobs=-1,
+                        random_state=42
+                    )
+                    cv_model.fit(X_cv_train, y_cv_train)
+                    cv_pred = cv_model.predict(X_cv_val)
+                    cv_scores_list.append(accuracy_score(y_cv_val, cv_pred))
+                
+                cv_scores = cv_scores_list
+                cv_mean = np.mean(cv_scores_list)
+                cv_std = np.std(cv_scores_list)
+            except Exception as e:
+                logger.warning(f"Cross-validation failed: {e}")
+        
+        # Overfitting detection
+        overfit_gap = train_accuracy - test_accuracy
+        overfit_warning = overfit_gap > 0.15  # >15% gap is concerning
         
         # Calculate metrics
         metrics = {
             'train_samples': len(X_train),
             'test_samples': len(X_test),
-            'accuracy': accuracy_score(y_test, y_pred),
+            'train_accuracy': round(train_accuracy, 4),
+            'test_accuracy': round(test_accuracy, 4),
+            'accuracy': round(test_accuracy, 4),  # Report test accuracy as main metric
+            'train_hamming_loss': round(train_hamming, 4),
+            'test_hamming_loss': round(test_hamming, 4),
+            'overfit_gap': round(overfit_gap, 4),
+            'overfit_warning': overfit_warning,
             'feature_count': len(self.feature_names),
             'label_count': len(TARGET_TECHNOLOGIES),
             'trained_at': datetime.now().isoformat(),
+            'hyperparameters': {
+                'n_estimators': n_estimators,
+                'max_depth': max_depth,
+                'min_samples_split': min_samples_split,
+                'min_samples_leaf': min_samples_leaf,
+                'max_features': max_features,
+            }
         }
+        
+        # Add OOB score if available
+        if hasattr(self.model, 'oob_score_'):
+            metrics['oob_score'] = round(self.model.oob_score_, 4)
+        
+        # Add cross-validation results
+        if cv_mean is not None:
+            metrics['cv_mean'] = round(cv_mean, 4)
+            metrics['cv_std'] = round(cv_std, 4)
+            metrics['cv_scores'] = [round(s, 4) for s in cv_scores]
         
         # Feature importance
         if hasattr(self.model, 'feature_importances_'):
@@ -130,9 +224,19 @@ class TechClassifier:
             metrics['top_features'] = importances[:10]
         
         self.metadata = metrics
-        logger.info(f"Training complete. Accuracy: {metrics['accuracy']:.2%}")
+        
+        # Log results
+        logger.info(f"Training complete.")
+        logger.info(f"  Train accuracy: {train_accuracy:.2%}")
+        logger.info(f"  Test accuracy: {test_accuracy:.2%}")
+        logger.info(f"  Overfit gap: {overfit_gap:.2%}")
+        if cv_mean:
+            logger.info(f"  CV accuracy: {cv_mean:.2%} ± {cv_std:.2%}")
+        if overfit_warning:
+            logger.warning("  ⚠️ Overfitting detected! Consider more data or stronger regularization.")
         
         return metrics
+
     
     def predict(
         self,

@@ -224,11 +224,12 @@ def create_demo_training_data() -> Tuple[List[List[float]], List[List[str]]]:
             features = base_features.copy()
             # Add small noise to numeric features
             for key in features:
-                if isinstance(features[key], int) and 'count' in key or 'pattern' in key:
+                if isinstance(features[key], int) and ('count' in key or 'pattern' in key):
                     noise = random.randint(-2, 2)
                     features[key] = max(0, features[key] + noise)
             samples_X.append(features_to_vector(features))
             samples_y.append(labels.copy())
+
     
     # ============ WordPress Sites (50 samples) ============
     # Pure WordPress
@@ -422,21 +423,35 @@ def create_demo_training_data() -> Tuple[List[List[float]], List[List[str]]]:
 
 
 def train_demo() -> Dict[str, Any]:
-    """Train with improved demo data for higher accuracy."""
+    """Train with demo data using balanced hyperparameters.
+    
+    Uses regularization to prevent overfitting while maintaining
+    good generalization performance.
+    """
     X, y = create_demo_training_data()
     
-    # Create classifier with optimized hyperparameters
+    # Create classifier
     classifier = TechClassifier()
     
-    # Train with better parameters
+    # Train with balanced hyperparameters
+    # Regularization settings to prevent overfitting:
+    # - max_depth=8: Prevents trees from memorizing training data
+    # - min_samples_split=5: Requires minimum samples to split
+    # - min_samples_leaf=2: Prevents tiny leaf nodes
+    # - max_features='sqrt': Limits features per split
+    # - test_size=0.25: Larger test set for honest evaluation
     metrics = classifier.train(
         X, y,
-        test_size=0.15,  # Use more data for training (85/15 split)
-        n_estimators=200,  # More trees for better accuracy
-        max_depth=15,  # Deeper trees
-        min_samples_split=3,  # Allow more splits
+        test_size=0.25,  # 75/25 split for better evaluation
+        use_cross_validation=True,  # 5-fold CV for robust estimation
+        n_estimators=150,  # Balanced: not too many, not too few
+        max_depth=8,  # Regularization: prevent deep memorization
+        min_samples_split=5,  # Regularization: prevent tiny splits
+        min_samples_leaf=2,  # Regularization: prevent tiny leaves
+        max_features='sqrt',  # Regularization: feature sampling
     )
+
+
     
     classifier.save()
     return metrics
-
