@@ -151,6 +151,18 @@ def create_app():
         except Exception as e:
             logging.getLogger(__name__).warning('API v1 blueprint registration failed: %s', e)
 
+    # Register ML blueprint (optional - requires scikit-learn)
+    try:
+        from .routes.ml import bp as ml_bp
+        if 'ml' not in app.blueprints:
+            app.register_blueprint(ml_bp)
+            logging.getLogger(__name__).info('ML blueprint registered at /ml/')
+    except ImportError:
+        logging.getLogger(__name__).debug('ML blueprint not available (scikit-learn not installed)')
+    except Exception as e:
+        logging.getLogger(__name__).warning('ML blueprint registration failed: %s', e)
+
+
     # Security Headers - applied to all responses
     @app.after_request
     def add_security_headers(response):
