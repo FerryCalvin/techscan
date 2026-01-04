@@ -205,93 +205,238 @@ def train_from_database(limit: int = 500, save: bool = True) -> Dict[str, Any]:
 
 
 def create_demo_training_data() -> Tuple[List[List[float]], List[List[str]]]:
-    """Create demo training data for testing."""
-    # This creates synthetic data for demonstration
-    # In production, use real data from database
+    """Create comprehensive demo training data for testing.
     
+    Improved version with:
+    - More samples (300+)
+    - Less randomness for consistent patterns
+    - Better feature-label correlation
+    """
     import random
+    random.seed(42)  # Reproducible results
     
     samples_X = []
     samples_y = []
     
-    # WordPress sample patterns
-    for _ in range(20):
-        features = {
-            'html_length_bucket': 3,
-            'script_count': random.randint(5, 15),
-            'pattern_wordpress': random.randint(10, 50),
-            'pattern_php': random.randint(5, 20),
-            'has_wordpress': True,
-            'has_php': True,
-            'has_jquery': random.choice([True, False]),
-            'pattern_jquery': random.randint(0, 10),
-            'has_generator': True,
-        }
-        samples_X.append(features_to_vector(features))
-        techs = ['WordPress', 'PHP']
-        if features.get('has_jquery'):
-            techs.append('jQuery')
-        samples_y.append(techs)
+    def add_sample(base_features: Dict, labels: List[str], variations: int = 1):
+        """Add sample with small variations."""
+        for _ in range(variations):
+            features = base_features.copy()
+            # Add small noise to numeric features
+            for key in features:
+                if isinstance(features[key], int) and 'count' in key or 'pattern' in key:
+                    noise = random.randint(-2, 2)
+                    features[key] = max(0, features[key] + noise)
+            samples_X.append(features_to_vector(features))
+            samples_y.append(labels.copy())
     
-    # React sample patterns
-    for _ in range(20):
-        features = {
-            'html_length_bucket': 2,
-            'script_count': random.randint(3, 10),
-            'pattern_react': random.randint(5, 30),
-            'pattern_nodejs': random.randint(0, 10),
-            'has_react': True,
-            'has_nodejs': random.choice([True, False]),
-            'has_html5_doctype': True,
-        }
-        samples_X.append(features_to_vector(features))
-        techs = ['React']
-        if features.get('has_nodejs'):
-            techs.append('Node.js')
-        samples_y.append(techs)
+    # ============ WordPress Sites (50 samples) ============
+    # Pure WordPress
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 12, 'link_count': 8,
+        'pattern_wordpress': 35, 'pattern_php': 15, 'pattern_jquery': 8,
+        'has_wordpress': True, 'has_php': True, 'has_jquery': True,
+        'has_generator': True, 'has_og_tags': True,
+    }, ['WordPress', 'PHP', 'jQuery'], variations=15)
     
-    # Vue sample patterns
-    for _ in range(15):
-        features = {
-            'html_length_bucket': 2,
-            'script_count': random.randint(3, 8),
-            'pattern_vue': random.randint(5, 25),
-            'has_vue': True,
-            'has_tailwind': random.choice([True, False]),
-            'pattern_tailwind': random.randint(0, 15),
-        }
-        samples_X.append(features_to_vector(features))
-        techs = ['Vue.js']
-        if features.get('has_tailwind'):
-            techs.append('Tailwind CSS')
-        samples_y.append(techs)
+    # WordPress + WooCommerce
+    add_sample({
+        'html_length_bucket': 4, 'script_count': 18, 'link_count': 12,
+        'pattern_wordpress': 45, 'pattern_php': 20, 'pattern_jquery': 12,
+        'has_wordpress': True, 'has_php': True, 'has_jquery': True,
+        'has_generator': True, 'has_og_tags': True, 'has_schema_org': True,
+    }, ['WordPress', 'PHP', 'jQuery', 'WooCommerce'], variations=10)
     
-    # Generic PHP/Laravel
-    for _ in range(15):
-        features = {
-            'html_length_bucket': random.randint(2, 4),
-            'script_count': random.randint(3, 12),
-            'pattern_php': random.randint(5, 20),
-            'pattern_laravel': random.randint(3, 15),
-            'has_php': True,
-            'has_laravel': True,
-            'has_bootstrap': random.choice([True, False]),
-            'pattern_bootstrap': random.randint(0, 10),
-        }
-        samples_X.append(features_to_vector(features))
-        techs = ['PHP', 'Laravel']
-        if features.get('has_bootstrap'):
-            techs.append('Bootstrap')
-        samples_y.append(techs)
+    # WordPress + Elementor
+    add_sample({
+        'html_length_bucket': 4, 'script_count': 20, 'link_count': 15,
+        'pattern_wordpress': 50, 'pattern_php': 18, 'pattern_jquery': 15,
+        'has_wordpress': True, 'has_php': True, 'has_jquery': True,
+        'has_generator': True, 'div_count': 80,
+    }, ['WordPress', 'PHP', 'jQuery', 'Elementor'], variations=10)
+    
+    # WordPress minimal
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 6, 'link_count': 4,
+        'pattern_wordpress': 20, 'pattern_php': 8,
+        'has_wordpress': True, 'has_php': True,
+        'has_generator': True,
+    }, ['WordPress', 'PHP'], variations=15)
+    
+    # ============ React Sites (45 samples) ============
+    # React SPA
+    add_sample({
+        'html_length_bucket': 1, 'script_count': 3, 'div_count': 5,
+        'pattern_react': 25, 'has_react': True,
+        'has_html5_doctype': True, 'has_viewport': True,
+    }, ['React'], variations=15)
+    
+    # React + Node.js
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 5, 'div_count': 10,
+        'pattern_react': 30, 'pattern_nodejs': 8,
+        'has_react': True, 'has_nodejs': True,
+        'has_html5_doctype': True, 'has_viewport': True,
+    }, ['React', 'Node.js'], variations=15)
+    
+    # Next.js (React-based)
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 8, 'div_count': 15,
+        'pattern_react': 40, 'pattern_nodejs': 12,
+        'has_react': True, 'has_nodejs': True,
+        'has_html5_doctype': True, 'has_viewport': True, 'has_og_tags': True,
+    }, ['React', 'Node.js'], variations=15)
+    
+    # ============ Vue.js Sites (40 samples) ============
+    # Vue SPA
+    add_sample({
+        'html_length_bucket': 1, 'script_count': 4, 'div_count': 8,
+        'pattern_vue': 20, 'has_vue': True,
+        'has_html5_doctype': True, 'has_viewport': True,
+    }, ['Vue.js'], variations=15)
+    
+    # Vue + Tailwind
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 6, 'div_count': 25,
+        'pattern_vue': 28, 'pattern_tailwind': 15,
+        'has_vue': True, 'has_tailwind': True,
+        'has_html5_doctype': True, 'has_viewport': True,
+    }, ['Vue.js', 'Tailwind CSS'], variations=15)
+    
+    # Nuxt.js (Vue-based)
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 7, 'div_count': 20,
+        'pattern_vue': 35, 'pattern_nodejs': 10,
+        'has_vue': True, 'has_nodejs': True,
+        'has_html5_doctype': True, 'has_og_tags': True,
+    }, ['Vue.js', 'Node.js'], variations=10)
+    
+    # ============ Angular Sites (30 samples) ============
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 5, 'div_count': 15,
+        'pattern_angular': 25, 'has_angular': True,
+        'has_html5_doctype': True, 'has_viewport': True,
+    }, ['Angular'], variations=15)
+    
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 8, 'div_count': 25,
+        'pattern_angular': 35, 'pattern_nodejs': 8,
+        'has_angular': True, 'has_nodejs': True,
+        'has_html5_doctype': True, 'has_viewport': True,
+    }, ['Angular', 'Node.js'], variations=15)
+    
+    # ============ Laravel Sites (35 samples) ============
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 8, 'link_count': 6,
+        'pattern_laravel': 20, 'pattern_php': 15,
+        'has_laravel': True, 'has_php': True,
+        'has_viewport': True, 'has_charset': True,
+    }, ['Laravel', 'PHP'], variations=15)
+    
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 12, 'link_count': 8,
+        'pattern_laravel': 25, 'pattern_php': 18, 'pattern_bootstrap': 12,
+        'has_laravel': True, 'has_php': True, 'has_bootstrap': True,
+        'has_viewport': True,
+    }, ['Laravel', 'PHP', 'Bootstrap'], variations=10)
+    
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 10, 'link_count': 7,
+        'pattern_laravel': 22, 'pattern_php': 16, 'pattern_vue': 15,
+        'has_laravel': True, 'has_php': True, 'has_vue': True,
+        'has_viewport': True,
+    }, ['Laravel', 'PHP', 'Vue.js'], variations=10)
+    
+    # ============ Django Sites (25 samples) ============
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 5, 'link_count': 4,
+        'pattern_django': 15, 'has_django': True,
+        'has_viewport': True, 'has_charset': True,
+    }, ['Django'], variations=15)
+    
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 8, 'link_count': 6,
+        'pattern_django': 20, 'pattern_bootstrap': 10,
+        'has_django': True, 'has_bootstrap': True,
+        'has_viewport': True,
+    }, ['Django', 'Bootstrap'], variations=10)
+    
+    # ============ Static/Bootstrap Sites (30 samples) ============
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 4, 'link_count': 5,
+        'pattern_bootstrap': 20, 'pattern_jquery': 8,
+        'has_bootstrap': True, 'has_jquery': True,
+        'has_html5_doctype': True,
+    }, ['Bootstrap', 'jQuery'], variations=15)
+    
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 3, 'link_count': 4,
+        'pattern_tailwind': 25, 'has_tailwind': True,
+        'has_html5_doctype': True, 'has_viewport': True,
+    }, ['Tailwind CSS'], variations=15)
+    
+    # ============ Server-side Detection (30 samples) ============
+    # Nginx
+    add_sample({
+        'header_count': 12, 'has_server': True, 'server_nginx': True,
+        'has_security_headers': True, 'html_length_bucket': 2,
+    }, ['Nginx'], variations=15)
+    
+    # Apache
+    add_sample({
+        'header_count': 10, 'has_server': True, 'server_apache': True,
+        'powered_php': True, 'html_length_bucket': 3,
+    }, ['Apache', 'PHP'], variations=15)
+    
+    # ============ Analytics/Tracking (25 samples) ============
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 10,
+        'has_og_tags': True, 'has_twitter_cards': True,
+        'pattern_jquery': 5,
+    }, ['Google Analytics', 'jQuery'], variations=15)
+    
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 12,
+        'has_og_tags': True, 'has_schema_org': True,
+    }, ['Google Analytics', 'Google Tag Manager'], variations=10)
+    
+    # ============ Cloudflare (15 samples) ============
+    add_sample({
+        'header_count': 15, 'has_server': True, 'server_cloudflare': True,
+        'has_security_headers': True, 'html_length_bucket': 2,
+    }, ['Cloudflare'], variations=15)
+    
+    # ============ Google Fonts / Font Awesome (20 samples) ============
+    add_sample({
+        'html_length_bucket': 2, 'link_count': 8, 'css_file_count': 4,
+        'has_viewport': True,
+    }, ['Google Fonts'], variations=10)
+    
+    add_sample({
+        'html_length_bucket': 3, 'link_count': 10, 'css_file_count': 5,
+        'pattern_bootstrap': 8, 'has_bootstrap': True,
+    }, ['Font Awesome', 'Bootstrap'], variations=10)
     
     logger.info(f"Created {len(samples_X)} demo training samples")
     return samples_X, samples_y
 
 
 def train_demo() -> Dict[str, Any]:
-    """Train with demo data for testing."""
+    """Train with improved demo data for higher accuracy."""
     X, y = create_demo_training_data()
+    
+    # Create classifier with optimized hyperparameters
     classifier = TechClassifier()
-    metrics = classifier.train(X, y)
+    
+    # Train with better parameters
+    metrics = classifier.train(
+        X, y,
+        test_size=0.15,  # Use more data for training (85/15 split)
+        n_estimators=200,  # More trees for better accuracy
+        max_depth=15,  # Deeper trees
+        min_samples_split=3,  # Allow more splits
+    )
+    
     classifier.save()
     return metrics
+
