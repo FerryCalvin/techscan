@@ -484,8 +484,72 @@ def create_demo_training_data() -> Tuple[List[List[float]], List[List[str]]]:
         'has_laravel': False, 'pattern_laravel': 0,
     }, ['PHP'], variations=15)
     
+    # ============ NEW TECHNOLOGIES ============
+    
+    # Svelte sites
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 4, 'div_count': 12,
+        'pattern_svelte': 20, 'has_svelte': True,
+        'has_html5_doctype': True, 'has_viewport': True,
+    }, ['Svelte'], variations=15)
+    
+    # Moment.js (JS date library)
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 10,
+        'pattern_momentjs': 8, 'has_momentjs': True,
+        'pattern_jquery': 5, 'has_jquery': True,
+    }, ['Moment.js', 'jQuery'], variations=15)
+    
+    # Swiper (carousel library)
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 8,
+        'pattern_swiper': 12, 'has_swiper': True,
+        'div_count': 30,
+    }, ['Swiper'], variations=15)
+    
+    # Elementor (WordPress page builder)
+    add_sample({
+        'html_length_bucket': 4, 'script_count': 18, 'link_count': 12,
+        'pattern_elementor': 25, 'has_elementor': True,
+        'pattern_wordpress': 35, 'has_wordpress': True,
+        'has_php': True, 'pattern_php': 15,
+    }, ['Elementor', 'WordPress', 'PHP'], variations=20)
+    
+    # Yoast SEO
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 12,
+        'pattern_yoast': 15, 'has_yoast': True,
+        'pattern_wordpress': 30, 'has_wordpress': True,
+        'has_og_tags': True, 'has_schema_org': True,
+    }, ['Yoast SEO', 'WordPress'], variations=15)
+    
+    # PWA (Progressive Web App)
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 6,
+        'pattern_pwa': 8, 'has_pwa': True,
+        'has_viewport': True, 'has_html5_doctype': True,
+    }, ['PWA'], variations=15)
+    
+    # OneSignal (push notifications)
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 10,
+        'pattern_onesignal': 5, 'has_onesignal': True,
+        'has_og_tags': True,
+    }, ['OneSignal'], variations=10)
+    
+    # Combined: WordPress + Elementor + Yoast
+    add_sample({
+        'html_length_bucket': 4, 'script_count': 20, 'link_count': 15,
+        'pattern_wordpress': 50, 'has_wordpress': True,
+        'pattern_elementor': 30, 'has_elementor': True,
+        'pattern_yoast': 12, 'has_yoast': True,
+        'pattern_php': 18, 'has_php': True,
+        'has_og_tags': True, 'has_schema_org': True,
+    }, ['WordPress', 'Elementor', 'Yoast SEO', 'PHP'], variations=20)
+    
     logger.info(f"Created {len(samples_X)} demo training samples")
     return samples_X, samples_y
+
 
 
 

@@ -14,18 +14,42 @@ from collections import Counter
 
 # Common technology indicators in HTML
 FRAMEWORK_PATTERNS = {
+    # Core frameworks
     'wordpress': [r'wp-content', r'wp-includes', r'wordpress', r'wp-json'],
     'react': [r'react', r'__NEXT_DATA__', r'_next/', r'reactroot'],
     'vue': [r'vue\.', r'v-cloak', r'v-if', r'nuxt', r'__NUXT__'],
     'angular': [r'ng-', r'angular', r'ng-app', r'ng-controller'],
+    'svelte': [r'svelte', r'__svelte'],
+    
+    # JS libraries
     'jquery': [r'jquery', r'\$\(document\)', r'\$\(function'],
+    'momentjs': [r'moment\.js', r'moment\.min\.js', r'moment\('],
+    'corejs': [r'core-js', r'core\.js'],
+    'swiper': [r'swiper', r'swiper-slide', r'swiper-container'],
+    
+    # CSS frameworks
     'bootstrap': [r'bootstrap', r'btn-primary', r'container-fluid'],
     'tailwind': [r'tailwind', r'flex ', r'grid ', r'bg-\w+', r'text-\w+'],
+    
+    # Backend frameworks
     'laravel': [r'laravel', r'csrf-token', r'_token'],
     'django': [r'csrfmiddlewaretoken', r'django'],
     'php': [r'\.php', r'phpsessid', r'php'],
     'asp': [r'\.aspx?', r'__viewstate', r'asp\.net'],
     'nodejs': [r'express', r'node', r'npm'],
+    
+    # WordPress plugins/themes
+    'elementor': [r'elementor', r'e-container', r'elementor-widget', r'elementor-element'],
+    'yoast': [r'yoast', r'yoast-schema', r'wpseo'],
+    'woocommerce': [r'woocommerce', r'wc-', r'add-to-cart'],
+    
+    # Analytics/Marketing
+    'ga': [r'google-analytics', r'gtag', r'ga\(', r'googletagmanager'],
+    'gtm': [r'googletagmanager', r'gtm\.js', r'GTM-'],
+    'onesignal': [r'onesignal', r'OneSignal'],
+    
+    # PWA/Service Worker
+    'pwa': [r'manifest\.json', r'service-worker', r'serviceworker', r'web-app-manifest'],
 }
 
 # Header-based indicators
@@ -36,6 +60,7 @@ SERVER_PATTERNS = {
     'cloudflare': r'cloudflare',
     'litespeed': r'litespeed',
 }
+
 
 
 class FeatureExtractor:
@@ -217,14 +242,22 @@ class FeatureExtractor:
             'server_nginx', 'server_apache', 'server_iis', 'server_cloudflare',
             'powered_php', 'powered_asp', 'powered_express',
             'has_generator', 'has_og_tags', 'has_twitter_cards', 'has_schema_org',
-            # Pattern counts
-            'pattern_wordpress', 'pattern_react', 'pattern_vue', 'pattern_angular',
-            'pattern_jquery', 'pattern_bootstrap', 'pattern_tailwind',
+            # Pattern counts - core frameworks
+            'pattern_wordpress', 'pattern_react', 'pattern_vue', 'pattern_angular', 'pattern_svelte',
+            'pattern_jquery', 'pattern_momentjs', 'pattern_corejs', 'pattern_swiper',
+            'pattern_bootstrap', 'pattern_tailwind',
             'pattern_laravel', 'pattern_django', 'pattern_php', 'pattern_asp', 'pattern_nodejs',
-            # Has patterns
-            'has_wordpress', 'has_react', 'has_vue', 'has_angular',
-            'has_jquery', 'has_bootstrap', 'has_tailwind',
+            # Pattern counts - plugins/analytics
+            'pattern_elementor', 'pattern_yoast', 'pattern_woocommerce',
+            'pattern_ga', 'pattern_gtm', 'pattern_onesignal', 'pattern_pwa',
+            # Has patterns - core frameworks
+            'has_wordpress', 'has_react', 'has_vue', 'has_angular', 'has_svelte',
+            'has_jquery', 'has_momentjs', 'has_corejs', 'has_swiper',
+            'has_bootstrap', 'has_tailwind',
             'has_laravel', 'has_django', 'has_php', 'has_asp', 'has_nodejs',
+            # Has patterns - plugins/analytics
+            'has_elementor', 'has_yoast', 'has_woocommerce',
+            'has_ga', 'has_gtm', 'has_onesignal', 'has_pwa',
         ]
         
         vector = []
@@ -251,13 +284,20 @@ class FeatureExtractor:
             'server_nginx', 'server_apache', 'server_iis', 'server_cloudflare',
             'powered_php', 'powered_asp', 'powered_express',
             'has_generator', 'has_og_tags', 'has_twitter_cards', 'has_schema_org',
-            'pattern_wordpress', 'pattern_react', 'pattern_vue', 'pattern_angular',
-            'pattern_jquery', 'pattern_bootstrap', 'pattern_tailwind',
+            'pattern_wordpress', 'pattern_react', 'pattern_vue', 'pattern_angular', 'pattern_svelte',
+            'pattern_jquery', 'pattern_momentjs', 'pattern_corejs', 'pattern_swiper',
+            'pattern_bootstrap', 'pattern_tailwind',
             'pattern_laravel', 'pattern_django', 'pattern_php', 'pattern_asp', 'pattern_nodejs',
-            'has_wordpress', 'has_react', 'has_vue', 'has_angular',
-            'has_jquery', 'has_bootstrap', 'has_tailwind',
+            'pattern_elementor', 'pattern_yoast', 'pattern_woocommerce',
+            'pattern_ga', 'pattern_gtm', 'pattern_onesignal', 'pattern_pwa',
+            'has_wordpress', 'has_react', 'has_vue', 'has_angular', 'has_svelte',
+            'has_jquery', 'has_momentjs', 'has_corejs', 'has_swiper',
+            'has_bootstrap', 'has_tailwind',
             'has_laravel', 'has_django', 'has_php', 'has_asp', 'has_nodejs',
+            'has_elementor', 'has_yoast', 'has_woocommerce',
+            'has_ga', 'has_gtm', 'has_onesignal', 'has_pwa',
         ]
+
 
 
 # Module-level instance for convenience

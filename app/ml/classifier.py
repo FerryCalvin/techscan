@@ -39,12 +39,24 @@ logger = logging.getLogger('techscan.ml')
 # Note: Database technologies (MySQL, PostgreSQL, MongoDB, Redis) removed
 # because they cannot be reliably detected from frontend code alone
 TARGET_TECHNOLOGIES = [
-    'WordPress', 'React', 'Vue.js', 'Angular', 'jQuery',
-    'Bootstrap', 'Tailwind CSS', 'Laravel', 'Django', 'PHP',
-    'ASP.NET', 'Node.js', 'Nginx', 'Apache', 'Cloudflare',
-    'Google Analytics', 'Google Tag Manager', 'Google Fonts',
-    'Font Awesome', 'Elementor', 'WooCommerce',
+    # Core frameworks
+    'WordPress', 'React', 'Vue.js', 'Angular', 'Svelte',
+    # JS libraries
+    'jQuery', 'Moment.js', 'Swiper',
+    # CSS frameworks
+    'Bootstrap', 'Tailwind CSS',
+    # Backend frameworks
+    'Laravel', 'Django', 'PHP', 'ASP.NET', 'Node.js',
+    # WordPress plugins
+    'Elementor', 'Yoast SEO', 'WooCommerce',
+    # Servers
+    'Nginx', 'Apache', 'Cloudflare',
+    # Analytics/Marketing
+    'Google Analytics', 'Google Tag Manager', 'OneSignal',
+    # Misc
+    'Google Fonts', 'Font Awesome', 'PWA',
 ]
+
 
 
 
