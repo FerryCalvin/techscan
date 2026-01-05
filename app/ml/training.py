@@ -418,8 +418,75 @@ def create_demo_training_data() -> Tuple[List[List[float]], List[List[str]]]:
         'pattern_bootstrap': 8, 'has_bootstrap': True,
     }, ['Font Awesome', 'Bootstrap'], variations=10)
     
+    # ============ NEGATIVE SAMPLES ============
+    # These teach the model what patterns DON'T indicate certain technologies
+    # Critical for reducing false positives
+    
+    # WordPress sites do NOT have ASP.NET, PostgreSQL, MongoDB, Redis
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 12, 'link_count': 8,
+        'pattern_wordpress': 35, 'pattern_php': 15, 'pattern_jquery': 8,
+        'has_wordpress': True, 'has_php': True, 'has_jquery': True,
+        'has_generator': True, 'server_nginx': True,
+        # No ASP.NET patterns
+        'has_asp': False, 'pattern_asp': 0,
+        'powered_asp': False,
+    }, ['WordPress', 'PHP', 'jQuery', 'Nginx'], variations=20)
+    
+    # React sites do NOT have WordPress, PHP, ASP.NET
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 5, 'div_count': 15,
+        'pattern_react': 35, 'pattern_nodejs': 10,
+        'has_react': True, 'has_nodejs': True,
+        'has_html5_doctype': True, 'has_viewport': True,
+        # No PHP/WordPress/ASP.NET
+        'has_wordpress': False, 'pattern_wordpress': 0,
+        'has_php': False, 'pattern_php': 0,
+        'has_asp': False, 'pattern_asp': 0,
+    }, ['React', 'Node.js'], variations=20)
+    
+    # Vue sites - also negative for WordPress/PHP
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 6, 'div_count': 20,
+        'pattern_vue': 30, 'pattern_tailwind': 15,
+        'has_vue': True, 'has_tailwind': True,
+        'has_html5_doctype': True, 'has_viewport': True,
+        # No WordPress/PHP
+        'has_wordpress': False, 'pattern_wordpress': 0,
+        'has_php': False, 'pattern_php': 0,
+    }, ['Vue.js', 'Tailwind CSS'], variations=15)
+    
+    # Static HTML sites - minimal tech
+    add_sample({
+        'html_length_bucket': 1, 'script_count': 2, 'link_count': 3,
+        'div_count': 10, 'has_html5_doctype': True, 'has_viewport': True,
+        # No frameworks
+        'has_wordpress': False, 'has_react': False, 'has_vue': False,
+        'has_php': False, 'has_nodejs': False, 'has_angular': False,
+        'pattern_wordpress': 0, 'pattern_react': 0, 'pattern_vue': 0,
+    }, ['Bootstrap'], variations=15)
+    
+    # ASP.NET specific patterns (so model learns what ASP.NET looks like)
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 8, 'form_count': 2,
+        'has_asp': True, 'pattern_asp': 20, 'powered_asp': True,
+        'has_html5_doctype': True,
+        # Explicitly NOT PHP/WordPress
+        'has_php': False, 'pattern_php': 0, 'has_wordpress': False,
+    }, ['ASP.NET'], variations=15)
+    
+    # Pure PHP sites (not WordPress, not Laravel)
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 5, 'link_count': 4,
+        'has_php': True, 'pattern_php': 12, 'powered_php': True,
+        # Not WordPress, not Laravel
+        'has_wordpress': False, 'pattern_wordpress': 0,
+        'has_laravel': False, 'pattern_laravel': 0,
+    }, ['PHP'], variations=15)
+    
     logger.info(f"Created {len(samples_X)} demo training samples")
     return samples_X, samples_y
+
 
 
 def train_demo() -> Dict[str, Any]:

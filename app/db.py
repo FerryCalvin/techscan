@@ -1293,7 +1293,48 @@ def get_recent_scan_jobs(limit: int = 20) -> list:
     return []
 
 
+def get_recent_scans(limit: int = 500) -> list:
+    """Get recent scan results for ML training.
+    
+    Returns scan results with domain and technologies.
+    """
+    if _DB_DISABLED:
+        return []
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute('''
+                    SELECT domain, technologies, scan_mode, timestamp
+                    FROM scan_results 
+                    WHERE technologies IS NOT NULL 
+                    ORDER BY timestamp DESC 
+                    LIMIT %s
+                ''', (limit,))
+                rows = cur.fetchall()
+                results = []
+                for r in rows:
+                    domain = r[0]
+                    techs = r[1]
+                    # Handle JSON stored as string
+                    if isinstance(techs, str):
+                        try:
+                            techs = json.loads(techs)
+                        except:
+                            techs = []
+                    results.append({
+                        'domain': domain,
+                        'technologies': techs or [],
+                        'scan_mode': r[2],
+                        'timestamp': r[3].timestamp() if r[3] else None,
+                    })
+                return results
+    except Exception as e:
+        logging.getLogger('techscan.db').debug(f"get_recent_scans error: {e}")
+    return []
+
+
 # ============ Scheduled Cleanup ============
+
 # Cleanup old scan records to prevent unbounded database growth.
 # Disabled by default (TECHSCAN_CLEANUP_ENABLED=0).
 # Enable via environment: TECHSCAN_CLEANUP_ENABLED=1

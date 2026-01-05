@@ -35,15 +35,17 @@ logger = logging.getLogger('techscan.ml')
 
 # ============ Target Technologies ============
 
-# Technologies we want to predict (multi-label classification)
+# Technologies we can reliably predict from HTML/headers
+# Note: Database technologies (MySQL, PostgreSQL, MongoDB, Redis) removed
+# because they cannot be reliably detected from frontend code alone
 TARGET_TECHNOLOGIES = [
     'WordPress', 'React', 'Vue.js', 'Angular', 'jQuery',
     'Bootstrap', 'Tailwind CSS', 'Laravel', 'Django', 'PHP',
     'ASP.NET', 'Node.js', 'Nginx', 'Apache', 'Cloudflare',
-    'MySQL', 'PostgreSQL', 'MongoDB', 'Redis',
     'Google Analytics', 'Google Tag Manager', 'Google Fonts',
     'Font Awesome', 'Elementor', 'WooCommerce',
 ]
+
 
 
 class TechClassifier:
