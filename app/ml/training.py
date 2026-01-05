@@ -547,8 +547,94 @@ def create_demo_training_data() -> Tuple[List[List[float]], List[List[str]]]:
         'has_og_tags': True, 'has_schema_org': True,
     }, ['WordPress', 'Elementor', 'Yoast SEO', 'PHP'], variations=20)
     
+    # ============ ADDITIONAL NEGATIVE SAMPLES ============
+    # To reduce WooCommerce and Tailwind false positives
+    
+    # WordPress sites WITHOUT WooCommerce (many WP sites are not e-commerce)
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 12, 'link_count': 8,
+        'pattern_wordpress': 35, 'has_wordpress': True,
+        'pattern_elementor': 20, 'has_elementor': True,
+        'pattern_php': 15, 'has_php': True,
+        # Explicitly NO WooCommerce
+        'pattern_woocommerce': 0, 'has_woocommerce': False,
+    }, ['WordPress', 'Elementor', 'PHP'], variations=25)
+    
+    # React sites WITHOUT Tailwind (many use other CSS)
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 6, 'div_count': 20,
+        'pattern_react': 35, 'has_react': True,
+        'has_html5_doctype': True, 'has_viewport': True,
+        # Explicitly NO Tailwind
+        'pattern_tailwind': 0, 'has_tailwind': False,
+    }, ['React'], variations=20)
+    
+    # Vue sites WITHOUT Tailwind
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 5, 'div_count': 18,
+        'pattern_vue': 30, 'has_vue': True,
+        'has_html5_doctype': True, 'has_viewport': True,
+        # Explicitly NO Tailwind
+        'pattern_tailwind': 0, 'has_tailwind': False,
+    }, ['Vue.js'], variations=20)
+    
+    # ============ NEW TECHNOLOGIES ============
+    
+    # Polymer (Google's web components library)
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 8, 'div_count': 15,
+        'pattern_polymer': 20, 'has_polymer': True,
+        'has_html5_doctype': True,
+    }, ['Polymer'], variations=15)
+    
+    # Hammer.js (touch gestures)
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 8,
+        'pattern_hammerjs': 10, 'has_hammerjs': True,
+    }, ['Hammer.js'], variations=10)
+    
+    # LottieFiles (animations)
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 10,
+        'pattern_lottie': 12, 'has_lottie': True,
+    }, ['LottieFiles'], variations=10)
+    
+    # YouTube embedded
+    add_sample({
+        'html_length_bucket': 3, 'iframe_count': 2,
+        'pattern_youtube': 8, 'has_youtube': True,
+    }, ['YouTube'], variations=15)
+    
+    # reCAPTCHA
+    add_sample({
+        'html_length_bucket': 2, 'script_count': 6, 'form_count': 1,
+        'pattern_recaptcha': 5, 'has_recaptcha': True,
+    }, ['reCAPTCHA'], variations=15)
+    
+    # HSTS
+    add_sample({
+        'html_length_bucket': 2, 'has_security_headers': True,
+        'pattern_hsts': 1, 'has_hsts': True,
+    }, ['HSTS'], variations=15)
+    
+    # Google Ads
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 12,
+        'pattern_googleads': 8, 'has_googleads': True,
+        'has_og_tags': True,
+    }, ['Google Ads'], variations=15)
+    
+    # Combined: YouTube + reCAPTCHA (common on Google sites)
+    add_sample({
+        'html_length_bucket': 3, 'script_count': 10,
+        'pattern_youtube': 5, 'has_youtube': True,
+        'pattern_recaptcha': 3, 'has_recaptcha': True,
+        'pattern_googleads': 6, 'has_googleads': True,
+    }, ['YouTube', 'reCAPTCHA', 'Google Ads'], variations=10)
+    
     logger.info(f"Created {len(samples_X)} demo training samples")
     return samples_X, samples_y
+
 
 
 

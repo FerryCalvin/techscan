@@ -20,16 +20,19 @@ FRAMEWORK_PATTERNS = {
     'vue': [r'vue\.', r'v-cloak', r'v-if', r'nuxt', r'__NUXT__'],
     'angular': [r'ng-', r'angular', r'ng-app', r'ng-controller'],
     'svelte': [r'svelte', r'__svelte'],
+    'polymer': [r'polymer', r'iron-', r'paper-', r'web-component'],
     
     # JS libraries
     'jquery': [r'jquery', r'\$\(document\)', r'\$\(function'],
     'momentjs': [r'moment\.js', r'moment\.min\.js', r'moment\('],
     'corejs': [r'core-js', r'core\.js'],
     'swiper': [r'swiper', r'swiper-slide', r'swiper-container'],
+    'hammerjs': [r'hammer\.js', r'hammer\.min\.js', r'Hammer\.'],
+    'lottie': [r'lottie', r'lottie-player', r'lottiefiles'],
     
-    # CSS frameworks
+    # CSS frameworks - more specific patterns
     'bootstrap': [r'bootstrap', r'btn-primary', r'container-fluid'],
-    'tailwind': [r'tailwind', r'flex ', r'grid ', r'bg-\w+', r'text-\w+'],
+    'tailwind': [r'tailwindcss', r'tailwind\.css', r'tailwind\.min\.css'],  # More specific
     
     # Backend frameworks
     'laravel': [r'laravel', r'csrf-token', r'_token'],
@@ -38,10 +41,10 @@ FRAMEWORK_PATTERNS = {
     'asp': [r'\.aspx?', r'__viewstate', r'asp\.net'],
     'nodejs': [r'express', r'node', r'npm'],
     
-    # WordPress plugins/themes
+    # WordPress plugins/themes - more specific patterns
     'elementor': [r'elementor', r'e-container', r'elementor-widget', r'elementor-element'],
     'yoast': [r'yoast', r'yoast-schema', r'wpseo'],
-    'woocommerce': [r'woocommerce', r'wc-', r'add-to-cart'],
+    'woocommerce': [r'woocommerce', r'wc-add-to-cart', r'wc-cart', r'wc-checkout'],  # More specific
     
     # Analytics/Marketing
     'ga': [r'google-analytics', r'gtag', r'ga\(', r'googletagmanager'],
@@ -50,7 +53,18 @@ FRAMEWORK_PATTERNS = {
     
     # PWA/Service Worker
     'pwa': [r'manifest\.json', r'service-worker', r'serviceworker', r'web-app-manifest'],
+    
+    # Video/Media
+    'youtube': [r'youtube\.com/embed', r'youtube-player', r'yt-player'],
+    
+    # Security
+    'recaptcha': [r'recaptcha', r'grecaptcha', r'g-recaptcha'],
+    'hsts': [r'strict-transport-security'],
+    
+    # Advertising
+    'googleads': [r'googlesyndication', r'googleadservices', r'doubleclick'],
 }
+
 
 # Header-based indicators
 SERVER_PATTERNS = {
@@ -243,22 +257,37 @@ class FeatureExtractor:
             'powered_php', 'powered_asp', 'powered_express',
             'has_generator', 'has_og_tags', 'has_twitter_cards', 'has_schema_org',
             # Pattern counts - core frameworks
-            'pattern_wordpress', 'pattern_react', 'pattern_vue', 'pattern_angular', 'pattern_svelte',
+            'pattern_wordpress', 'pattern_react', 'pattern_vue', 'pattern_angular', 
+            'pattern_svelte', 'pattern_polymer',
+            # Pattern counts - JS libraries
             'pattern_jquery', 'pattern_momentjs', 'pattern_corejs', 'pattern_swiper',
+            'pattern_hammerjs', 'pattern_lottie',
+            # Pattern counts - CSS frameworks
             'pattern_bootstrap', 'pattern_tailwind',
+            # Pattern counts - backend
             'pattern_laravel', 'pattern_django', 'pattern_php', 'pattern_asp', 'pattern_nodejs',
             # Pattern counts - plugins/analytics
             'pattern_elementor', 'pattern_yoast', 'pattern_woocommerce',
             'pattern_ga', 'pattern_gtm', 'pattern_onesignal', 'pattern_pwa',
+            # Pattern counts - media/security/ads
+            'pattern_youtube', 'pattern_recaptcha', 'pattern_hsts', 'pattern_googleads',
             # Has patterns - core frameworks
-            'has_wordpress', 'has_react', 'has_vue', 'has_angular', 'has_svelte',
+            'has_wordpress', 'has_react', 'has_vue', 'has_angular', 
+            'has_svelte', 'has_polymer',
+            # Has patterns - JS libraries
             'has_jquery', 'has_momentjs', 'has_corejs', 'has_swiper',
+            'has_hammerjs', 'has_lottie',
+            # Has patterns - CSS frameworks
             'has_bootstrap', 'has_tailwind',
+            # Has patterns - backend
             'has_laravel', 'has_django', 'has_php', 'has_asp', 'has_nodejs',
             # Has patterns - plugins/analytics
             'has_elementor', 'has_yoast', 'has_woocommerce',
             'has_ga', 'has_gtm', 'has_onesignal', 'has_pwa',
+            # Has patterns - media/security/ads
+            'has_youtube', 'has_recaptcha', 'has_hsts', 'has_googleads',
         ]
+
         
         vector = []
         for key in feature_order:
@@ -284,19 +313,26 @@ class FeatureExtractor:
             'server_nginx', 'server_apache', 'server_iis', 'server_cloudflare',
             'powered_php', 'powered_asp', 'powered_express',
             'has_generator', 'has_og_tags', 'has_twitter_cards', 'has_schema_org',
-            'pattern_wordpress', 'pattern_react', 'pattern_vue', 'pattern_angular', 'pattern_svelte',
+            'pattern_wordpress', 'pattern_react', 'pattern_vue', 'pattern_angular',
+            'pattern_svelte', 'pattern_polymer',
             'pattern_jquery', 'pattern_momentjs', 'pattern_corejs', 'pattern_swiper',
+            'pattern_hammerjs', 'pattern_lottie',
             'pattern_bootstrap', 'pattern_tailwind',
             'pattern_laravel', 'pattern_django', 'pattern_php', 'pattern_asp', 'pattern_nodejs',
             'pattern_elementor', 'pattern_yoast', 'pattern_woocommerce',
             'pattern_ga', 'pattern_gtm', 'pattern_onesignal', 'pattern_pwa',
-            'has_wordpress', 'has_react', 'has_vue', 'has_angular', 'has_svelte',
+            'pattern_youtube', 'pattern_recaptcha', 'pattern_hsts', 'pattern_googleads',
+            'has_wordpress', 'has_react', 'has_vue', 'has_angular',
+            'has_svelte', 'has_polymer',
             'has_jquery', 'has_momentjs', 'has_corejs', 'has_swiper',
+            'has_hammerjs', 'has_lottie',
             'has_bootstrap', 'has_tailwind',
             'has_laravel', 'has_django', 'has_php', 'has_asp', 'has_nodejs',
             'has_elementor', 'has_yoast', 'has_woocommerce',
             'has_ga', 'has_gtm', 'has_onesignal', 'has_pwa',
+            'has_youtube', 'has_recaptcha', 'has_hsts', 'has_googleads',
         ]
+
 
 
 

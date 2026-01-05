@@ -40,9 +40,9 @@ logger = logging.getLogger('techscan.ml')
 # because they cannot be reliably detected from frontend code alone
 TARGET_TECHNOLOGIES = [
     # Core frameworks
-    'WordPress', 'React', 'Vue.js', 'Angular', 'Svelte',
+    'WordPress', 'React', 'Vue.js', 'Angular', 'Svelte', 'Polymer',
     # JS libraries
-    'jQuery', 'Moment.js', 'Swiper',
+    'jQuery', 'Moment.js', 'Swiper', 'Hammer.js', 'LottieFiles',
     # CSS frameworks
     'Bootstrap', 'Tailwind CSS',
     # Backend frameworks
@@ -51,11 +51,16 @@ TARGET_TECHNOLOGIES = [
     'Elementor', 'Yoast SEO', 'WooCommerce',
     # Servers
     'Nginx', 'Apache', 'Cloudflare',
-    # Analytics/Marketing
-    'Google Analytics', 'Google Tag Manager', 'OneSignal',
+    # Analytics/Marketing/Ads
+    'Google Analytics', 'Google Tag Manager', 'OneSignal', 'Google Ads',
+    # Security
+    'reCAPTCHA', 'HSTS',
+    # Media
+    'YouTube',
     # Misc
     'Google Fonts', 'Font Awesome', 'PWA',
 ]
+
 
 
 
