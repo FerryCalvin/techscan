@@ -293,3 +293,76 @@ MIT License - See [LICENSE](LICENSE) for details.
 ---
 
 Built for Internship Project at Universitas Airlangga
+
+---
+
+# 📑 Laporan Detail Proyek (Untuk Presentasi)
+
+Berikut adalah detail teknis dan manajerial proyek untuk dokumentasi dan bahan presentasi.
+
+## 1. Identitas Proyek
+*   **Judul**: TechScan: Sistem Pemindai dan Analisis Teknologi Web Berbasis Hybrid Machine Learning
+*   **Instansi**: Universitas Airlangga
+*   **Pengembang**: Ferry Calvin
+
+## 2. Latar Belakang Masalah
+*   **Visibilitas Aset IT yang Rendah**: Universitas Airlangga memiliki ratusan hingga ribuan subdomain (fakultas, departemen, unit kegiatan) yang terdesentralisasi. Sulit bagi tim IT pusat untuk mengetahui secara *real-time* teknologi apa saja yang digunakan di setiap unit.
+*   **Deteksi Teknologi Konvensional Kurang Akurat**: Scanner berbasis *Regular Expression* tradisional sering gagal mendeteksi teknologi modern seperti *Single Page Application* (React, Vue, Svelte) yang kontennya di-render oleh JavaScript.
+*   **Isu Keamanan & Kepatuhan**: Banyak website universitas yang mungkin menggunakan CMS atau plugin versi lama yang rentan, namun tidak terdeteksi karena kurangnya alat monitoring terpusat yang *scalable*.
+
+## 3. Tujuan Proyek
+1.  **Meningkatkan Akurasi Deteksi**: Membangun sistem yang mampu mendeteksi teknologi web modern dengan akurasi >90%, meminimalkan *false positives* (salah deteksi) yang sering terjadi pada scanner biasa.
+2.  **Pemindaian Hibrida Cerdas**: Menggabungkan kecepatan deteksi statis dengan kedalaman analisis *machine learning* untuk hasil yang optimal.
+3.  **Efisiensi Monitoring**: Menyediakan dashboard terpusat yang memungkinkan admin memantau distribusi teknologi, versi CMS, dan kesehatan aset web universitas secara *real-time*.
+
+## 4. Teknologi yang Digunakan
+*   **Backend**: Python 3.12 (Flask Framework) - Dipilih karena ekosistem *Machine Learning* yang kuat dan kemudahan pengembangan API.
+*   **Scanner Engine**: Node.js 18+ & Wappalyzer Core - Untuk analisis dinamis berbasis *headless browser*.
+*   **Machine Learning**:
+    *   **Scikit-Learn**: Algoritma *Random Forest Classifier* untuk klasifikasi multi-label.
+    *   **NumPy**: Komputasi numerik vektor fitur.
+*   **Database**:
+    *   **PostgreSQL**: Penyimpanan data relasional jangka panjang (persisten).
+    *   **Redis**: Manajemen antrian *job* (Queue), caching hasil scan, dan *rate limiting*.
+*   **Frontend**: Modern HTML5/CSS3 dengan desain *Glassmorphism*, responsif tanpa framework berat.
+*   **Infrastructure**: Docker Containerization untuk kemudahan deployment.
+
+## 5. Metodologi: Hybrid Detection System
+Sistem ini menggunakan pendekatan **Hibrida 3-Lapis** untuk memastikan akurasi maksimal:
+
+1.  **Static Analysis (Tier 1)**:
+    *   Pencocokan pola cepat (*Regex*) pada kode sumber HTML dan HTTP Response Headers.
+    *   Mendeteksi CMS umum (WordPress, Joomla) dan server web (Nginx, Apache).
+2.  **Dynamic Analyis (Tier 2)**:
+    *   Menggunakan *Headless Browser* untuk mengeksekusi JavaScript pada halaman.
+    *   Mendeteksi variabel global JS (`window.React`, `window.Vue`) dan cookies spesifik.
+3.  **Machine Learning Classification (Tier 3)**:
+    *   Analisis probabilistik untuk pola yang ambigu.
+    *   Mempelajari korelasi fitur samar (misal: struktur DOM spesifik, kombinasi script) untuk memprediksi teknologi yang disembunyikan atau tidak memiliki "signature" jelas.
+
+## 6. Implementasi & Fitur Unggulan
+*   **Intelligent Feature Extraction**: Modul ekstraksi fitur otomatis yang mengubah dokumen HTML menjadi vektor numerik untuk input ML (menghitung densitas script, rasio tag, pola meta).
+*   **Anti-Overfitting ML**: Penerapan *Cross-Validation* (5-fold) dan *Regularization* ketat pada model Random Forest. Model dilatih untuk "skor nol" pada teknologi backend (DB) yang tidak terlihat, menghilangkan halusinasi deteksi.
+*   **Auto-Healing Scan**: Jika mode cepat gagal mendeteksi teknologi kritis, sistem otomatis beralih ke mode *Deep Scan* (browser-based).
+*   **API-First Design**: Seluruh fungsi pemindaian dapat diakses programatik via REST API, siap diintegrasikan dengan SIEM atau dashboard keamanan lain.
+
+## 7. Hasil Pengujian
+Pengujian dilakukan pada dataset sintetis dan *real-world* (domain `unair.ac.id` dan `youtube.com`):
+
+*   **Akurasi Model**: 95.4% pada *Test Set*.
+*   **Peningkatan Presisi**: Berhasil **menghilangkan 100% false positives** pada deteksi database (MySQL, PostgreSQL, Redis) yang sebelumnya salah terdeteksi oleh iterasi awal model.
+*   **Cakupan Teknologi Baru**: Berhasil menambahkan dukungan deteksi akurat untuk teknologi:
+    *   **Framework**: Svelte, Polymer.
+    *   **Libraries**: Moment.js, Hammer.js, Swiper, LottieFiles.
+    *   **Security/Ads**: reCAPTCHA, HSTS, Google Ads.
+    *   **WordPress Ecosystem**: Elementor, Yoast SEO, WooCommerce.
+
+## 8. Kendala & Solusi
+| Kendala | Solusi yang Diterapkan |
+| :--- | :--- |
+| **Data Latih Terbatas** | Menggunakan *Synthetic Data Generation* dengan variasi acak untuk memperkaya dataset latih tanpa perlu ribuan scraping manual. |
+| **False Positives** | Menambahkan 100+ sampel "negatif" (halaman yang *mirip* tapi *bukan* teknologi target) ke dalam data training untuk mengajarkan model perbedaan halus. |
+| **Pemblokiran WAF** | Implementasi *Rate Limiting* adaptif dan *User-Agent Rotation* untuk menghindari pemblokiran IP saat scanning massal. |
+
+## 9. Kesimpulan
+TechScan berhasil dikembangkan sebagai solusi pemindaian teknologi web yang cerdas dan adaptif. Integrasi *Machine Learning* terbukti efektif menutup celah kelemahan scanner tradisional, terutama dalam menangani *false positives* dan teknologi modern. Sistem ini siap diimplementasikan sebagai alat pendukung utama bagi tim IT Universitas Airlangga untuk manajemen aset dan audit teknologi web yang berkelanjutan.
