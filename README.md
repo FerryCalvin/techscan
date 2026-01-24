@@ -182,7 +182,7 @@ See `.env.example` for complete documentation. Key variables:
 | `TECHSCAN_STATS_AUTO_REFRESH` | `0` | Enable stats auto-refresh |
 | `TECHSCAN_STATS_AUTO_REFRESH_INTERVAL_MS` | `300000` | Refresh interval (5 min) |
 
-### Security
+### Security Settings
 
 | Variable | Default | Description |
 |----------|---------|-------------|
