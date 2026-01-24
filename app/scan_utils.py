@@ -2294,12 +2294,42 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
         out['technologies'] = canoned
     except Exception:
         pass
+    # --- Apply custom version detection (multi-signal) ---
+    # This corrects versions that were incorrectly inherited (e.g., jQuery UI getting jQuery version)
+    try:
+        from .versioning import extract_versions
+        # Collect URLs from raw data
+        _raw = out.get('raw', {})
+        _extras = _raw.get('extras', {})
+        _urls = []
+        _urls.extend(_extras.get('scripts', []))
+        _urls.extend(_extras.get('links', []))
+        # Get HTML if available
+        _html = ''
+        if 'html' in _raw:
+            _html = _raw.get('html', '')
+        # Apply version correction
+        out['technologies'] = extract_versions(
+            out.get('technologies', []),
+            html=_html,
+            urls=_urls,
+            js_vars={}  # JS vars would come from node scanner
+        )
+        logging.getLogger('techscan.unified').debug(
+            'version correction applied domain=%s techs=%d', 
+            domain, len(out.get('technologies', []))
+        )
+    except ImportError:
+        pass  # versioning module not available
+    except Exception as _ver_err:
+        logging.getLogger('techscan.unified').debug('version correction failed domain=%s err=%s', domain, _ver_err)
     # Attach raw extras if available from py-local for version evidence
     try:
         if 'raw' not in out and 'raw' in locals().get('nres', {}):
             out['raw'] = locals()['nres']['raw']
     except Exception:
         pass
+
     # Mark which fallbacks were used for observability
     if micro_used:
         out.setdefault('tiered', {})['micro_used'] = True
