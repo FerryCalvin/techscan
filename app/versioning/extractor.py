@@ -358,17 +358,20 @@ class VersionExtractor:
             if result:
                 current_version = tech.get('version')
                 
-                # Only update if:
-                # 1. No current version, OR
-                # 2. New version has higher confidence source
+                # Always update when we have a confident detection
+                # URL patterns and JS vars are more reliable than inherited versions
                 should_update = False
                 
                 if not current_version:
                     should_update = True
-                elif not is_plausible_version(current_version, name):
-                    should_update = True
                 elif result.source == 'js_var':
-                    # JS var always wins
+                    # JS var always wins (highest accuracy)
+                    should_update = True
+                elif result.source == 'url' and result.confidence >= 0.85:
+                    # URL pattern match with high confidence - override existing
+                    # This fixes jQuery UI getting jQuery's version
+                    should_update = True
+                elif not is_plausible_version(current_version, name):
                     should_update = True
                 
                 if should_update:
@@ -381,6 +384,7 @@ class VersionExtractor:
                         f"Version updated: {name} {old_version} -> {result.version} "
                         f"(source={result.source}, confidence={result.confidence:.2f})"
                     )
+
         
         return technologies
 
