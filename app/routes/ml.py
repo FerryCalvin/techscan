@@ -269,6 +269,48 @@ def model_info():
         return jsonify({'error': str(e)}), 500
 
 
+@bp.route('/auto_learn/status', methods=['GET'])
+def auto_learn_status():
+    """Get auto-learning status.
+    
+    Returns current state of auto-learning including:
+    - enabled: whether auto-learn is enabled
+    - scans_since_training: number of scans since last training
+    - last_training_time: when model was last trained
+    - retrain_threshold: scans needed to trigger retraining
+    """
+    try:
+        from ..ml.auto_learn import get_state
+        return jsonify(get_state())
+    except ImportError:
+        return jsonify({'error': 'auto_learn module not available'}), 503
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/auto_learn/retrain', methods=['POST'])
+def auto_learn_retrain():
+    """Force immediate retraining.
+    
+    Triggers combined training (demo + database) regardless of thresholds.
+    """
+    try:
+        from ..ml.auto_learn import force_retrain
+        metrics = force_retrain()
+        if 'error' in metrics:
+            return jsonify(metrics), 400
+        return jsonify({
+            'status': 'success',
+            'type': 'auto_learn_forced',
+            'metrics': metrics
+        })
+    except ImportError:
+        return jsonify({'error': 'auto_learn module not available'}), 503
+    except Exception as e:
+        logger.error(f"Force retrain error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @bp.route('/hybrid_scan', methods=['POST'])
 def hybrid_scan():
     """Hybrid scan: ML prediction + unified scan, merged and deduplicated.
