@@ -216,6 +216,43 @@ def train_demo():
         return jsonify({'error': str(e)}), 500
 
 
+@bp.route('/train/combined', methods=['POST'])
+def train_combined():
+    """Train model with combined demo + database data.
+    
+    This approach uses synthetic demo data as a strong foundation
+    and augments with real database scan data for better generalization.
+    
+    Request body (optional):
+    {
+        "db_limit": 300,      // max database scans to include
+        "demo_weight": 0.7    // weight of demo data (0.0-1.0)
+    }
+    """
+    try:
+        from ..ml.training import train_combined as _train_combined
+    except ImportError as e:
+        return jsonify({
+            'error': 'ML modules not available',
+            'message': str(e)
+        }), 503
+    
+    data = request.get_json() or {}
+    db_limit = int(data.get('db_limit', 300))
+    demo_weight = float(data.get('demo_weight', 0.7))
+    
+    try:
+        metrics = _train_combined(db_limit=db_limit, demo_weight=demo_weight)
+        return jsonify({
+            'status': 'success',
+            'type': 'combined',
+            'metrics': metrics
+        })
+    except Exception as e:
+        logger.error(f"Combined training error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @bp.route('/model/info', methods=['GET'])
 def model_info():
     """Get detailed model information."""

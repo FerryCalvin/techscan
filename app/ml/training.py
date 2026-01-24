@@ -693,3 +693,84 @@ def train_demo() -> Dict[str, Any]:
     
     classifier.save()
     return metrics
+
+
+def train_combined(db_limit: int = 300, demo_weight: float = 0.7, save: bool = True) -> Dict[str, Any]:
+    """Train with combined demo + database data.
+    
+    This approach uses demo data as a strong foundation (with clear patterns)
+    and augments with real database data for better generalization.
+    
+    Args:
+        db_limit: Maximum database scans to include
+        demo_weight: Weight of demo samples (0.0-1.0). Higher = more demo data influence
+        save: Whether to save model after training
+        
+    Returns:
+        Training metrics with source breakdown
+    """
+    logger.info("Starting combined training (demo + database)...")
+    
+    # Step 1: Get demo data (strong foundation)
+    demo_X, demo_y = create_demo_training_data()
+    logger.info(f"Demo data: {len(demo_X)} samples")
+    
+    # Step 2: Get database data (real-world examples)
+    generator = TrainingDataGenerator()
+    db_count = generator.generate_from_database(limit=db_limit)
+    db_X, db_y = generator.get_training_data()
+    logger.info(f"Database data: {len(db_X)} samples")
+    
+    # Step 3: Combine data with weighting
+    # Demo data is duplicated based on weight to give it more influence
+    combined_X = []
+    combined_y = []
+    
+    # Add demo data (with weight)
+    demo_copies = max(1, int(len(db_X) * demo_weight / max(len(demo_X), 1)))
+    demo_copies = min(demo_copies, 3)  # Cap at 3x to avoid over-representation
+    for _ in range(demo_copies):
+        combined_X.extend(demo_X)
+        combined_y.extend(demo_y)
+    logger.info(f"Demo samples added: {len(demo_X) * demo_copies} ({demo_copies}x)")
+    
+    # Add database data
+    combined_X.extend(db_X)
+    combined_y.extend(db_y)
+    logger.info(f"Total combined samples: {len(combined_X)}")
+    
+    if len(combined_X) < 20:
+        return {
+            'error': f'Not enough combined samples: {len(combined_X)}',
+            'min_required': 20,
+            'demo_samples': len(demo_X),
+            'db_samples': len(db_X)
+        }
+    
+    # Step 4: Train with combined data
+    classifier = TechClassifier()
+    metrics = classifier.train(
+        combined_X, combined_y,
+        test_size=0.25,
+        use_cross_validation=True,
+        n_estimators=200,  # More trees for complex data
+        max_depth=10,  # Slightly deeper for real-world patterns
+        min_samples_split=4,
+        min_samples_leaf=2,
+        max_features='sqrt',
+    )
+    
+    # Add source breakdown to metrics
+    metrics['training_sources'] = {
+        'demo_samples': len(demo_X) * demo_copies,
+        'db_samples': len(db_X),
+        'total_samples': len(combined_X),
+        'demo_weight': demo_weight
+    }
+    
+    if save:
+        classifier.save()
+    
+    logger.info(f"Combined training complete. Test accuracy: {metrics.get('test_accuracy', 0):.1%}")
+    return metrics
+
