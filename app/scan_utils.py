@@ -2109,6 +2109,30 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
             # Exact equality - definitely merge
             if name_a == name_b:
                 return True
+            
+            # EXPLICIT BLOCKLIST: Never merge these distinct technologies
+            # Each tuple contains technologies that share a prefix but are distinct
+            NEVER_MERGE = [
+                ('jquery', 'jquery ui', 'jquery migrate', 'jquery mobile'),
+                ('wordpress', 'wordpress multilingual plugin', 'wordpress com'),
+                ('elementor', 'elementor header', 'essential addons for elementor'),
+                ('google analytics', 'google tag manager', 'google font api', 'google fonts'),
+                ('react', 'react router', 'react dom'),
+                ('vue', 'vue router', 'vuex'),
+                ('angular', 'angular material', 'angular universal'),
+                ('yoast', 'yoast seo'),
+                ('bootstrap', 'bootstrap vue', 'bootstrap icons'),
+            ]
+            
+            for group in NEVER_MERGE:
+                a_in_group = any(g in name_a or name_a in g for g in group)
+                b_in_group = any(g in name_b or name_b in g for g in group)
+                if a_in_group and b_in_group:
+                    # Both are in the same "family" - only merge if EXACTLY equal
+                    # This prevents jQuery merging with jQuery UI
+                    if name_a != name_b:
+                        return False
+            
             # Stricter: only merge if one is exact prefix + version suffix or very minor variant
             # e.g., "wordpress" vs "wordpress 6.0" should merge
             # e.g., "jquery" vs "jquery ui" should NOT merge (ui is not a version)
@@ -2134,6 +2158,7 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
                     return True
             # Otherwise, don't merge - they're distinct technologies
             return False
+
 
         def _parse_version_tuple(v: str | None) -> tuple:
             if not v:
