@@ -1296,7 +1296,7 @@ def get_recent_scan_jobs(limit: int = 20) -> list:
 def get_recent_scans(limit: int = 500) -> list:
     """Get recent scan results for ML training.
     
-    Returns scan results with domain and technologies.
+    Returns scan results with domain, technologies, and raw_html.
     """
     if _DB_DISABLED:
         return []
@@ -1304,10 +1304,10 @@ def get_recent_scans(limit: int = 500) -> list:
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute('''
-                    SELECT domain, technologies, scan_mode, timestamp
-                    FROM scan_results 
-                    WHERE technologies IS NOT NULL 
-                    ORDER BY timestamp DESC 
+                    SELECT domain, technologies_json, raw_json, mode, finished_at
+                    FROM scans 
+                    WHERE technologies_json IS NOT NULL 
+                    ORDER BY finished_at DESC 
                     LIMIT %s
                 ''', (limit,))
                 rows = cur.fetchall()
@@ -1315,22 +1315,35 @@ def get_recent_scans(limit: int = 500) -> list:
                 for r in rows:
                     domain = r[0]
                     techs = r[1]
+                    raw_json = r[2]
                     # Handle JSON stored as string
                     if isinstance(techs, str):
                         try:
                             techs = json.loads(techs)
                         except:
                             techs = []
+                    # Extract HTML from raw_json if available
+                    raw_html = None
+                    if isinstance(raw_json, dict):
+                        raw_html = raw_json.get('html') or raw_json.get('raw_html')
+                    elif isinstance(raw_json, str):
+                        try:
+                            raw_data = json.loads(raw_json)
+                            raw_html = raw_data.get('html') or raw_data.get('raw_html')
+                        except:
+                            pass
                     results.append({
                         'domain': domain,
                         'technologies': techs or [],
-                        'scan_mode': r[2],
-                        'timestamp': r[3].timestamp() if r[3] else None,
+                        'raw_html': raw_html,
+                        'scan_mode': r[3],
+                        'timestamp': r[4].timestamp() if r[4] else None,
                     })
                 return results
     except Exception as e:
         logging.getLogger('techscan.db').debug(f"get_recent_scans error: {e}")
     return []
+
 
 
 # ============ Scheduled Cleanup ============

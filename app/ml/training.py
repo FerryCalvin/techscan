@@ -51,6 +51,9 @@ class TrainingDataGenerator:
     def generate_from_database(self, limit: int = 500) -> int:
         """Generate training data from database scans.
         
+        Uses stored HTML from database when available (fast).
+        Falls back to fetching HTML only when stored HTML is not available.
+        
         Args:
             limit: Maximum number of scans to process
             
@@ -65,12 +68,19 @@ class TrainingDataGenerator:
         
         scans = _db.get_recent_scans(limit=limit)
         count = 0
+        skipped = 0
+        from_cache = 0
+        from_fetch = 0
+        
+        logger.info(f"Processing {len(scans)} scans from database...")
         
         for scan in scans:
             domain = scan.get('domain')
             technologies = scan.get('technologies', [])
+            raw_html = scan.get('raw_html')  # Use stored HTML
             
             if not domain or not technologies:
+                skipped += 1
                 continue
             
             # Get tech names that match our targets
@@ -83,12 +93,22 @@ class TrainingDataGenerator:
                     tech_names.append(matching)
             
             if not tech_names:
+                skipped += 1
                 continue
             
-            # Fetch current HTML for features
-            html, headers = self.fetch_html(domain)
-            if not html:
-                continue
+            # Use stored HTML if available, otherwise fetch
+            if raw_html:
+                html = raw_html
+                headers = {}  # Headers not stored, use empty
+                from_cache += 1
+            else:
+                # Fallback: fetch HTML from domain
+                html, headers = self.fetch_html(domain)
+                if html:
+                    from_fetch += 1
+                else:
+                    skipped += 1
+                    continue
             
             # Extract features
             features = extract_features(html, headers)
@@ -97,11 +117,12 @@ class TrainingDataGenerator:
             self.samples.append((vector, list(set(tech_names))))
             count += 1
             
-            if count % 10 == 0:
-                logger.info(f"Generated {count} training samples...")
+            if count % 20 == 0:
+                logger.info(f"Generated {count} training samples (cache: {from_cache}, fetch: {from_fetch})...")
         
-        logger.info(f"Generated {count} training samples total")
+        logger.info(f"Generated {count} training samples total (cache: {from_cache}, fetch: {from_fetch}, skipped: {skipped})")
         return count
+
     
     def _match_technology(self, name: str) -> Optional[str]:
         """Match a technology name to our target list."""

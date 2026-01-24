@@ -230,3 +230,152 @@ def model_info():
         return jsonify(status)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/hybrid_scan', methods=['POST'])
+def hybrid_scan():
+    """Hybrid scan: ML prediction + unified scan, merged and deduplicated.
+    
+    This endpoint:
+    1. Runs ML prediction (instant)
+    2. Runs unified scan (thorough)
+    3. Merges results, keeps highest confidence per technology
+    4. Returns combined, deduplicated results
+    
+    Request body:
+    {
+        "domain": "example.com",  // required
+        "ml_threshold": 0.3,      // optional, default 0.3
+        "include_raw": false      // optional, include raw results
+    }
+    
+    Response:
+    {
+        "domain": "example.com",
+        "technologies": [...],
+        "sources": {"ml": 5, "unified": 20},
+        "duration_ms": 1234
+    }
+    """
+    import time
+    start_time = time.time()
+    
+    data = request.get_json() or {}
+    domain = data.get('domain', '').strip()
+    ml_threshold = float(data.get('ml_threshold', 0.3))
+    include_raw = data.get('include_raw', False)
+    
+    if not domain:
+        return jsonify({'error': 'domain is required'}), 400
+    
+    # Normalize domain
+    if not domain.startswith('http'):
+        url = f'https://{domain}'
+    else:
+        url = domain
+        domain = domain.replace('https://', '').replace('http://', '').split('/')[0]
+    
+    results = {
+        'domain': domain,
+        'technologies': [],
+        'sources': {'ml': 0, 'unified': 0},
+        'ml_predictions': [],
+        'unified_results': [],
+    }
+    
+    # Step 1: ML Prediction (fast)
+    try:
+        classifier = _get_classifier()
+        extractor = _get_feature_extractor()
+        
+        # Fetch HTML
+        resp = requests.get(url, timeout=15, headers={
+            'User-Agent': 'TechScan Hybrid/1.0'
+        })
+        html = resp.text
+        headers = dict(resp.headers)
+        
+        # ML predictions
+        ml_predictions = classifier.predict(html, headers, threshold=ml_threshold)
+        results['ml_predictions'] = ml_predictions
+        results['sources']['ml'] = len(ml_predictions)
+        
+        logger.info(f"Hybrid scan {domain}: ML found {len(ml_predictions)} technologies")
+        
+    except Exception as e:
+        logger.warning(f"ML prediction failed for {domain}: {e}")
+        ml_predictions = []
+    
+    # Step 2: Unified Scan (thorough)
+    try:
+        from ..scan_utils import scan_unified
+        
+        unified_result = scan_unified(domain)
+        unified_techs = unified_result.get('technologies', [])
+        results['unified_results'] = unified_techs
+        results['sources']['unified'] = len(unified_techs)
+        
+        logger.info(f"Hybrid scan {domain}: Unified found {len(unified_techs)} technologies")
+        
+    except Exception as e:
+        logger.warning(f"Unified scan failed for {domain}: {e}")
+        unified_techs = []
+    
+    # Step 3: Merge and deduplicate
+    tech_map = {}  # name_lower -> best result
+    
+    # Add ML predictions
+    for pred in ml_predictions:
+        name = pred.get('name', '')
+        name_lower = name.lower()
+        confidence = pred.get('confidence', 0)
+        
+        if name_lower not in tech_map or confidence > tech_map[name_lower].get('confidence', 0):
+            tech_map[name_lower] = {
+                'name': name,
+                'confidence': confidence,
+                'source': 'ml',
+                'version': None,
+                'categories': []
+            }
+    
+    # Add/update with unified results
+    for tech in unified_techs:
+        name = tech.get('name', '')
+        name_lower = name.lower()
+        confidence = tech.get('confidence', 0)
+        
+        existing = tech_map.get(name_lower)
+        if not existing or confidence > existing.get('confidence', 0):
+            tech_map[name_lower] = {
+                'name': name,
+                'confidence': confidence,
+                'source': 'unified' if not existing else 'both',
+                'version': tech.get('version'),
+                'categories': tech.get('categories', [])
+            }
+        elif existing and existing.get('source') == 'ml':
+            # Update source to 'both' if unified also found it
+            existing['source'] = 'both'
+            # Use unified's version/categories (more reliable)
+            if tech.get('version'):
+                existing['version'] = tech.get('version')
+            if tech.get('categories'):
+                existing['categories'] = tech.get('categories')
+    
+    # Convert to sorted list
+    merged = sorted(tech_map.values(), key=lambda x: -x.get('confidence', 0))
+    results['technologies'] = merged
+    
+    # Calculate duration
+    duration_ms = int((time.time() - start_time) * 1000)
+    results['duration_ms'] = duration_ms
+    results['tech_count'] = len(merged)
+    
+    # Remove raw if not requested
+    if not include_raw:
+        del results['ml_predictions']
+        del results['unified_results']
+    
+    return jsonify(results)
+
