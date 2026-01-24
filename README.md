@@ -296,7 +296,7 @@ Built for Internship Project at Universitas Airlangga
 
 ---
 
-# 📑 Laporan Detail Proyek (Untuk Presentasi)
+## 📑 Laporan Detail Proyek (Untuk Presentasi)
 
 Berikut adalah detail teknis dan manajerial proyek untuk dokumentasi dan bahan presentasi.
 
