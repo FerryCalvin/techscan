@@ -21,8 +21,23 @@ def create_app():
     if os.environ.get('TECHSCAN_TEMPLATE_AUTO_RELOAD','0') == '1':
         app.config['TEMPLATES_AUTO_RELOAD'] = True
     # Default WAPPALYZER_PATH to local npm installation
-    _default_wapp = pathlib.Path(__file__).parent.parent / 'node_scanner' / 'node_modules' / 'wappalyzer'
-    app.config['WAPPALYZER_PATH'] = os.environ.get('WAPPALYZER_PATH', str(_default_wapp))
+    # Default WAPPALYZER_PATH resolution with fallback
+    # Resolves: env -> node_scanner/node_modules -> root/node_modules
+    _root = pathlib.Path(__file__).parent.parent
+    _candidates = [
+        os.environ.get('WAPPALYZER_PATH'),
+        _root / 'node_scanner' / 'node_modules' / 'wappalyzer',
+        _root / 'node_modules' / 'wappalyzer'
+    ]
+    
+    found_wapp = None
+    for c in _candidates:
+        if c and os.path.exists(str(c)):
+            found_wapp = str(c)
+            break
+            
+    # Default to the node_scanner path if nothing found (will fail gracefully later)
+    app.config['WAPPALYZER_PATH'] = found_wapp or str(_root / 'node_scanner' / 'node_modules' / 'wappalyzer')
 
     # Logging configuration with optional JSON format
     from .logging_utils import get_formatter

@@ -1,6 +1,3 @@
-import time
-import os
-import pytest
 
 from app import create_app
 from app import scan_utils
@@ -54,19 +51,18 @@ def test_enrichment_merges_into_unified(monkeypatch):
     monkeypatch.setenv('TECHSCAN_SYNTHETIC_HEADERS', '0')
     monkeypatch.setenv('TECHSCAN_SKIP_VERSION_AUDIT', '1')
 
-    # Monkeypatch heuristic module to return empty (scan_unified imports it lazily)
-    import sys, types
-    fake_heur = types.SimpleNamespace()
-    fake_heur.run_heuristic = lambda domain, **kwargs: {'technologies': [], 'categories': {}}
-    monkeypatch.setitem(sys.modules, 'app.heuristic_fast', fake_heur)
+    # Import real modules to patch their attributes
+    import app.heuristic_fast as real_heur
+    import app.wapp_local as real_wapp
 
-    # Monkeypatch load_categories to avoid needing WAPPALYZER_PATH files
+    # Monkeypatch run_heuristic attribute
+    monkeypatch.setattr(real_heur, 'run_heuristic', lambda domain, **kwargs: {'technologies': [], 'categories': {}})
+
+    # Monkeypatch load_categories
     monkeypatch.setattr(scan_utils, 'load_categories', lambda path: {})
 
-    # Provide a fake py-local detector module that returns raw extras with jquery script
-    fake_wapp = types.SimpleNamespace()
-    fake_wapp.detect = lambda domain, wappalyzer_path=None, timeout=None: {'technologies': [], 'categories': {}, 'extras': {'scripts': ['https://cdn.example.com/jquery-3.6.0.min.js']}}
-    monkeypatch.setitem(sys.modules, 'app.wapp_local', fake_wapp)
+    # Monkeypatch detect attribute
+    monkeypatch.setattr(real_wapp, 'detect', lambda domain, wappalyzer_path=None, timeout=None: {'technologies': [], 'categories': {}, 'extras': {'scripts': ['https://cdn.example.com/jquery-3.6.0.min.js']}})
 
     # Call unified scan
     out = scan_utils.scan_unified('example.com', wappalyzer_path='does-not-exist', budget_ms=1000)
@@ -110,7 +106,7 @@ def test_enrichment_stats_increment(monkeypatch):
     # Provide a fake py-local detector that returns an extras block (scripts) we expect infer_tech_from_urls to pick up
     fake_wapp = types.SimpleNamespace()
     fake_wapp.detect = lambda domain, wappalyzer_path=None, timeout=None: {'technologies': [], 'categories': {}, 'extras': {'scripts': ['https://cdn.example.org/jquery-3.6.0.min.js']}}
-    monkeypatch.setitem(sys.modules, 'app.wapp_local', fake_wapp)
+    monkeypatch.setattr(su, 'wapp_local', fake_wapp)
 
     # Monkeypatch load_categories as in other tests to avoid file IO
     monkeypatch.setattr(su, 'load_categories', lambda path: {})

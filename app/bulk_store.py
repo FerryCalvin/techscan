@@ -42,6 +42,13 @@ def save_batch(results: List[Dict[str, Any]], domains: List[str]) -> str:
         _batches[batch_id] = {'ts': now, 'results': results, 'domains': list(domains)}
     return batch_id
 
+def store_batch(batch_id: str, results: List[Dict[str, Any]], extra_meta: Dict[str, Any] = None) -> None:
+    """Store a batch with a specific ID (e.g. from RQ job)."""
+    now = time.time()
+    with _lock:
+        _prune_locked(now)
+        _batches[batch_id] = {'ts': now, 'results': results, 'domains': [r['domain'] for r in results if r.get('domain')], **(extra_meta or {})}
+
 def get_batch(batch_id: str) -> Optional[Dict[str, Any]]:
     with _lock:
         meta = _batches.get(batch_id)

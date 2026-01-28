@@ -11,8 +11,7 @@ import logging
 import threading
 import time
 import uuid
-from typing import Any, Callable, Dict, List, Optional
-from datetime import datetime
+from typing import Callable, Dict, List, Optional
 
 logger = logging.getLogger('techscan.job_queue')
 

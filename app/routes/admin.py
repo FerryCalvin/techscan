@@ -1,16 +1,16 @@
 
 from flask import Blueprint, request, jsonify, current_app
 import os, logging, json, time
-from ..scan_utils import flush_cache, load_heuristic_patterns, get_stats
+from ..scanners.core import flush_cache
+from ..scan_utils import get_stats, load_heuristic_patterns
 from .. import heuristic_fast
-import pathlib, shlex
+import pathlib
 from .. import safe_subprocess as sproc
 from .. import version_audit
 from .. import scan_utils
 from .. import db as dbmod
 from .. import periodic
-from statistics import mean, median
-import random
+from statistics import mean
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 

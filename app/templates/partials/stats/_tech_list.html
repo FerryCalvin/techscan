@@ -1,0 +1,14 @@
+<div class="glass-card" style="max-width:1100px;width:100%;padding:1rem;">
+    <h3>{{ title }}</h3>
+    <table class="tech-table table-glass table-glass--compact" style="width:100%;margin-top:.5rem;font-size:0.7rem;">
+        <thead>
+            <tr style="text-align:left;">
+                <th style="width:10%;">#</th>
+                <th style="{{ col2_width|default('50%') }}">{{ col2_header }}</th>
+                <th style="{{ col3_width|default('25%') }}">{{ col3_header }}</th>
+                <th style="width:15%;text-align:right;">Count</th>
+            </tr>
+        </thead>
+        <tbody id="{{ tbody_id }}"></tbody>
+    </table>
+</div>

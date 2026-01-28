@@ -1,6 +1,5 @@
 import sys
 import types
-import pytest
 
 from app import scan_utils
 
@@ -20,12 +19,10 @@ def test_enrichment_merges_into_unified(monkeypatch):
     assert hasattr(scan_utils, 'scan_unified')
     assert not hasattr(scan_utils, 'run_py_local')
 
-    dummy_raw = {"extras": {"network": ["https://cdn.com/jquery.min.js"]}}
+    dummy_raw = {"extras": {"network": ["https://cdn.com/jquery-3.6.0.min.js"]}}
 
-    fake = types.SimpleNamespace()
-    # Return raw extras at top-level so scan_unified normalize + preservation picks them up
-    fake.detect = lambda domain, wappalyzer_path=None, timeout=None: {"technologies": [], "extras": {"network": ["https://cdn.com/jquery.min.js"]}}
-    monkeypatch.setitem(sys.modules, 'app.wapp_local', fake)
+    import app.wapp_local as real_wapp
+    monkeypatch.setattr(real_wapp, 'detect', lambda domain, wappalyzer_path=None, timeout=None: {"technologies": [], "extras": {"network": ["https://cdn.com/jquery-3.6.0.min.js"]}})
 
     monkeypatch.setattr(scan_utils, 'load_categories', lambda path: {})
 

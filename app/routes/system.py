@@ -1,5 +1,5 @@
-import os, time, json, pathlib, subprocess
-from flask import Blueprint, jsonify, current_app
+import os, time, pathlib
+from flask import Blueprint, jsonify
 from .. import scan_utils
 from .. import persistent_client as _persist
 

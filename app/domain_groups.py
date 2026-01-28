@@ -1,5 +1,5 @@
 import json, os, time, threading, logging, tempfile
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 _GROUPS_PATH = os.environ.get('TECHSCAN_DOMAIN_GROUPS_FILE', os.path.join(os.path.dirname(__file__), '..', 'data', 'domain_groups.json'))
 _lock = threading.RLock()

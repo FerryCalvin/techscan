@@ -6,7 +6,6 @@ Generates training data from existing scan results in the database.
 import logging
 import requests
 from typing import Dict, Any, List, Tuple, Optional
-from datetime import datetime
 
 from .features import extract_features, features_to_vector
 from .classifier import TechClassifier, TARGET_TECHNOLOGIES
@@ -717,7 +716,7 @@ def train_combined(db_limit: int = 300, demo_weight: float = 0.7, save: bool = T
     
     # Step 2: Get database data (real-world examples)
     generator = TrainingDataGenerator()
-    db_count = generator.generate_from_database(limit=db_limit)
+    generator.generate_from_database(limit=db_limit)
     db_X, db_y = generator.get_training_data()
     logger.info(f"Database data: {len(db_X)} samples")
     

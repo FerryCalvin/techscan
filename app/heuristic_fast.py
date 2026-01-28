@@ -39,7 +39,8 @@ Implementation notes:
  - Timeout budget split: head_timeout + get_timeout (default total <= 2s configurable by env TECHSCAN_TIERED_BUDGET_MS)
 """
 from __future__ import annotations
-import time, re, http.client, socket, ssl, gzip, zlib
+import time, re, http.client, gzip, zlib
+from urllib.parse import urlparse
 from typing import Dict, Any, List, Tuple
 
 try:
@@ -187,7 +188,15 @@ CATEGORY_MAP = {
     'Oracle ILOM': ['Device management'],
     'Import Maps': ['JavaScript tooling'],
     'Progressive Web App': ['Progressive web apps'],
-    'Service Worker': ['Progressive web apps']
+    'Progressive Web App': ['Progressive web apps'],
+    'Service Worker': ['Progressive web apps'],
+    # Missing WP Plugins from patterns
+    'WordPress Multilingual Plugin (WPML)': ['WordPress plugins'],
+    'Polylang': ['WordPress plugins'],
+    'Rank Math SEO': ['SEO', 'WordPress plugins'],
+    'UpdraftPlus': ['WordPress plugins'],
+    'Advanced Custom Fields': ['WordPress plugins'],
+    'Jetpack': ['WordPress plugins']
 }
 
 # Additional fingerprint sources beyond vanilla Wappalyzer signals
@@ -352,6 +361,17 @@ def _http_fetch(domain: str, total_timeout: float) -> tuple[dict, bytes, bool]:
     }
     target_host = domain
     target_path = '/'
+    # Support full URLs if provided
+    if '://' in domain:
+        try:
+            parsed = urlparse(domain)
+            target_host = parsed.hostname or domain
+            target_path = parsed.path or '/'
+            if parsed.query:
+                target_path = f'{target_path}?{parsed.query}'
+        except Exception:
+            pass
+
     redirects_left = 2
     while time.time() < deadline:
         made_request = False
@@ -454,7 +474,6 @@ def run_heuristic(domain: str, budget_ms: int = 1800, allow_empty_early: bool = 
     categories: Dict[str, List[Dict[str, Any]]] = {}
     lower_html = body.decode('utf-8', 'ignore') if body else ''
     version_evidence: dict[str, list[dict[str,str]]] = {}
-    alt_versions: dict[str, set[str]] = {}
     tier_meta_extra: Dict[str, Any] = {}
 
     def ensure_tech(name: str, confidence: int, label: str | None = None) -> Dict[str, Any]:
@@ -741,13 +760,17 @@ def run_heuristic(domain: str, budget_ms: int = 1800, allow_empty_early: bool = 
     early = False
     reason = 'minimal'
     if has_cms:
-        early = True; reason = 'cms'
+        early = True
+        reason = 'cms'
     elif 'WordPress' in names and any(p in names for p,_ in WP_PLUGIN_PATTERNS):
-        early = True; reason = 'wordpress+plugins'
+        early = True
+        reason = 'wordpress+plugins'
     elif distinct_priority >= 2:
-        early = True; reason = 'multi'
+        early = True
+        reason = 'multi'
     elif allow_empty_early and distinct_priority == 0:
-        early = True; reason = 'empty'
+        early = True
+        reason = 'empty'
 
     finished = time.time()
     result = {

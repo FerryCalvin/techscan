@@ -1,5 +1,9 @@
-import threading, time, os
-from app.scan_utils import STATS, _single_flight_enter, _single_flight_exit, _cache, _lock, CACHE_TTL
+from app.scan_utils import STATS, CACHE_TTL
+from app.scan.network import single_flight_enter as _single_flight_enter, single_flight_exit as _single_flight_exit
+from app.scanners.state import _cache, _lock
+import os
+import threading
+import time
 
 # We monkeypatch scan_domain to simulate a slow underlying scan so that
 # followers exercise the single-flight wait path without relying on network.
@@ -12,6 +16,14 @@ def test_single_flight_deduplicates(monkeypatch, tmp_path):
     os.environ['TECHSCAN_SINGLE_FLIGHT'] = '1'
     domain = 'example.com'
     wappalyzer_path = os.environ.get('WAPPALYZER_PATH', 'wappalyzer')
+
+    # Wire up stats to network - required now that single_flight moved to network.py
+    try:
+        from app.scan.network import set_stats_reference
+        from app.scanners.state import _stats_lock
+        set_stats_reference(STATS, _stats_lock)
+    except ImportError:
+        pass # Fallback if signature mismatch
 
     # Monkeypatch scan_domain BEFORE threads start
     # We'll test the single-flight primitives directly to avoid external scan variability.

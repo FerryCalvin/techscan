@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Iterable, Tuple
 
 _PLACEHOLDER_PATTERN = '(?:)'
 

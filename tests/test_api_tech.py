@@ -1,4 +1,4 @@
-import os, pathlib, sys, time
+import pathlib, sys, time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:

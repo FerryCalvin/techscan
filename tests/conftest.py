@@ -4,6 +4,11 @@ import pathlib
 import socket
 import threading
 import time
+import warnings
+
+# Filter noisy warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="pythonjsonlogger")
+warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
 import pytest
 from werkzeug.serving import make_server
@@ -13,6 +18,14 @@ from werkzeug.serving import make_server
 _ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
+
+# Set test environment config BEFORE importing app to ensure it picks up
+# static configuration (if any)
+os.environ['TECHSCAN_ADMIN_OPEN'] = '1'
+os.environ['TECHSCAN_DISABLE_RQ'] = '1'
+os.environ['TECHSCAN_DISABLE_DB'] = '1'
+if 'TECHSCAN_ADMIN_TOKEN' in os.environ:
+    del os.environ['TECHSCAN_ADMIN_TOKEN']
 
 from app import create_app
 
@@ -41,6 +54,9 @@ def _ensure_stats_server():
         # Something (maybe developer server) already listens; reuse it.
         yield
         return
+    # Bypass admin token check for tests
+    os.environ['TECHSCAN_ADMIN_OPEN'] = '1'
+    os.environ['TECHSCAN_DISABLE_RQ'] = '1'
     app = create_app()
     app.testing = True
     server = make_server(host, port, app)
@@ -62,6 +78,8 @@ def _ensure_stats_server():
 
 @pytest.fixture
 def client():
+    os.environ['TECHSCAN_ADMIN_OPEN'] = '1'
+    os.environ['TECHSCAN_DISABLE_RQ'] = '1'
     app = create_app()
     app.testing = True
     return app.test_client()

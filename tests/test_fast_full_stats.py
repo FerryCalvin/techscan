@@ -1,4 +1,4 @@
-import unittest, pathlib, sys, time, os
+import unittest, pathlib, sys
 from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -15,7 +15,7 @@ class TestFastFullStats(unittest.TestCase):
 
     def test_stats_recorded_for_fast_full(self):
         fake_path = str(ROOT / 'node_scanner')
-        with mock.patch('app.scan_utils.scan_domain') as mscan:
+        with mock.patch('app.scanners.core.scan_domain') as mscan:
             mscan.return_value = {
                 'domain': 'example.com',
                 'technologies': [],

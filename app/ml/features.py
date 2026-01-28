@@ -5,9 +5,7 @@ for machine learning classification.
 """
 
 import re
-import hashlib
-from typing import Dict, Any, List, Optional
-from collections import Counter
+from typing import Dict, Any, List
 
 
 # ============ Feature Patterns ============

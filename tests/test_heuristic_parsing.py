@@ -1,4 +1,4 @@
-import unittest, re, pathlib, sys
+import unittest, pathlib, sys
 
 # Ensure module import path
 ROOT = pathlib.Path(__file__).resolve().parents[1]

@@ -4,8 +4,7 @@ All new API endpoints should be added here under /api/v1/ prefix.
 Old endpoints are kept for backward compatibility with deprecation warnings.
 """
 
-from flask import Blueprint, request, jsonify, Response
-import logging
+from flask import Blueprint, Response
 
 # Create versioned blueprint
 api_v1 = Blueprint('api_v1', __name__, url_prefix='/api/v1')

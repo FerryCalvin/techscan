@@ -5,8 +5,6 @@ Metrics are exposed at /metrics/prometheus endpoint.
 """
 
 import time
-from functools import wraps
-from typing import Optional
 
 # Try to import prometheus_client, provide stub if not available
 try:

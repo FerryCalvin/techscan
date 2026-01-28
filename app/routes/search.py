@@ -245,7 +245,6 @@ def diff_domain():
         return jsonify({'error':'invalid domain'}), 400
     try:
         # Fetch last two scan snapshots with technologies_json
-        from psycopg import sql as _sql  # local import avoid global if db disabled
         with _db.get_conn() as conn:  # type: ignore[attr-defined]
             with conn.cursor() as cur:
                 cur.execute('''SELECT finished_at, technologies_json FROM scans
@@ -347,9 +346,12 @@ def scan_history():
         offset = int(request.args.get('offset','0'))
     except ValueError:
         return jsonify({'error':'bad_params'}), 400
-    if limit < 1: limit = 20
-    if limit > 200: limit = 200
-    if offset < 0: offset = 0
+    if limit < 1:
+        limit = 20
+    if limit > 200:
+        limit = 200
+    if offset < 0:
+        offset = 0
     sort_key = (request.args.get('sort') or 'finished_at').lower()
     sort_dir = (request.args.get('dir') or 'desc').lower()
     valid_cols = {

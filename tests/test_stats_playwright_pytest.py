@@ -1,4 +1,3 @@
-import pytest
 
 
 def test_stats_page_fallback_and_modal(page):

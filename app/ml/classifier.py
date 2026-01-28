@@ -10,19 +10,18 @@ Anti-overfitting measures:
 """
 
 import os
-import json
 import pickle
 import logging
 import numpy as np
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 try:
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.preprocessing import MultiLabelBinarizer
-    from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
-    from sklearn.metrics import classification_report, accuracy_score, hamming_loss
+    from sklearn.model_selection import train_test_split
+    from sklearn.metrics import accuracy_score, hamming_loss
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
@@ -245,7 +244,7 @@ class TechClassifier:
         self.metadata = metrics
         
         # Log results
-        logger.info(f"Training complete.")
+        logger.info("Training complete.")
         logger.info(f"  Train accuracy: {train_accuracy:.2%}")
         logger.info(f"  Test accuracy: {test_accuracy:.2%}")
         logger.info(f"  Overfit gap: {overfit_gap:.2%}")

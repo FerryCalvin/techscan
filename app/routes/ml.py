@@ -7,10 +7,9 @@ Endpoints:
 - GET /ml/status - Get model status
 """
 
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify
 import logging
 import requests
-from typing import Dict, Any
 
 logger = logging.getLogger('techscan.ml.api')
 
@@ -70,7 +69,7 @@ def predict():
     """
     try:
         classifier = _get_classifier()
-    except ImportError as e:
+    except ImportError:
         return jsonify({
             'error': 'scikit-learn not installed',
             'install_command': 'pip install scikit-learn'
@@ -365,7 +364,7 @@ def hybrid_scan():
     # Step 1: ML Prediction (fast)
     try:
         classifier = _get_classifier()
-        extractor = _get_feature_extractor()
+        _get_feature_extractor()
         
         # Fetch HTML
         resp = requests.get(url, timeout=15, headers={

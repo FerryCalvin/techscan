@@ -45,19 +45,21 @@
           title="One domain per line. Duplicates are removed automatically.">
           <textarea name="domains" rows="6" placeholder="domain1.com\ndomain2.org\nsub.domain3.id"
             class="glass-input"></textarea>
-          <div class="bulk-controls">
-            <label class="small-note btn-glass btn-glass-small">
-              Upload TXT
-              <input type="file" id="bulk-file" accept="text/plain" />
-            </label>
-            <span id="file-info" class="small-note"></span>
-            <label><input type="checkbox" name="sequential" value="1" checked /> queue sequential</label>
-            <span id="bulk-stats" class="small-note"></span>
-          </div>
-          <div class="bulk-actions">
-            <button type="submit" class="btn-glass btn-glass-small" id="bulk-btn">Scan</button>
-            <button type="button" class="btn-glass btn-glass-small is-hidden" id="bulk-cancel">Cancel</button>
-            <span id="bulk-error" class="small"></span>
+          <div class="bulk-actions"
+            style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;margin-top:0.5rem;">
+            <div style="display:flex;align-items:center;gap:0.5rem;">
+              <button type="submit" class="btn-glass btn-glass-small" id="bulk-btn">Scan</button>
+              <button type="button" class="btn-glass btn-glass-small is-hidden" id="bulk-cancel">Cancel</button>
+              <span id="bulk-error" class="small"></span>
+              <span id="bulk-stats" class="small-note"></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:0.5rem;">
+              <span id="file-info" class="small-note"></span>
+              <label class="btn-glass btn-glass-small" style="margin:0;cursor:pointer;">
+                📁 Upload TXT
+                <input type="file" id="bulk-file" accept="text/plain" style="display:none;" />
+              </label>
+            </div>
           </div>
           <div class="progress-wrapper">
             <div class="progress-track">
@@ -1228,11 +1230,102 @@
     }
   }
 
+  // Normalize technology names to merge duplicates (e.g., PWA → Progressive Web App, nginx → Nginx)
+  const TECH_NAME_NORMALIZE_MAP = {
+    'pwa': 'Progressive Web App',
+    'nginx': 'Nginx',
+    'apache': 'Apache',
+    'mysql': 'MySQL',
+    'postgresql': 'PostgreSQL',
+    'mongodb': 'MongoDB',
+    'redis': 'Redis',
+    'php': 'PHP',
+    'jquery': 'jQuery',
+    'wordpress': 'WordPress',
+    'joomla': 'Joomla',
+    'drupal': 'Drupal',
+    'react': 'React',
+    'vue.js': 'Vue.js',
+    'angular': 'Angular',
+    'node.js': 'Node.js',
+    'express': 'Express',
+    'laravel': 'Laravel',
+    'django': 'Django',
+    'flask': 'Flask',
+    'bootstrap': 'Bootstrap',
+    'tailwind css': 'Tailwind CSS',
+    'cloudflare': 'Cloudflare',
+    'google analytics': 'Google Analytics',
+    'google tag manager': 'Google Tag Manager'
+  };
+
+  function normalizeTechName(name) {
+    if (!name || typeof name !== 'string') return name;
+    const trimmed = name.trim();
+    const lower = trimmed.toLowerCase();
+    return TECH_NAME_NORMALIZE_MAP[lower] || trimmed;
+  }
+
+  // Fallback categories for common technologies missing categories in scan results
+  const TECH_CATEGORY_FALLBACK = {
+    // Programming Languages
+    'php': 'Programming Languages',
+    'python': 'Programming Languages',
+    'ruby': 'Programming Languages',
+    'java': 'Programming Languages',
+    'go': 'Programming Languages',
+    // Databases
+    'mysql': 'Databases',
+    'postgresql': 'Databases',
+    'mongodb': 'Databases',
+    'redis': 'Databases',
+    'mariadb': 'Databases',
+    // JavaScript Libraries
+    'jquery': 'JavaScript Libraries',
+    'jquery ui': 'JavaScript Libraries',
+    'jquery migrate': 'JavaScript Libraries',
+    'core-js': 'JavaScript Libraries',
+    'moment.js': 'JavaScript Libraries',
+    'swiper': 'JavaScript Libraries',
+    'marked': 'JavaScript Libraries',
+    // Tag Managers
+    'google tag manager': 'Tag Managers',
+    // Web Servers
+    'nginx': 'Web Servers',
+    'apache': 'Web Servers',
+    // Font Scripts
+    'font awesome': 'Font Scripts',
+    'font awesome 4': 'Font Scripts',
+    'font awesome 5': 'Font Scripts',
+    'font awesome 6': 'Font Scripts',
+    'google font api': 'Font Scripts',
+    'twitter emoji (twemoji)': 'Font Scripts',
+    // Push Notifications
+    'onesignal': 'Marketing Automation',
+    // WordPress Plugins
+    'wpml': 'WordPress Plugins',
+    'wordpress multilingual plugin (wpml)': 'WordPress Plugins',
+    'draftpress hfcm': 'WordPress Plugins',
+    'essential addons for elementor': 'WordPress Plugins',
+    // CMS
+    'wordpress': 'CMS',
+    // PWA
+    'pwa': 'Progressive Web Apps',
+    'progressive web app': 'Progressive Web Apps'
+  };
+
+  function getFallbackCategory(techName) {
+    if (!techName) return null;
+    return TECH_CATEGORY_FALLBACK[String(techName).toLowerCase()] || null;
+  }
+
   function techCard(t, outdated, idx) {
     const catsArr = normalizeCategories(t.categories);
     const primary = getPrimaryCategory(t);
     const fallbackCategory = typeof t.category === 'string' ? t.category.trim() : '';
-    const categoryList = catsArr.length ? catsArr : (fallbackCategory ? [fallbackCategory] : []);
+    // If no categories, try fallback lookup by tech name
+    const fallbackFromName = getFallbackCategory(t.name);
+    const categoryList = catsArr.length ? catsArr : (fallbackCategory ? [fallbackCategory] : (fallbackFromName ? [fallbackFromName] : []));
     const cats = categoryList.join(', ');
     const primaryAttr = attrEscape(primary || 'Other');
     const iconSlug = mapTechToIcon(t.name);
@@ -1370,16 +1463,69 @@
     return first || '•';
   }
 
+  // Normalize category names to consistent format (eliminates duplicates like 'JavaScript libraries' vs 'JavaScript Libraries')
+  const CATEGORY_NORMALIZE_MAP = {
+    'javascript libraries': 'JavaScript Libraries',
+    'javascript library': 'JavaScript Libraries',
+    'javascript frameworks': 'JavaScript Frameworks',
+    'javascript framework': 'JavaScript Frameworks',
+    'web servers': 'Web Servers',
+    'web server': 'Web Servers',
+    'wordpress plugins': 'WordPress Plugins',
+    'wordpress plugin': 'WordPress Plugins',
+    'wordpress themes': 'WordPress Themes',
+    'wordpress theme': 'WordPress Themes',
+    'font scripts': 'Font Scripts',
+    'font script': 'Font Scripts',
+    'progressive web apps': 'Progressive Web Apps',
+    'progressive web app': 'Progressive Web Apps',
+    'pwa': 'Progressive Web Apps',
+    'reverse proxies': 'Reverse Proxies',
+    'reverse proxy': 'Reverse Proxies',
+    'content management systems': 'CMS',
+    'content management system': 'CMS',
+    'cms': 'CMS',
+    'programming languages': 'Programming Languages',
+    'programming language': 'Programming Languages',
+    'databases': 'Databases',
+    'database': 'Databases',
+    'tag managers': 'Tag Managers',
+    'tag manager': 'Tag Managers',
+    'ui frameworks': 'UI Frameworks',
+    'ui framework': 'UI Frameworks',
+    'css frameworks': 'CSS Frameworks',
+    'css framework': 'CSS Frameworks',
+    'analytics': 'Analytics',
+    'security': 'Security',
+    'seo': 'SEO',
+    'cdn': 'CDN',
+    'miscellaneous': 'Miscellaneous',
+    'accessibility': 'Accessibility',
+    'performance': 'Performance',
+    'live chat': 'Live Chat',
+    'marketing automation': 'Marketing Automation',
+    'advertising': 'Advertising',
+    'ecommerce': 'E-commerce',
+    'e-commerce': 'E-commerce'
+  };
+
+  function normalizeCategoryName(cat) {
+    if (!cat || typeof cat !== 'string') return cat;
+    const trimmed = cat.trim();
+    const lower = trimmed.toLowerCase();
+    return CATEGORY_NORMALIZE_MAP[lower] || trimmed;
+  }
+
   function normalizeCategories(value) {
     if (Array.isArray(value)) {
       return value
-        .map(item => typeof item === 'string' ? item.trim() : '')
+        .map(item => typeof item === 'string' ? normalizeCategoryName(item) : '')
         .filter(Boolean);
     }
     if (typeof value === 'string') {
       return value
         .split(/[;,]/)
-        .map(item => item.trim())
+        .map(item => normalizeCategoryName(item))
         .filter(Boolean);
     }
     return [];
@@ -1396,7 +1542,9 @@
     if (typeof tech.category === 'string' && tech.category.trim()) {
       return tech.category.trim();
     }
-    return 'Other';
+    // Try fallback lookup by technology name
+    const fallback = getFallbackCategory(tech.name);
+    return fallback || 'Other';
   }
 
   function escapeHtml(value) {
@@ -1701,9 +1849,46 @@
       `<span>Payload: ${payloadText || 'n/a'}</span>` +
       (data.cached ? '<span>Cached</span>' : '');
     if (techs.length) {
+      // Deduplicate technologies by normalized name (merge PWA + Progressive Web App, nginx + Nginx, etc.)
+      const seenNormalized = new Map();
+      const deduplicatedTechs = [];
+      techs.forEach(t => {
+        if (!t || typeof t !== 'object') return;
+        const rawName = (t.name || '').trim();
+        const normalizedName = normalizeTechName(rawName);
+        const normalizedLower = normalizedName.toLowerCase();
+
+        if (seenNormalized.has(normalizedLower)) {
+          // Already seen this tech, merge by keeping higher confidence or versioned one
+          const existing = seenNormalized.get(normalizedLower);
+          const existingConf = Number(existing.confidence) || 0;
+          const currentConf = Number(t.confidence) || 0;
+          const existingHasVersion = !!existing.version;
+          const currentHasVersion = !!t.version;
+
+          // Prefer versioned, then higher confidence
+          if ((currentHasVersion && !existingHasVersion) ||
+            (!existingHasVersion && !currentHasVersion && currentConf > existingConf)) {
+            // Replace with current
+            const idx = deduplicatedTechs.indexOf(existing);
+            if (idx > -1) {
+              t.name = normalizedName; // Use normalized name
+              deduplicatedTechs[idx] = t;
+              seenNormalized.set(normalizedLower, t);
+            }
+          }
+          // Otherwise keep existing
+        } else {
+          // First time seeing this tech
+          t.name = normalizedName; // Normalize name
+          seenNormalized.set(normalizedLower, t);
+          deduplicatedTechs.push(t);
+        }
+      });
+
       // Group by first category (normalized)
       const groups = {};
-      techs.forEach(t => {
+      deduplicatedTechs.forEach(t => {
         const cat = getPrimaryCategory(t);
         const key = cat || 'Other';
         (groups[key] = groups[key] || []).push(t);
@@ -2075,7 +2260,7 @@
     domains = Array.from(new Set(domains));
     if (!domains.length) { bulkError.textContent = 'No domains provided.'; bulkError.style.display = 'inline'; return; }
     if (domains.length > MAX_DOMAINS) { bulkError.textContent = `Too many domains (${domains.length}) > ${MAX_DOMAINS}. Reduce the list first.`; bulkError.style.display = 'inline'; return; }
-    const sequential = fd.get('sequential') ? true : false;
+    const sequential = true; // Always use sequential mode
     const fast_full = fd.get('fast_full') ? 1 : 0;
     bulkBtn.disabled = true; bulkCancel.classList.add('is-hidden');
     bulkDownloadBottom.classList.add('is-hidden');

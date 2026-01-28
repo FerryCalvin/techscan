@@ -1,4 +1,4 @@
-import os, sys, pathlib, json, io, csv
+import sys, pathlib, io, csv
 from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]

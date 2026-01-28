@@ -14,7 +14,6 @@ Priority order for choosing version:
 4. comment_pattern (lower confidence)
 """
 
-import re
 from typing import Dict, List, TypedDict, Optional
 
 

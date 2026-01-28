@@ -1,4 +1,4 @@
-import os, logging, json
+import os, logging
 from app import create_app
 
 def _make_app():

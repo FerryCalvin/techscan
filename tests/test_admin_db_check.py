@@ -1,4 +1,4 @@
-import os, sys, pathlib
+import sys, pathlib
 
 # Ensure project root on sys.path when running tests directly
 ROOT = pathlib.Path(__file__).resolve().parent.parent

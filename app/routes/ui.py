@@ -23,12 +23,14 @@ def _compute_diff(latest: dict | None, previous: dict | None):
     lmap = {}
     for t in latest_techs or []:
         n = t.get('name')
-        if not n: continue
+        if not n:
+            continue
         lmap[n] = t
     pmap = {}
     for t in prev_techs or []:
         n = t.get('name')
-        if not n: continue
+        if not n:
+            continue
         pmap[n] = t
     added = []
     removed = []
@@ -123,7 +125,8 @@ def api_stats():
         try:
             with _su._stats_lock:  # type: ignore[attr-defined]
                 d = _su.STATS.get('durations', {})  # type: ignore[attr-defined]
-                total = 0.0; count = 0
+                total = 0.0
+                count = 0
                 for k in ('fast','fast_full','full'):
                     b = d.get(k) or {}
                     total += float(b.get('total') or 0.0)
@@ -137,6 +140,7 @@ def api_stats():
         except Exception:
             _log.debug('failed to compute aggregated avg durations from STATS; falling back', exc_info=True)
             out['avg_duration_ms'] = s.get('average_duration_ms', {}).get('fast')
+            out['avg_duration_ms_recent'] = out['avg_duration_ms']
             out['avg_version_audit_ms'] = 0.0
         out['uptime_seconds'] = s.get('uptime_seconds')
         out['cache_entries'] = s.get('cache_entries')
@@ -152,7 +156,9 @@ def api_stats():
                     cur.execute('SELECT COUNT(*), MAX(finished_at), SUM(payload_bytes) FROM scans')
                     r = cur.fetchone()
                     out['scans_total'] = r[0] or 0
+                    out['scans'] = out['scans_total']
                     out['last_scan'] = {'finished_at': r[1].timestamp()} if r and r[1] else None
+                    out['last_scan_ts'] = r[1].timestamp() if r and r[1] else None
                     total_payload_raw = r[2] if r else None
                     try:
                         out['total_payload_bytes'] = int(total_payload_raw) if total_payload_raw is not None else 0
@@ -184,6 +190,7 @@ def api_stats():
                     if r2:
                         out['avg_tech_count'] = float(r2[0]) if r2[0] is not None else None
                         out['avg_duration_ms_24h'] = float(r2[1]) if r2[1] is not None else None
+                        out['avg_duration_ms_recent'] = out['avg_duration_ms_24h']
                     # avg evidence/version audit from raw_json->phases (best-effort)
                     try:
                         cur.execute("""
@@ -222,13 +229,14 @@ def api_stats():
                         FROM domain_techs
                            GROUP BY tech_name, COALESCE(NULLIF(categories, ''), 'Uncategorized')
                         ORDER BY c DESC
-                        LIMIT 60
+                        LIMIT 10
                         """
                     )
-                    out['top_technologies'] = [{'tech': r[0], 'categories': r[1], 'count': r[2]} for r in cur.fetchall()]
+                    out['top_techs'] = [{'tech': r[0], 'category': r[1], 'count': r[2]} for r in cur.fetchall()]
 
                     # top categories (split comma-separated categories)
                     # Include explicit 'uncategorized' bucket for rows where categories is NULL/empty
+                    # Also fetch top techs per category for classification charts
                     cur.execute(
                                 """
                                     SELECT category, c FROM (
@@ -244,10 +252,40 @@ def api_stats():
                                             SELECT 'uncategorized' AS category, COUNT(DISTINCT domain) FROM domain_techs WHERE categories IS NULL OR trim(categories) = ''
                                             ) q
                                             ORDER BY c DESC
-                                            LIMIT 60
+                                            LIMIT 10
                                         """
                                         )
-                    out['top_categories'] = [{'category': r[0], 'count': r[1]} for r in cur.fetchall()]
+                    top_cats_raw = cur.fetchall()
+                    
+                    # For each category, fetch top techs within that category
+                    top_categories_with_techs = []
+                    for cat_row in top_cats_raw:
+                        cat_name, cat_count = cat_row[0], cat_row[1]
+                        techs_in_cat = []
+                        try:
+                            if cat_name and cat_name != 'uncategorized':
+                                # Get top 5 techs in this category
+                                cur.execute(
+                                    """
+                                    SELECT tech_name, COUNT(DISTINCT domain) AS c
+                                    FROM domain_techs
+                                    WHERE LOWER(categories) LIKE %s
+                                    GROUP BY tech_name
+                                    ORDER BY c DESC
+                                    LIMIT 5
+                                    """,
+                                    (f'%{cat_name}%',)
+                                )
+                                techs_in_cat = [{'name': r[0], 'count': r[1]} for r in cur.fetchall()]
+                        except Exception:
+                            pass
+                        top_categories_with_techs.append({
+                            'category': cat_name,
+                            'rawCategory': cat_name,
+                            'count': cat_count,
+                            'techs': techs_in_cat
+                        })
+                    out['top_categories'] = top_categories_with_techs
 
                     # payload size aggregates (last 30 days)
                     try:
@@ -262,27 +300,27 @@ def api_stats():
                             """
                         )
                         payload_row = cur.fetchone()
-                        out['payload_size_stats'] = {
-                            'avg_daily_bytes': float(payload_row[0]) if payload_row and payload_row[0] is not None else None,
-                            'avg_weekly_bytes': float(payload_row[1]) if payload_row and payload_row[1] is not None else None,
-                            'avg_monthly_bytes': float(payload_row[2]) if payload_row and payload_row[2] is not None else None
+                        out['payload_stats'] = {
+                            'avg_24h': float(payload_row[0]) if payload_row and payload_row[0] is not None else None,
+                            'avg_7d': float(payload_row[1]) if payload_row and payload_row[1] is not None else None,
+                            'avg_30d': float(payload_row[2]) if payload_row and payload_row[2] is not None else None
                         }
                     except Exception:
                         _log.debug('failed to compute payload size aggregates', exc_info=True)
-                        out['payload_size_stats'] = {
-                            'avg_daily_bytes': None,
-                            'avg_weekly_bytes': None,
-                            'avg_monthly_bytes': None
+                        out['payload_stats'] = {
+                            'avg_24h': None,
+                            'avg_7d': None,
+                            'avg_30d': None
                         }
         except Exception as e:
             _log.exception('api_stats db aggregation failed err=%s', e)
             out['db_error'] = str(e)
-            out.setdefault('top_technologies', [])
+            out.setdefault('top_techs', [])
             out.setdefault('top_categories', [])
-            out.setdefault('payload_size_stats', {
-                'avg_daily_bytes': None,
-                'avg_weekly_bytes': None,
-                'avg_monthly_bytes': None
+            out.setdefault('payload_stats', {
+                'avg_24h': None,
+                'avg_7d': None,
+                'avg_30d': None
             })
     else:
         # Fallback to in-memory mirror when DB disabled
@@ -305,29 +343,48 @@ def api_stats():
                 if rec.get('last_seen') and rec['last_seen'] > last_seen:
                     last_seen = rec['last_seen']
             out['scans_total'] = scans_total
+            out['scans'] = scans_total
             out['unique_domains'] = len(unique_domains_set)
             out['last_scan'] = {'finished_at': last_seen} if last_seen else None
-            out['top_technologies'] = sorted(
+            out['last_scan_ts'] = last_seen if last_seen else None
+            out['top_techs'] = sorted(
                 [{'tech': k, 'count': v} for k, v in tech_counts.items()], key=lambda x: x['count'], reverse=True
-            )[:30]
+            )[:10]
             out['top_categories'] = sorted(
                 [{'category': k, 'count': v} for k, v in cat_counts.items()], key=lambda x: x['count'], reverse=True
-            )[:25]
-            out['payload_size_stats'] = {
-                'avg_daily_bytes': None,
-                'avg_weekly_bytes': None,
-                'avg_monthly_bytes': None
+            )[:10]
+            out['payload_stats'] = {
+                'avg_24h': None,
+                'avg_7d': None,
+                'avg_30d': None
             }
             out['total_payload_bytes'] = None
         except Exception:
-            out.setdefault('top_technologies', [])
+            out.setdefault('top_techs', [])
             out.setdefault('top_categories', [])
-            out.setdefault('payload_size_stats', {
-                'avg_daily_bytes': None,
-                'avg_weekly_bytes': None,
-                'avg_monthly_bytes': None
+            out.setdefault('payload_stats', {
+                'avg_24h': None,
+                'avg_7d': None,
+                'avg_30d': None
             })
             out.setdefault('total_payload_bytes', None)
+    
+    # Add health indicators
+    # DB is alive if we didn't get a db_error
+    out['db_alive'] = 'db_error' not in out and not getattr(_db, '_DB_DISABLED', False)
+    
+    # Check Redis availability
+    try:
+        from ..job_queue import get_redis
+        r = get_redis()
+        if r is not None:
+            r.ping()  # type: ignore[union-attr]
+            out['redis_alive'] = True
+        else:
+            out['redis_alive'] = False
+    except Exception:
+        out['redis_alive'] = False
+    
     return jsonify(out)
 
 @ui_bp.route('/api/domains')
@@ -1081,7 +1138,7 @@ def api_performance_timeseries():
                     ORDER BY hour
                 """)
                 rows = cur.fetchall()
-    except Exception as exc:
+    except Exception:
         _log.warning('performance_timeseries query failed; using fallback', exc_info=True)
         return jsonify(fallback)
 
@@ -1357,21 +1414,30 @@ def api_category_technologies(category_name: str):
         from ..db import get_conn
         with get_conn() as conn:
             with conn.cursor() as cur:
+                # Identify techs that should be forcefully included in this category via override
+                forced_techs = [t for t, cat in TECH_CATEGORY_OVERRIDE.items() if cat == normalized]
+                
                 if normalized == 'uncategorized':
                     cur.execute(
                         """
                         SELECT tech_name, COUNT(DISTINCT domain) AS count
                         FROM domain_techs
-                        WHERE categories IS NULL
-                           OR trim(categories) = ''
-                           OR LOWER(categories) = 'uncategorized'
+                        WHERE (categories IS NULL OR trim(categories) = '' OR LOWER(categories) = 'uncategorized')
                         GROUP BY tech_name
                         ORDER BY count DESC
                         """
                     )
                 else:
+                    # Dynamic IN clause for forced techs
+                    forced_clause = ""
+                    params = [normalized]
+                    if forced_techs:
+                        placeholders = ','.join(['%s'] * len(forced_techs))
+                        forced_clause = f" OR LOWER(tech_name) IN ({placeholders})"
+                        params.extend(forced_techs)
+
                     cur.execute(
-                        """
+                        f"""
                         SELECT tech_name, COUNT(DISTINCT domain) AS count
                         FROM (
                             SELECT domain, tech_name,
@@ -1380,15 +1446,17 @@ def api_category_technologies(category_name: str):
                             CROSS JOIN LATERAL unnest(string_to_array(categories, ',')) AS cat(cat_val)
                             WHERE categories IS NOT NULL AND trim(categories) <> ''
                         ) t
-                        WHERE category_value = %s
+                        WHERE category_value = %s {forced_clause}
                         GROUP BY tech_name
                         ORDER BY count DESC
                         """,
-                        (normalized,)
+                        tuple(params)
                     )
+                
                 techs = [{'tech': r[0], 'count': r[1], 'category': category_name} for r in cur.fetchall()]
                 
                 # Filter out technologies that belong to a different category per override
+                # (This cleans up the "source" category, e.g. removing jquery from CDN)
                 def should_include(tech_item):
                     tech_lower = tech_item['tech'].lower()
                     correct_cat = TECH_CATEGORY_OVERRIDE.get(tech_lower)
@@ -1399,7 +1467,15 @@ def api_category_technologies(category_name: str):
                     return correct_cat == normalized
                 
                 techs = [t for t in techs if should_include(t)]
-                return jsonify({'category': category_name, 'technologies': techs})
+                # Deduplicate by tech name (in case it matched both category AND override)
+                seen_techs = set()
+                unique_techs = []
+                for t in techs:
+                    if t['tech'] not in seen_techs:
+                        unique_techs.append(t)
+                        seen_techs.add(t['tech'])
+                
+                return jsonify({'category': category_name, 'technologies': unique_techs})
     except Exception as e:
         _log.exception('category_technologies_failed category=%s err=%s', category_name, e)
         return jsonify({'error': 'internal', 'detail': str(e)}), 500

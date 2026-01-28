@@ -11,10 +11,10 @@ Designed with extensibility for future ML verification (Option 3).
 
 import re
 import logging
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
-from .patterns import VERSION_PATTERNS, get_pattern_for_tech, normalize_tech_key
+from .patterns import VERSION_PATTERNS, normalize_tech_key
 from .validator import is_plausible_version, normalize_version
 
 logger = logging.getLogger('techscan.versioning')

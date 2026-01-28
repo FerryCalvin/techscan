@@ -1,4 +1,4 @@
-import os, sys, pathlib, json
+import sys, pathlib
 from unittest import mock
 import io
 import csv

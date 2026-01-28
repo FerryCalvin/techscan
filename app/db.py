@@ -109,6 +109,38 @@ if _DB_DISABLED_ENV:
         # order by last_seen desc like real impl
         out.sort(key=lambda r: r['last_seen'], reverse=True)
         return out
+
+    class StubCursor:
+        rowcount = 0
+        def execute(self, query, params=None):
+            pass
+        def fetchone(self):
+            return None
+        def fetchall(self):
+            return []
+        def __enter__(self):
+            return self
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    class StubConnection:
+        def cursor(self):
+            return StubCursor()
+        def commit(self):
+            pass
+        def rollback(self):
+            pass
+        def close(self):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    @contextmanager
+    def get_conn():
+        yield StubConnection()
+
     # Short-circuit further real definitions
     _DB_DISABLED = True
     # simple in-memory storage for domain techs (already defined at module top)
@@ -318,6 +350,10 @@ def stop_pool_monitor():
 def get_conn():
     # Prefer using an established connection pool if available. Otherwise
     # create a short-lived connection per use (safer when clients may leak).
+    if _DB_DISABLED or _is_disabled_runtime():
+        yield StubConnection()
+        return
+
     if _POOL is not None:
         # psycopg_pool ConnectionPool yields a connection context
         with _POOL.connection() as conn:

@@ -1,4 +1,4 @@
-import os, sys, pathlib, time
+import sys, pathlib, time
 from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -203,6 +203,8 @@ def test_api_domain_delete_db(mock_load, mock_remove, mock_get_conn, monkeypatch
                 self.rowcount = 3
             else:
                 self.rowcount = 5
+        def fetchone(self):
+            return [0]
         def __enter__(self):
             return self
         def __exit__(self, exc_type, exc, tb):
@@ -212,6 +214,8 @@ def test_api_domain_delete_db(mock_load, mock_remove, mock_get_conn, monkeypatch
             self.cur = FakeCursor()
         def cursor(self):
             return self.cur
+        def commit(self):
+            pass
         def __enter__(self):
             return self
         def __exit__(self, exc_type, exc, tb):

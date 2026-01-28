@@ -12,11 +12,9 @@ Environment variables:
 """
 
 import os
-import time
 import logging
 import threading
-from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 
 logger = logging.getLogger('techscan.ml.auto_learn')
 

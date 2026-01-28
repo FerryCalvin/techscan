@@ -1,4 +1,4 @@
-import json, time, os, sys, pathlib
+import time, os, sys, pathlib
 # Ensure project root on path and disable DB before importing app so in-memory stub is used
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:

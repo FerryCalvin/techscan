@@ -7,7 +7,10 @@ from datetime import datetime
 
 # Try to import python-json-logger, fallback to custom implementation
 try:
-    from pythonjsonlogger import jsonlogger
+    try:
+        from pythonjsonlogger import json as jsonlogger
+    except ImportError:
+        from pythonjsonlogger import jsonlogger
     HAS_JSON_LOGGER = True
 except ImportError:
     HAS_JSON_LOGGER = False

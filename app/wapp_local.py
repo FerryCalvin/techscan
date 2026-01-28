@@ -101,8 +101,9 @@ def load_rules(wappalyzer_path: str) -> Dict[str, Any]:
     return bundle
 
 
-def _http_fetch(domain: str, timeout_s: float = 3.0) -> Tuple[Dict[str, str], str, str]:
+def _http_fetch(url_or_domain: str, timeout_s: float = 3.0) -> Tuple[Dict[str, str], str, str]:
     import http.client
+    from urllib.parse import urlparse
     start = time.time()
 
     def remaining():
@@ -110,14 +111,37 @@ def _http_fetch(domain: str, timeout_s: float = 3.0) -> Tuple[Dict[str, str], st
 
     headers_lower: Dict[str, str] = {}
     body = ''
-    final_url = f'https://{domain}/'
+    
+    # Parse input
+    target_host = url_or_domain
+    target_path = '/'
+    target_scheme = 'https'
+    
+    if '://' in url_or_domain:
+        try:
+            p = urlparse(url_or_domain)
+            target_host = p.hostname or url_or_domain
+            target_path = p.path or '/'
+            if p.query:
+                target_path += '?' + p.query
+            target_scheme = p.scheme or 'https'
+        except Exception:
+            pass
+            
+    final_url = f'{target_scheme}://{target_host}{target_path}'
     cap = 250_000
-    for scheme, Conn in (("https", http.client.HTTPSConnection), ("http", http.client.HTTPConnection)):
+    
+    # Try preferred scheme first, then fallback if not specified
+    schemes = [("https", http.client.HTTPSConnection), ("http", http.client.HTTPConnection)]
+    if target_scheme == 'http':
+        schemes = [("http", http.client.HTTPConnection), ("https", http.client.HTTPSConnection)]
+        
+    for scheme, Conn in schemes:
         if remaining() <= 0:
             break
         try:
-            conn = Conn(domain, timeout=remaining())
-            conn.request('GET', '/', headers={'User-Agent': 'TechScan-PyLocal/1.0'})
+            conn = Conn(target_host, timeout=remaining())
+            conn.request('GET', target_path, headers={'User-Agent': 'TechScan-PyLocal/1.0'})
             resp = conn.getresponse()
             headers_lower = {k.lower(): v for k, v in resp.getheaders()}
             chunks: List[bytes] = []
@@ -130,7 +154,7 @@ def _http_fetch(domain: str, timeout_s: float = 3.0) -> Tuple[Dict[str, str], st
                 left -= len(chunk)
             conn.close()
             body = (b''.join(chunks)).decode('utf-8', errors='ignore')
-            final_url = f'{scheme}://{domain}/'
+            final_url = f'{scheme}://{target_host}{target_path}'
             if body:
                 break
         except Exception:
@@ -169,7 +193,9 @@ def _match_any(regexes: List[re.Pattern], text: str) -> re.Match | None:
 def detect(domain: str, wappalyzer_path: str, timeout: float = 4.0) -> Dict[str, Any]:
     try:
         rules = load_rules(wappalyzer_path)
-    except FileNotFoundError:
+    except FileNotFoundError as e:
+        import logging
+        logging.getLogger('techscan.wapp').error(f"Rule loading failed: {e}")
         rules = None
 
     headers, html, url = _http_fetch(domain, timeout_s=timeout)
@@ -232,21 +258,37 @@ def detect(domain: str, wappalyzer_path: str, timeout: float = 4.0) -> Dict[str,
                             break
                     if matched:
                         continue
+                # html - check FIRST for better coverage
+                if spec.get('html') and low_html:
+                    m = _match_any(spec['html'], low_html)
+                    if m:
+                        ver = None
+                        if m.groups():
+                            try:
+                                ver = m.group(1)
+                            except Exception:
+                                ver = None
+                        add(name, spec.get('cats', []), ver, 50)
+                        matched = True
+                        continue
+                # scripts/links - separate from URL check
+                if spec.get('scripts') and (script_srcs or link_hrefs):
+                    joined = '\n'.join(script_srcs + link_hrefs)
+                    m = _match_any(spec['scripts'], joined)
+                    if m:
+                        ver = None
+                        if m.groups():
+                            try:
+                                ver = m.group(1)
+                            except Exception:
+                                ver = None
+                        add(name, spec.get('cats', []), ver, 45)
+                        matched = True
+                        continue
                 # url
                 if spec.get('url') and url_s:
                     if _match_any(spec['url'], url_s):
                         add(name, spec.get('cats', []), None, 40)
-                        continue
-                # scripts/links
-                    if spec.get('scripts') and (script_srcs or link_hrefs):
-                        joined = '\n'.join(script_srcs + link_hrefs)
-                        if _match_any(spec['scripts'], joined):
-                            add(name, spec.get('cats', []), None, 45)
-                            continue
-                # html
-                if spec.get('html') and low_html:
-                    if _match_any(spec['html'], low_html):
-                        add(name, spec.get('cats', []), None, 50)
                         continue
             except Exception:
                 # If a tech spec is malformed, skip it

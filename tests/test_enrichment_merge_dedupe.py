@@ -35,12 +35,13 @@ def test_enrichment_merge_and_dedupe(monkeypatch):
                 {'name': 'Apache', 'version': '2.4.41', 'categories': ['Web servers'], 'confidence': 50}
             ],
             # nested extras shapes: raw.extras and data.extras
-            'raw': {'extras': {'network': ['https://cdn.com/jquery.min.js']}},
-            'data': {'extras': {'scripts': ['https://cdn.com/bootstrap.js']}}
+            'raw': {'extras': {'network': ['https://cdn.com/jquery-3.6.0.min.js']}},
+            'data': {'extras': {'scripts': ['https://cdn.com/bootstrap-4.5.3.js']}}
         }
 
     fake_wapp.detect = fake_detect
-    monkeypatch.setitem(sys.modules, 'app.wapp_local', fake_wapp)
+    import app.wapp_local as real_wapp
+    monkeypatch.setattr(real_wapp, 'detect', fake_detect)
 
     # Snapshot enrichment counter
     before = su.STATS.setdefault('enrichment', {}).get('merge_total', 0)
@@ -52,7 +53,7 @@ def test_enrichment_merge_and_dedupe(monkeypatch):
     assert 'jQuery' in names, f"expected jQuery in {names}"
     assert 'Bootstrap' in names, f"expected Bootstrap in {names}"
     # Apache should be present once (deduped)
-    assert names.count('Apache') == 1, f"expected single Apache entry, got {names.count('Apache')}"
+    assert names.count('Apache HTTP Server') == 1, f"expected single Apache HTTP Server entry, got {names.count('Apache HTTP Server')}"
 
     after = su.STATS.get('enrichment', {}).get('merge_total', 0)
     assert after >= before + 1

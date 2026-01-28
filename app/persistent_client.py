@@ -1,5 +1,5 @@
 import json, threading, uuid, time, os, logging
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from . import safe_subprocess as sproc
 
 _proc: sproc.PopenType | None = None
