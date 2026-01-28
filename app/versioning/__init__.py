@@ -13,4 +13,4 @@ Architecture:
 from .extractor import VersionExtractor, extract_versions
 from .patterns import VERSION_PATTERNS
 
-__all__ = ['VersionExtractor', 'extract_versions', 'VERSION_PATTERNS']
+__all__ = ["VersionExtractor", "extract_versions", "VERSION_PATTERNS"]

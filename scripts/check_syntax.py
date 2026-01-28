@@ -1,8 +1,7 @@
-
 import pathlib
 
-path = pathlib.Path(r'd:\magang\techscan\app\scan_utils.py')
-content = path.read_text(encoding='utf-8')
+path = pathlib.Path(r"d:\magang\techscan\app\scan_utils.py")
+content = path.read_text(encoding="utf-8")
 
 lines = content.splitlines()
 in_triple_double = False
@@ -13,8 +12,8 @@ start_line = -1
 for i, line in enumerate(lines, 1):
     # This is a naive parser, doesn't handle escaping perfectly but good enough for finding mismatched blocks
     # We strip comments to be safer
-    code = line.split('#')[0]
-    
+    code = line.split("#")[0]
+
     # Count occurrences (non-overlapping)
     j = 0
     while j < len(line):
@@ -30,7 +29,7 @@ for i, line in enumerate(lines, 1):
                     print(f"Opened triple-double at {i} col {j}")
             j += 3
             continue
-        
+
         # Check for triple single
         if line[j:].startswith("'''"):
             if not in_triple_double:
@@ -43,7 +42,7 @@ for i, line in enumerate(lines, 1):
                     print(f"Opened triple-single at {i} col {j}")
             j += 3
             continue
-            
+
         j += 1
 
 if in_triple_double:

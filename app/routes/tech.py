@@ -11,9 +11,9 @@ from ..evidence_utils import (
     dedupe_evidence_entries,
 )
 
-bp = Blueprint('tech', __name__, url_prefix='/api')
+bp = Blueprint("tech", __name__, url_prefix="/api")
 
-LOGGER = logging.getLogger('techscan.tech')
+LOGGER = logging.getLogger("techscan.tech")
 
 
 def _tokenise_terms(names):
@@ -23,8 +23,8 @@ def _tokenise_terms(names):
             continue
         lowered = name.lower()
         tokens.add(lowered)
-        tokens.add(re.sub(r'[^a-z0-9]+', '', lowered))
-        tokens.add(lowered.replace(' ', ''))
+        tokens.add(re.sub(r"[^a-z0-9]+", "", lowered))
+        tokens.add(lowered.replace(" ", ""))
     return {t for t in tokens if t}
 
 
@@ -32,28 +32,28 @@ def _iter_text_sources(raw_blob):
     if not isinstance(raw_blob, dict):
         return []
     sources: list[tuple[str, str]] = []
-    for key in ('html', 'body', 'text', 'content'):  # primary payloads
+    for key in ("html", "body", "text", "content"):  # primary payloads
         val = raw_blob.get(key)
         if isinstance(val, str) and val.strip():
             sources.append((key, val))
-    extras = raw_blob.get('extras')
+    extras = raw_blob.get("extras")
     if isinstance(extras, dict):
-        for key in ('errors', 'warnings', 'logs', 'messages', 'details'):
+        for key in ("errors", "warnings", "logs", "messages", "details"):
             val = extras.get(key)
             if isinstance(val, str) and val.strip():
-                sources.append((f'extras.{key}', val))
+                sources.append((f"extras.{key}", val))
             elif isinstance(val, list):
                 for idx, item in enumerate(val):
                     if isinstance(item, str) and item.strip():
-                        sources.append((f'extras.{key}[{idx}]', item))
-    responses = raw_blob.get('responses') or raw_blob.get('httpResponses')
+                        sources.append((f"extras.{key}[{idx}]", item))
+    responses = raw_blob.get("responses") or raw_blob.get("httpResponses")
     if isinstance(responses, list):
         for idx, resp in enumerate(responses):
             if not isinstance(resp, dict):
                 continue
-            body = resp.get('body') or resp.get('text') or resp.get('content')
+            body = resp.get("body") or resp.get("text") or resp.get("content")
             if isinstance(body, str) and body.strip():
-                sources.append((f'responses[{idx}].body', body))
+                sources.append((f"responses[{idx}].body", body))
     return sources
 
 
@@ -70,13 +70,8 @@ def _textual_evidence_from_blob(tech_name: str | None, aliases: list[str] | None
                 continue
             start = max(0, idx - 60)
             end = min(len(text), idx + 90)
-            snippet = text[start:end].strip().replace('\n', ' ')
-            entries.append({
-                'kind': 'text',
-                'source': source,
-                'pattern': token,
-                'match': snippet
-            })
+            snippet = text[start:end].strip().replace("\n", " ")
+            entries.append({"kind": "text", "source": source, "pattern": token, "match": snippet})
             if len(entries) >= limit:
                 return entries
     return entries
@@ -85,6 +80,7 @@ def _textual_evidence_from_blob(tech_name: str | None, aliases: list[str] | None
 def _ts_to_iso(ts):
     try:
         import datetime
+
         # Use timezone-aware UTC timestamp to avoid deprecated utcfromtimestamp
         return datetime.datetime.fromtimestamp(ts, tz=datetime.UTC).isoformat()
     except Exception:
@@ -116,8 +112,7 @@ def _coerce_list(value):
     return []
 
 
-
-_EVIDENCE_KEYS = {'url','urls','snippet','value','match','pattern','headers','matches','note','key'}
+_EVIDENCE_KEYS = {"url", "urls", "snippet", "value", "match", "pattern", "headers", "matches", "note", "key"}
 
 
 def _entry_has_meaningful_details(entry) -> bool:
@@ -149,16 +144,15 @@ def _filter_meaningful_evidence(entries):
     return filtered
 
 
-
-@bp.route('/tech/<tech_key>', methods=['GET'])
+@bp.route("/tech/<tech_key>", methods=["GET"])
 def tech_meta(tech_key):
-    cache_key = f'tech:{tech_key}:meta'
+    cache_key = f"tech:{tech_key}:meta"
     cached = tech_cache.get(cache_key)
     if cached:
         try:
             return jsonify(json.loads(cached))
         except Exception:
-            LOGGER.debug('failed to decode cached tech_meta payload for key=%s', cache_key, exc_info=True)
+            LOGGER.debug("failed to decode cached tech_meta payload for key=%s", cache_key, exc_info=True)
     # Build aggregated response
     total = _db.count_search_tech(tech=tech_key)
     top_versions = _db.top_versions_for_tech(tech_key, limit=10)
@@ -169,59 +163,59 @@ def tech_meta(tech_key):
     version_confidence = None
     if sample:
         # average per-domain confidence if present in sample 'confidence' field
-        vals = [s.get('confidence') for s in sample if s.get('confidence') is not None]
+        vals = [s.get("confidence") for s in sample if s.get("confidence") is not None]
         if vals:
             confidence = sum(vals) / len(vals)
     out = {
-        'tech_key': tech_key,
-        'name': tech_key,
-        'slug': tech_key,
-        'categories': [],
-        'detected_version': top_versions[0]['version'] if top_versions else None,
-        'version_confidence': version_confidence,
-        'confidence': confidence,
-        'counts': {
-            'total_sites': total,
-            'last_30_days': sum(d.get('count',0) for d in trend[-30:]) if trend else 0,
-            'last_7_days': sum(d.get('count',0) for d in trend[-7:]) if trend else 0
+        "tech_key": tech_key,
+        "name": tech_key,
+        "slug": tech_key,
+        "categories": [],
+        "detected_version": top_versions[0]["version"] if top_versions else None,
+        "version_confidence": version_confidence,
+        "confidence": confidence,
+        "counts": {
+            "total_sites": total,
+            "last_30_days": sum(d.get("count", 0) for d in trend[-30:]) if trend else 0,
+            "last_7_days": sum(d.get("count", 0) for d in trend[-7:]) if trend else 0,
         },
-        'top_versions': top_versions,
-        'top_countries': [],
-        'outdated': {'is_outdated': False},
-        'confidence_breakdown': [],
-        'sample_sites': sample,
-        'trend': trend,
-        'last_updated': _ts_to_iso(time.time())
+        "top_versions": top_versions,
+        "top_countries": [],
+        "outdated": {"is_outdated": False},
+        "confidence_breakdown": [],
+        "sample_sites": sample,
+        "trend": trend,
+        "last_updated": _ts_to_iso(time.time()),
     }
     try:
         tech_cache.set(cache_key, json.dumps(out), ttl=120)
     except Exception:
-        LOGGER.debug('failed to set cache for key=%s', cache_key, exc_info=True)
+        LOGGER.debug("failed to set cache for key=%s", cache_key, exc_info=True)
     return jsonify(out)
 
 
-@bp.route('/techs/<tech_key>', methods=['GET'])
+@bp.route("/techs/<tech_key>", methods=["GET"])
 def tech_detail_short(tech_key):
     """Compatibility / drilldown endpoint used by the UI.
     Returns a compact payload with domains list, basic meta and a simple history.
     """
-    cache_key = f'tech:{tech_key}:detail'
+    cache_key = f"tech:{tech_key}:detail"
     cached = tech_cache.get(cache_key)
     if cached:
         try:
             return jsonify(json.loads(cached))
         except Exception:
-            LOGGER.debug('failed to decode cached detail for key=%s', cache_key, exc_info=True)
+            LOGGER.debug("failed to decode cached detail for key=%s", cache_key, exc_info=True)
 
     # Aggregate basic info
     total = _db.count_search_tech(tech=tech_key)
     trend = _db.tech_trend(tech_key, days=90) or []
     # fetch a reasonable sample of sites (for drilldown list)
-    sites = _db.search_tech(tech=tech_key, limit=500, offset=0, sort_key='last_seen', sort_dir='desc') or []
-    domains = [s.get('domain') for s in sites if s.get('domain')]
+    sites = _db.search_tech(tech=tech_key, limit=500, offset=0, sort_key="last_seen", sort_dir="desc") or []
+    domains = [s.get("domain") for s in sites if s.get("domain")]
 
     # derive first/last seen (best-effort using site last_seen)
-    ts = [s.get('last_seen') for s in sites if s.get('last_seen')]
+    ts = [s.get("last_seen") for s in sites if s.get("last_seen")]
     first_seen = min(ts) if ts else None
     last_seen = max(ts) if ts else None
 
@@ -229,35 +223,35 @@ def tech_detail_short(tech_key):
     history = []
     for item in trend:
         if isinstance(item, dict):
-            t = item.get('t') or item.get('label') or item.get('time')
-            v = item.get('count') or item.get('v') or item.get('value') or 0
-            history.append({'t': t, 'v': v})
+            t = item.get("t") or item.get("label") or item.get("time")
+            v = item.get("count") or item.get("v") or item.get("value") or 0
+            history.append({"t": t, "v": v})
         else:
             # fallback if trend is a tuple/list
             try:
-                history.append({'t': item[0], 'v': item[1]})
+                history.append({"t": item[0], "v": item[1]})
             except Exception:
                 continue
 
     out = {
-        'tech': tech_key,
-        'category': None,
-        'version': None,
-        'count': total,
-        'first_seen': first_seen,
-        'last_seen': last_seen,
-        'domains': domains,
-        'history': history,
+        "tech": tech_key,
+        "category": None,
+        "version": None,
+        "count": total,
+        "first_seen": first_seen,
+        "last_seen": last_seen,
+        "domains": domains,
+        "history": history,
     }
 
     try:
         tech_cache.set(cache_key, json.dumps(out), ttl=60)
     except Exception:
-        LOGGER.debug('failed to set cache for key=%s', cache_key, exc_info=True)
+        LOGGER.debug("failed to set cache for key=%s", cache_key, exc_info=True)
     return jsonify(out)
 
 
-@bp.route('/category/<category>/top', methods=['GET'])
+@bp.route("/category/<category>/top", methods=["GET"])
 def category_top(category: str):
     """Return top technologies for a given category (name match, case-insensitive).
     This is used by the frontend category carousel to fetch per-category top techs when
@@ -265,71 +259,72 @@ def category_top(category: str):
     """
     try:
         try:
-            limit = int(request.args.get('limit') or 15)
+            limit = int(request.args.get("limit") or 15)
         except Exception:
             limit = 15
         # If DB disabled, aggregate from the lightweight search_tech mirror
-        if getattr(_db, '_DB_DISABLED', False):
+        if getattr(_db, "_DB_DISABLED", False):
             rows = _db.search_tech(category=category, limit=2000) or []
             counts = {}
             for r in rows:
-                name = r.get('tech_name')
+                name = r.get("tech_name")
                 if not name:
                     continue
                 counts[name] = counts.get(name, 0) + 1
-            items = sorted([{'tech': k, 'count': v} for k, v in counts.items()], key=lambda x: x['count'], reverse=True)[:limit]
+            items = sorted(
+                [{"tech": k, "count": v} for k, v in counts.items()], key=lambda x: x["count"], reverse=True
+            )[:limit]
             return jsonify(items)
 
         # Use SQL aggregation for efficiency
         with _db.get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute('''SELECT tech_name, COUNT(*) AS c FROM domain_techs
+                cur.execute(
+                    """SELECT tech_name, COUNT(*) AS c FROM domain_techs
                                WHERE (','||LOWER(categories)||',') LIKE %s
-                               GROUP BY tech_name ORDER BY c DESC LIMIT %s''', (f'%,{category.lower()},%', limit))
+                               GROUP BY tech_name ORDER BY c DESC LIMIT %s""",
+                    (f"%,{category.lower()},%", limit),
+                )
                 rows = cur.fetchall()
-                out = [{'tech': r[0], 'count': r[1]} for r in rows]
+                out = [{"tech": r[0], "count": r[1]} for r in rows]
         return jsonify(out)
     except Exception as e:
-        logging.getLogger('tech.api').exception('category_top error category=%s err=%s', category, e)
-        return jsonify({'error': str(e)}), 500
+        logging.getLogger("tech.api").exception("category_top error category=%s err=%s", category, e)
+        return jsonify({"error": str(e)}), 500
 
 
-@bp.route('/tech/<tech_key>/sites', methods=['GET'])
+@bp.route("/tech/<tech_key>/sites", methods=["GET"])
 def tech_sites(tech_key):
     try:
-        limit = int(request.args.get('limit') or 20)
+        limit = int(request.args.get("limit") or 20)
     except ValueError:
         limit = 20
     try:
-        offset = int(request.args.get('offset') or 0)
+        offset = int(request.args.get("offset") or 0)
     except ValueError:
         offset = 0
-    sort = request.args.get('sort') or 'recent'
-    cache_key = f'tech:{tech_key}:sites:limit={limit}:offset={offset}:sort={sort}'
+    sort = request.args.get("sort") or "recent"
+    cache_key = f"tech:{tech_key}:sites:limit={limit}:offset={offset}:sort={sort}"
     cached = tech_cache.get(cache_key)
     if cached:
         try:
             return jsonify(json.loads(cached))
         except Exception:
             pass
-    sites = _db.search_tech(tech=tech_key, limit=limit, offset=offset, sort_key='last_seen', sort_dir='desc')
+    sites = _db.search_tech(tech=tech_key, limit=limit, offset=offset, sort_key="last_seen", sort_dir="desc")
     total = _db.count_search_tech(tech=tech_key)
-    out = {
-        'tech_key': tech_key,
-        'limit': limit,
-        'offset': offset,
-        'total': total,
-        'sites': []
-    }
+    out = {"tech_key": tech_key, "limit": limit, "offset": offset, "total": total, "sites": []}
     for s in sites:
-        out['sites'].append({
-            'domain': s.get('domain'),
-            'last_scan': _ts_to_iso(s.get('last_seen')),
-            'tech_count': s.get('tech_count') if s.get('tech_count') is not None else None,
-            'confidence': s.get('confidence') if s.get('confidence') is not None else None,
-            'summary': s.get('summary') or [],
-            'detected_version': s.get('version')
-        })
+        out["sites"].append(
+            {
+                "domain": s.get("domain"),
+                "last_scan": _ts_to_iso(s.get("last_seen")),
+                "tech_count": s.get("tech_count") if s.get("tech_count") is not None else None,
+                "confidence": s.get("confidence") if s.get("confidence") is not None else None,
+                "summary": s.get("summary") or [],
+                "detected_version": s.get("version"),
+            }
+        )
     try:
         tech_cache.set(cache_key, json.dumps(out), ttl=30)
     except Exception:
@@ -337,67 +332,73 @@ def tech_sites(tech_key):
     return jsonify(out)
 
 
-@bp.route('/tech/<tech_key>/sites.csv', methods=['GET'])
+@bp.route("/tech/<tech_key>/sites.csv", methods=["GET"])
 def tech_sites_csv(tech_key):
     try:
-        limit = min(2000, int(request.args.get('limit') or 500))
+        limit = min(2000, int(request.args.get("limit") or 500))
     except ValueError:
         limit = 500
-    sites = _db.search_tech(tech=tech_key, limit=limit, offset=0, sort_key='last_seen', sort_dir='desc')
+    sites = _db.search_tech(tech=tech_key, limit=limit, offset=0, sort_key="last_seen", sort_dir="desc")
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['domain','last_scan','detected_version','categories'])
+    writer.writerow(["domain", "last_scan", "detected_version", "categories"])
     for s in sites:
-        writer.writerow([s.get('domain'), _ts_to_iso(s.get('last_seen')), s.get('version'), ';'.join(s.get('categories') or [])])
-    return Response(output.getvalue(), mimetype='text/csv', headers={'Content-Disposition': f'attachment; filename=tech_{tech_key}_sites.csv'})
+        writer.writerow(
+            [s.get("domain"), _ts_to_iso(s.get("last_seen")), s.get("version"), ";".join(s.get("categories") or [])]
+        )
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=tech_{tech_key}_sites.csv"},
+    )
 
 
-@bp.route('/tech/<tech_key>/invalidate_cache', methods=['POST'])
+@bp.route("/tech/<tech_key>/invalidate_cache", methods=["POST"])
 def invalidate_cache(tech_key):
     # Admin-only in production; here we perform best-effort invalidation
-    prefix = f'tech:{tech_key}'
+    prefix = f"tech:{tech_key}"
     tech_cache.invalidate(prefix)
-    return jsonify({'ok': True, 'invalidated': prefix})
+    return jsonify({"ok": True, "invalidated": prefix})
 
 
-@bp.route('/domain/<domain>/evidence_for_tech', methods=['GET'])
+@bp.route("/domain/<domain>/evidence_for_tech", methods=["GET"])
 def domain_evidence_for_tech(domain):
-    tech = request.args.get('tech')
+    tech = request.args.get("tech")
     if not tech:
-        return jsonify({'error': 'missing tech param'}), 400
+        return jsonify({"error": "missing tech param"}), 400
     raw = _db.get_latest_scan_raw(domain)
     if not raw:
-        return jsonify({'domain': domain, 'tech': tech, 'evidence': []})
-    tech_entries = _coerce_list(raw.get('technologies'))
+        return jsonify({"domain": domain, "tech": tech, "evidence": []})
+    tech_entries = _coerce_list(raw.get("technologies"))
     target = None
     for entry in tech_entries:
         if not isinstance(entry, dict):
             continue
-        name = entry.get('name')
+        name = entry.get("name")
         if name and name.lower() == tech.lower():
             target = entry
             break
     if not target:
-        return jsonify({'domain': domain, 'tech': tech, 'evidence': []})
+        return jsonify({"domain": domain, "tech": tech, "evidence": []})
 
     evidence_payload: list[dict] = []
-    for ev in _coerce_list(target.get('evidence')):
+    for ev in _coerce_list(target.get("evidence")):
         normalized = _normalize_evidence_entry(ev)
         if normalized:
             evidence_payload.append(normalized)
     evidence_payload = _filter_meaningful_evidence(evidence_payload)
 
-    raw_blob = _coerce_object(raw.get('raw'))
-    hint_meta = raw_blob.get('_tiered_hint_meta') if isinstance(raw_blob, dict) else None
-    patterns_map = _coerce_object(raw_blob.get('patterns')) if raw_blob else {}
+    raw_blob = _coerce_object(raw.get("raw"))
+    hint_meta = raw_blob.get("_tiered_hint_meta") if isinstance(raw_blob, dict) else None
+    patterns_map = _coerce_object(raw_blob.get("patterns")) if raw_blob else {}
     if patterns_map:
         candidates = []
-        if target.get('name'):
-            candidates.append(target['name'])
+        if target.get("name"):
+            candidates.append(target["name"])
         if tech:
             candidates.append(tech)
-        if isinstance(target.get('aliases'), list):
-            candidates.extend([alias for alias in target['aliases'] if isinstance(alias, str)])
+        if isinstance(target.get("aliases"), list):
+            candidates.extend([alias for alias in target["aliases"] if isinstance(alias, str)])
         seen_keys = {c.lower() for c in candidates if isinstance(c, str)}
         if seen_keys:
             for key, entries in patterns_map.items():
@@ -417,8 +418,8 @@ def domain_evidence_for_tech(domain):
     if raw_blob:
         header_maps = extract_header_maps(raw_blob)
         if header_maps:
-            aliases = target.get('aliases') if isinstance(target.get('aliases'), list) else []
-            header_entries = collect_header_evidence(target.get('name') or tech, header_maps, aliases)
+            aliases = target.get("aliases") if isinstance(target.get("aliases"), list) else []
+            header_entries = collect_header_evidence(target.get("name") or tech, header_maps, aliases)
             for entry in header_entries:
                 normalized = _normalize_evidence_entry(entry)
                 if normalized:
@@ -426,7 +427,7 @@ def domain_evidence_for_tech(domain):
     evidence_payload = _filter_meaningful_evidence(evidence_payload)
 
     if raw_blob and not evidence_payload:
-        extras = raw_blob.get('extras') if isinstance(raw_blob, dict) else {}
+        extras = raw_blob.get("extras") if isinstance(raw_blob, dict) else {}
         fallback = _extras_fallback_evidence(tech, extras)
         for entry in fallback:
             normalized = _normalize_evidence_entry(entry)
@@ -435,8 +436,8 @@ def domain_evidence_for_tech(domain):
         evidence_payload = _filter_meaningful_evidence(evidence_payload)
 
     if raw_blob and not evidence_payload:
-        alias_values = target.get('aliases') if isinstance(target.get('aliases'), list) else []
-        text_matches = _textual_evidence_from_blob(target.get('name') or tech, alias_values, raw_blob)
+        alias_values = target.get("aliases") if isinstance(target.get("aliases"), list) else []
+        text_matches = _textual_evidence_from_blob(target.get("name") or tech, alias_values, raw_blob)
         for entry in text_matches:
             normalized = _normalize_evidence_entry(entry)
             if normalized:
@@ -445,21 +446,21 @@ def domain_evidence_for_tech(domain):
 
     evidence_payload = dedupe_evidence_entries(evidence_payload)
 
-    finished_at = raw.get('finished_at')
+    finished_at = raw.get("finished_at")
     try:
         finished_at = float(finished_at) if finished_at is not None else None
     except Exception:
         finished_at = None
 
     response = {
-        'domain': domain,
-        'tech': target.get('name') or tech,
-        'evidence': evidence_payload,
-        'version': target.get('version'),
-        'confidence': target.get('confidence')
+        "domain": domain,
+        "tech": target.get("name") or tech,
+        "evidence": evidence_payload,
+        "version": target.get("version"),
+        "confidence": target.get("confidence"),
     }
     if finished_at is not None:
-        response['finished_at'] = finished_at
+        response["finished_at"] = finished_at
     if hint_meta:
-        response['hint_meta'] = hint_meta
+        response["hint_meta"] = hint_meta
     return jsonify(response)

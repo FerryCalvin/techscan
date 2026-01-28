@@ -2,27 +2,28 @@ from __future__ import annotations
 
 import logging
 import subprocess  # nosec
+
 # Reason: central wrapper validates executables against an allow list before invocation
 from pathlib import Path
 from typing import MutableMapping, Optional, Sequence
 
-_LOG = logging.getLogger('techscan.subprocess')
+_LOG = logging.getLogger("techscan.subprocess")
 
 _ALLOWED_EXECUTABLES = {
-    'node',
-    'node.exe',
-    'npm',
-    'npm.cmd',
-    'pnpm',
-    'pnpm.cmd',
-    'yarn',
-    'yarn.cmd',
-    'bun',
-    'bun.cmd',
-    'npx',
-    'npx.cmd',
-    'git',
-    'git.exe',
+    "node",
+    "node.exe",
+    "npm",
+    "npm.cmd",
+    "pnpm",
+    "pnpm.cmd",
+    "yarn",
+    "yarn.cmd",
+    "bun",
+    "bun.cmd",
+    "npx",
+    "npx.cmd",
+    "git",
+    "git.exe",
 }
 
 
@@ -40,10 +41,10 @@ def is_allowed_executable(executable: str) -> bool:
 
 def _ensure_allowed(cmd: Sequence[str]) -> Sequence[str]:
     if not cmd:
-        raise ValueError('empty command passed to safe subprocess wrapper')
+        raise ValueError("empty command passed to safe subprocess wrapper")
     executable = Path(cmd[0]).name.lower()
     if executable not in _ALLOWED_EXECUTABLES:
-        raise ValueError(f'executable {cmd[0]!r} is not permitted by allow list')
+        raise ValueError(f"executable {cmd[0]!r} is not permitted by allow list")
     return cmd
 
 
@@ -58,7 +59,7 @@ def safe_run(
     check: bool = False,
 ) -> subprocess.CompletedProcess:
     _ensure_allowed(cmd)
-    _LOG.debug('safe_run executing cmd=%s cwd=%s timeout=%s', list(cmd), cwd, timeout)
+    _LOG.debug("safe_run executing cmd=%s cwd=%s timeout=%s", list(cmd), cwd, timeout)
     return subprocess.run(  # nosec
         list(cmd),
         cwd=cwd,
@@ -73,7 +74,7 @@ def safe_run(
 
 def safe_popen(cmd: Sequence[str], **kwargs) -> subprocess.Popen:
     _ensure_allowed(cmd)
-    _LOG.debug('safe_popen spawning cmd=%s cwd=%s', list(cmd), kwargs.get('cwd'))
+    _LOG.debug("safe_popen spawning cmd=%s cwd=%s", list(cmd), kwargs.get("cwd"))
     return subprocess.Popen(list(cmd), **kwargs)  # nosec
     # Reason: _ensure_allowed enforces allow list, and shell is never enabled
 

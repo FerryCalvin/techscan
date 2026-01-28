@@ -1,20 +1,18 @@
-
 import pathlib
-import os
 
-path = pathlib.Path(r'd:\magang\techscan\app\scan_utils.py')
-content = path.read_text(encoding='utf-8')
+path = pathlib.Path(r"d:\magang\techscan\app\scan_utils.py")
+content = path.read_text(encoding="utf-8")
 
 # Find the end of deep_scan (return result) before fast_full_scan
 # We look for "def fast_full_scan"
 if "def fast_full_scan" in content:
     # Split and take the first part unique
     pre_content = content.split("def fast_full_scan")[0]
-    
+
     # Verify it ends cleanly (it should end with return result or cache logic)
     # We should add a few newlines
     pre_content = pre_content.rstrip() + "\n\n"
-    
+
     # Define clean fast_full_scan
     clean_func = '''# --------------------------- FAST-FULL (Bounded Single-Phase) SCAN ---------------------------
 def fast_full_scan(domain: str, wappalyzer_path: str) -> Dict[str, Any]:
@@ -183,7 +181,7 @@ def fast_full_scan(domain: str, wappalyzer_path: str) -> Dict[str, Any]:
             pass
     return result
 '''
-    path.write_text(pre_content + clean_func, encoding='utf-8')
+    path.write_text(pre_content + clean_func, encoding="utf-8")
     print("Rebuilt file successfully.")
 else:
     print("Could not find fast_full_scan start.")

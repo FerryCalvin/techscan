@@ -2,20 +2,24 @@ import json, pathlib, os, re
 from functools import lru_cache
 from typing import Dict, Any, List
 
-SEMVER_RE = re.compile(r'^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[-+].*)?$')
+SEMVER_RE = re.compile(r"^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[-+].*)?$")
+
 
 @lru_cache(maxsize=1)
-def load_latest_versions(path: str | None = None) -> Dict[str,str]:
+def load_latest_versions(path: str | None = None) -> Dict[str, str]:
     if path is None:
-        path = os.environ.get('TECHSCAN_LATEST_VERSIONS_FILE') or str(pathlib.Path(__file__).resolve().parent.parent / 'data' / 'latest_versions.json')
+        path = os.environ.get("TECHSCAN_LATEST_VERSIONS_FILE") or str(
+            pathlib.Path(__file__).resolve().parent.parent / "data" / "latest_versions.json"
+        )
     p = pathlib.Path(path)
     if not p.exists():
         return {}
     try:
-        data = json.loads(p.read_text(encoding='utf-8'))
-        return {str(k): str(v) for k,v in data.items() if isinstance(k,str)}
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return {str(k): str(v) for k, v in data.items() if isinstance(k, str)}
     except Exception:
         return {}
+
 
 def _semver_tuple(v: str) -> tuple:
     m = SEMVER_RE.match(v.strip())
@@ -26,6 +30,7 @@ def _semver_tuple(v: str) -> tuple:
     while len(parts) < 3:
         parts.append(0)
     return tuple(parts)
+
 
 def compare_versions(found: str, latest: str) -> int:
     """Return -1 if found < latest, 0 if equal, 1 if newer/greater or incomparable.
@@ -59,11 +64,12 @@ def _prefer_newer_version(current: str | None, candidate: str | None) -> str | N
         return candidate if cand > cur else current
     try:
         # prefer the one with more segments when we cannot parse both cleanly
-        cur_parts = current.split('.')
-        cand_parts = candidate.split('.')
+        cur_parts = current.split(".")
+        cand_parts = candidate.split(".")
         return candidate if len(cand_parts) > len(cur_parts) else current
     except Exception:
         return candidate
+
 
 def diff_severity(found: str, latest: str) -> str | None:
     """Classify how far behind 'found' is vs 'latest'.
@@ -80,103 +86,111 @@ def diff_severity(found: str, latest: str) -> str | None:
     if ft >= lt:
         return None
     if ft[0] != lt[0]:
-        return 'major'
+        return "major"
     if ft[1] != lt[1]:
-        return 'minor'
+        return "minor"
     if ft[2] != lt[2]:
-        return 'patch'
+        return "patch"
     return None
 
-def audit_versions(scan: Dict[str, Any], latest_map: Dict[str,str] | None = None) -> Dict[str, Any]:
+
+def audit_versions(scan: Dict[str, Any], latest_map: Dict[str, str] | None = None) -> Dict[str, Any]:
     if latest_map is None:
         latest_map = load_latest_versions()
     if not latest_map:
         return scan
     # Ensure version evidence has been applied so we audit the highest confident version
     try:
-        if os.environ.get('TECHSCAN_VERSION_EVIDENCE','1') == '1':
+        if os.environ.get("TECHSCAN_VERSION_EVIDENCE", "1") == "1":
             apply_version_evidence(scan)
     except Exception:
         pass
-    techs: List[Dict[str, Any]] = scan.get('technologies', [])
+    techs: List[Dict[str, Any]] = scan.get("technologies", [])
     # Early exit optimization: if no tech has version string, skip
-    if not any(t.get('version') for t in techs):
+    if not any(t.get("version") for t in techs):
         return scan
     outdated: List[Dict[str, Any]] = []
     annotated = False
     major_c = minor_c = patch_c = 0
     for t in techs:
-        name = t.get('name')
-        ver = t.get('version')
+        name = t.get("name")
+        ver = t.get("version")
         if not name or not ver:
             continue
         latest = latest_map.get(name)
-        if not latest or latest.lower() in ('n/a','unknown'):
+        if not latest or latest.lower() in ("n/a", "unknown"):
             continue
         cmp = compare_versions(ver, latest)
         if cmp == -1:
             sev = diff_severity(ver, latest)
-            t.setdefault('audit', {})['latest'] = latest
-            t['audit']['status'] = 'outdated'
+            t.setdefault("audit", {})["latest"] = latest
+            t["audit"]["status"] = "outdated"
             if sev:
-                t['audit']['difference'] = sev
-                if sev == 'major':
+                t["audit"]["difference"] = sev
+                if sev == "major":
                     major_c += 1
-                elif sev == 'minor':
+                elif sev == "minor":
                     minor_c += 1
-                elif sev == 'patch':
+                elif sev == "patch":
                     patch_c += 1
-            outdated.append({'name': name, 'version': ver, 'latest': latest, 'difference': sev})
+            outdated.append({"name": name, "version": ver, "latest": latest, "difference": sev})
             annotated = True
         elif cmp == 0:
-            t.setdefault('audit', {})['latest'] = latest
-            t['audit']['status'] = 'latest'
+            t.setdefault("audit", {})["latest"] = latest
+            t["audit"]["status"] = "latest"
             annotated = True
     if annotated:
-        meta = scan.setdefault('audit', {})
+        meta = scan.setdefault("audit", {})
         if outdated:
-            meta['outdated_count'] = len(outdated)
-            meta['outdated'] = outdated
-            meta['outdated_major'] = major_c
-            meta['outdated_minor'] = minor_c
-            meta['outdated_patch'] = patch_c
-        meta['version_dataset'] = 'latest_versions.json'
+            meta["outdated_count"] = len(outdated)
+            meta["outdated"] = outdated
+            meta["outdated_major"] = major_c
+            meta["outdated_minor"] = minor_c
+            meta["outdated_patch"] = patch_c
+        meta["version_dataset"] = "latest_versions.json"
     return scan
+
 
 # ---------------- Version Evidence Extraction (static) -----------------
 
 # Simple normalization: keep digits, dots and letters separators, trim
-_SAFE_VER_RE = re.compile(r'[^0-9A-Za-z\.-]')
+_SAFE_VER_RE = re.compile(r"[^0-9A-Za-z\.-]")
+
 
 def normalize_version_str(v: str) -> str | None:
     if not v:
         return None
-    v2 = _SAFE_VER_RE.sub('', v.strip())
+    v2 = _SAFE_VER_RE.sub("", v.strip())
     # reject obviously bogus like '1' or '1.0.0' for WordPress handled elsewhere; generic filter minimal
     if not any(ch.isdigit() for ch in v2):
         return None
     # collapse leading/trailing dots
-    v2 = v2.strip('.')
+    v2 = v2.strip(".")
     return v2 or None
+
 
 def extract_versions_from_meta(meta: Dict[str, str]) -> List[Dict[str, Any]]:
     evidences: List[Dict[str, Any]] = []
     if not meta:
         return evidences
     # Common generators: WordPress, Joomla, Drupal, Next.js, Hugo, Gatsby, Laravel
-    gen = meta.get('generator') or meta.get('x-generator') or meta.get('powered-by')
+    gen = meta.get("generator") or meta.get("x-generator") or meta.get("powered-by")
     if gen:
         g = gen.strip()
         # Try capture last token with digits
-        m = re.search(r'(\d+[^\s]*)', g)
+        m = re.search(r"(\d+[^\s]*)", g)
         if m:
             nv = normalize_version_str(m.group(1))
             if nv:
-                evidences.append({'tech_hint': g.lower(), 'source': 'meta.generator', 'raw': gen, 'normalized': nv, 'weight': 0.55})
+                evidences.append(
+                    {"tech_hint": g.lower(), "source": "meta.generator", "raw": gen, "normalized": nv, "weight": 0.55}
+                )
     return evidences
 
-_ASSET_VER_RE = re.compile(r'[\/?&](?:v|ver|version)=([0-9][0-9A-Za-z\.-]{0,30})', re.I)
-_ASSET_PATH_VER_RE = re.compile(r'/([0-9]+\.[0-9][0-9A-Za-z\.-]{0,20})[\./-]')
+
+_ASSET_VER_RE = re.compile(r"[\/?&](?:v|ver|version)=([0-9][0-9A-Za-z\.-]{0,30})", re.I)
+_ASSET_PATH_VER_RE = re.compile(r"/([0-9]+\.[0-9][0-9A-Za-z\.-]{0,20})[\./-]")
+
 
 def extract_versions_from_assets(urls: List[str]) -> List[Dict[str, Any]]:
     evidences: List[Dict[str, Any]] = []
@@ -190,14 +204,15 @@ def extract_versions_from_assets(urls: List[str]) -> List[Dict[str, Any]]:
         if m:
             nv = normalize_version_str(m.group(1))
             if nv:
-                evidences.append({'source': 'asset.query', 'raw': u, 'normalized': nv, 'weight': 0.35})
+                evidences.append({"source": "asset.query", "raw": u, "normalized": nv, "weight": 0.35})
                 continue
         m2 = _ASSET_PATH_VER_RE.search(u)
         if m2:
             nv = normalize_version_str(m2.group(1))
             if nv:
-                evidences.append({'source': 'asset.path', 'raw': u, 'normalized': nv, 'weight': 0.25})
+                evidences.append({"source": "asset.path", "raw": u, "normalized": nv, "weight": 0.25})
     return evidences
+
 
 def combine_confidences(weights: List[float]) -> float:
     # 1 - Π(1-w)
@@ -209,8 +224,9 @@ def combine_confidences(weights: List[float]) -> float:
             w2 = max(0.0, min(1.0, float(w)))
         except Exception:
             w2 = 0.0
-        p *= (1.0 - w2)
+        p *= 1.0 - w2
     return round(1.0 - p, 4)
+
 
 def apply_version_evidence(result: Dict[str, Any]) -> None:
     """Augment technologies with version_candidates and set version using simple voting.
@@ -218,22 +234,22 @@ def apply_version_evidence(result: Dict[str, Any]) -> None:
     - Does not override an existing strong version unless new confidence is higher.
     """
     try:
-        techs = result.get('technologies') or []
+        techs = result.get("technologies") or []
         if not techs:
             return
         # Gather extras
         extras = None
-        raw = result.get('raw') or {}
+        raw = result.get("raw") or {}
         if isinstance(raw, dict):
-            extras = raw.get('extras') or raw.get('data', {}).get('extras')
+            extras = raw.get("extras") or raw.get("data", {}).get("extras")
         if not extras and isinstance(result, dict):
-            extras = result.get('extras')
-        meta_raw = (extras or {}).get('meta') or {}
+            extras = result.get("extras")
+        meta_raw = (extras or {}).get("meta") or {}
         if isinstance(meta_raw, list):
             meta_raw = meta_raw[0] if meta_raw and isinstance(meta_raw[0], dict) else {}
         meta = meta_raw if isinstance(meta_raw, dict) else {}
-        scripts = (extras or {}).get('scripts') or []
-        links = (extras or {}).get('links') or []
+        scripts = (extras or {}).get("scripts") or []
+        links = (extras or {}).get("links") or []
         evid_meta = extract_versions_from_meta(meta)
         evid_assets = extract_versions_from_assets([*scripts, *links])
         all_evid = evid_meta + evid_assets
@@ -241,47 +257,49 @@ def apply_version_evidence(result: Dict[str, Any]) -> None:
             return
         # Map evidence to technologies by loose hint
         for t in techs:
-            name = (t.get('name') or '').lower()
-            candidates: List[Dict[str, Any]] = t.setdefault('version_candidates', [])
+            name = (t.get("name") or "").lower()
+            candidates: List[Dict[str, Any]] = t.setdefault("version_candidates", [])
             # Select evidences that likely belong to this tech
             rel = []
             for ev in all_evid:
-                hint = (ev.get('tech_hint') or '')
+                hint = ev.get("tech_hint") or ""
                 if not hint:
                     # Try map by common library asset names
-                    raw = ev.get('raw') or ''
+                    raw = ev.get("raw") or ""
                     low = raw.lower()
-                    if ('jquery' in low and 'jquery' in name) or \
-                       ('react' in low and 'react' in name) or \
-                       ('vue' in low and ('vue' in name or 'nuxt' in name)) or \
-                       ('angular' in low and 'angular' in name) or \
-                       ('wp-' in low and 'wordpress' in name):
+                    if (
+                        ("jquery" in low and "jquery" in name)
+                        or ("react" in low and "react" in name)
+                        or ("vue" in low and ("vue" in name or "nuxt" in name))
+                        or ("angular" in low and "angular" in name)
+                        or ("wp-" in low and "wordpress" in name)
+                    ):
                         rel.append(ev)
                 else:
                     if name and name.split()[0] in hint:
                         rel.append(ev)
             # Add normalized deduped candidates
-            seen = set((c.get('normalized'), c.get('source')) for c in candidates)
+            seen = set((c.get("normalized"), c.get("source")) for c in candidates)
             for ev in rel:
-                key = (ev.get('normalized'), ev.get('source'))
-                if not ev.get('normalized') or key in seen:
+                key = (ev.get("normalized"), ev.get("source"))
+                if not ev.get("normalized") or key in seen:
                     continue
                 candidates.append(ev)
                 seen.add(key)
             if not candidates:
                 continue
             # Pick winner by highest weight; compute confidence aggregate
-            best = max(candidates, key=lambda c: c.get('weight', 0))
-            conf = combine_confidences([c.get('weight', 0) for c in candidates])
-            best_version = best.get('normalized')
-            prev_conf = float(t.get('version_confidence') or 0.0)
-            chosen_version = _prefer_newer_version(t.get('version'), best_version)
-            if not t.get('version') or chosen_version != t.get('version'):
-                t['version'] = chosen_version
-                t['version_confidence'] = max(prev_conf, conf)
+            best = max(candidates, key=lambda c: c.get("weight", 0))
+            conf = combine_confidences([c.get("weight", 0) for c in candidates])
+            best_version = best.get("normalized")
+            prev_conf = float(t.get("version_confidence") or 0.0)
+            chosen_version = _prefer_newer_version(t.get("version"), best_version)
+            if not t.get("version") or chosen_version != t.get("version"):
+                t["version"] = chosen_version
+                t["version_confidence"] = max(prev_conf, conf)
             elif conf > prev_conf:
                 # keep current version but carry the stronger confidence signal
-                t['version_confidence'] = conf
+                t["version_confidence"] = conf
     except Exception:
         # best effort only
         return

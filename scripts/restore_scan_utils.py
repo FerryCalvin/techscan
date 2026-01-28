@@ -1,23 +1,21 @@
-
 import pathlib
-import os
 
-path = pathlib.Path(r'd:\magang\techscan\app\scan_utils.py')
-content = path.read_text(encoding='utf-8')
+path = pathlib.Path(r"d:\magang\techscan\app\scan_utils.py")
+content = path.read_text(encoding="utf-8")
 
 # Check if fast_full_scan is truncated
 marker = "scan_mode = 'fast_full'"
 if marker in content and "start_all = time.time()" not in content:
     print("Detected truncation. Restoring fast_full_scan body.")
-    
+
     # We strip the incomplete docstring end if present
     # content = content.rsplit(marker, 1)[0] + marker + "\n    \"\"\"\n"
     # Actually, let's just find the start of fast_full_scan and replace everything after
-    
+
     start_def = "def fast_full_scan(domain: str, wappalyzer_path: str) -> Dict[str, Any]:"
     if start_def in content:
         base = content.split(start_def)[0]
-        
+
         # Reconstruct the missing part
         restored = '''def fast_full_scan(domain: str, wappalyzer_path: str) -> Dict[str, Any]:
     """Run a *single* bounded full Wappalyzer scan with a strict wall-clock budget.
@@ -185,7 +183,7 @@ if marker in content and "start_all = time.time()" not in content:
             pass
     return result
 '''
-        path.write_text(base + restored, encoding='utf-8')
+        path.write_text(base + restored, encoding="utf-8")
         print("Restored fast_full_scan.")
     else:
         print("Could not find definition start.")

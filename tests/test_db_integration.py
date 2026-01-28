@@ -5,8 +5,8 @@ import pytest
 
 
 requires_db = pytest.mark.skipif(
-    os.environ.get('TECHSCAN_DISABLE_DB','0') == '1' or not os.environ.get('TECHSCAN_DB_URL'),
-    reason='TECHSCAN_DB_URL must be set and DB enabled for integration tests'
+    os.environ.get("TECHSCAN_DISABLE_DB", "0") == "1" or not os.environ.get("TECHSCAN_DB_URL"),
+    reason="TECHSCAN_DB_URL must be set and DB enabled for integration tests",
 )
 
 
@@ -24,16 +24,16 @@ def test_schema_and_basic_persistence():
     finished = time.time()
 
     result = {
-        'domain': dom,
-        'scan_mode': 'fast',
-        'started_at': started,
-        'finished_at': finished,
-        'duration': finished - started,
-        'technologies': [
-            {'name': 'Flask', 'version': '3.0.3', 'categories': ['Web frameworks']},
-            {'name': 'Python', 'version': None, 'categories': ['Programming languages']},
+        "domain": dom,
+        "scan_mode": "fast",
+        "started_at": started,
+        "finished_at": finished,
+        "duration": finished - started,
+        "technologies": [
+            {"name": "Flask", "version": "3.0.3", "categories": ["Web frameworks"]},
+            {"name": "Python", "version": None, "categories": ["Programming languages"]},
         ],
-        'categories': {'Web frameworks': 1, 'Programming languages': 1},
+        "categories": {"Web frameworks": 1, "Programming languages": 1},
     }
 
     # Persist and then query back
@@ -45,12 +45,12 @@ def test_schema_and_basic_persistence():
 
     # Domain techs should have at least Flask entry
     techs = _db.get_domain_techs(dom)
-    names = {t['tech_name'] for t in techs}
-    assert 'Flask' in names
+    names = {t["tech_name"] for t in techs}
+    assert "Flask" in names
 
     # Search API should find the domain by tech name
-    rows = _db.search_tech(tech='Flask', limit=50)
-    assert any(r['domain'] == dom for r in rows)
+    rows = _db.search_tech(tech="Flask", limit=50)
+    assert any(r["domain"] == dom for r in rows)
 
     # Cleanup: remove rows for this domain to keep DB tidy (best-effort)
     try:

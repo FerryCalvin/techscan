@@ -21,11 +21,11 @@ if str(_ROOT) not in sys.path:
 
 # Set test environment config BEFORE importing app to ensure it picks up
 # static configuration (if any)
-os.environ['TECHSCAN_ADMIN_OPEN'] = '1'
-os.environ['TECHSCAN_DISABLE_RQ'] = '1'
-os.environ['TECHSCAN_DISABLE_DB'] = '1'
-if 'TECHSCAN_ADMIN_TOKEN' in os.environ:
-    del os.environ['TECHSCAN_ADMIN_TOKEN']
+os.environ["TECHSCAN_ADMIN_OPEN"] = "1"
+os.environ["TECHSCAN_DISABLE_RQ"] = "1"
+os.environ["TECHSCAN_DISABLE_DB"] = "1"
+if "TECHSCAN_ADMIN_TOKEN" in os.environ:
+    del os.environ["TECHSCAN_ADMIN_TOKEN"]
 
 from app import create_app
 
@@ -45,18 +45,18 @@ def _wait_for_server(host: str, port: int, timeout: float = 8.0) -> bool:
     return _port_open(host, port)
 
 
-@pytest.fixture(scope='session', autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def _ensure_stats_server():
     """Start a lightweight Flask server for Playwright stats tests if none running."""
-    host = os.environ.get('TECHSCAN_TEST_SERVER_HOST', '127.0.0.1')
-    port = int(os.environ.get('TECHSCAN_TEST_SERVER_PORT', '5000'))
+    host = os.environ.get("TECHSCAN_TEST_SERVER_HOST", "127.0.0.1")
+    port = int(os.environ.get("TECHSCAN_TEST_SERVER_PORT", "5000"))
     if _port_open(host, port):
         # Something (maybe developer server) already listens; reuse it.
         yield
         return
     # Bypass admin token check for tests
-    os.environ['TECHSCAN_ADMIN_OPEN'] = '1'
-    os.environ['TECHSCAN_DISABLE_RQ'] = '1'
+    os.environ["TECHSCAN_ADMIN_OPEN"] = "1"
+    os.environ["TECHSCAN_DISABLE_RQ"] = "1"
     app = create_app()
     app.testing = True
     server = make_server(host, port, app)
@@ -65,7 +65,7 @@ def _ensure_stats_server():
     if not _wait_for_server(host, port):
         server.shutdown()
         thread.join(timeout=1)
-        raise RuntimeError(f'Failed to start test server at http://{host}:{port}')
+        raise RuntimeError(f"Failed to start test server at http://{host}:{port}")
     try:
         yield
     finally:
@@ -78,8 +78,8 @@ def _ensure_stats_server():
 
 @pytest.fixture
 def client():
-    os.environ['TECHSCAN_ADMIN_OPEN'] = '1'
-    os.environ['TECHSCAN_DISABLE_RQ'] = '1'
+    os.environ["TECHSCAN_ADMIN_OPEN"] = "1"
+    os.environ["TECHSCAN_DISABLE_RQ"] = "1"
     app = create_app()
     app.testing = True
     return app.test_client()

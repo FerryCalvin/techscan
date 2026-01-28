@@ -1,14 +1,12 @@
-
 import pathlib
-import os
 
-path = pathlib.Path(r'd:\magang\techscan\app\scan_utils.py')
-content = path.read_text(encoding='utf-8')
+path = pathlib.Path(r"d:\magang\techscan\app\scan_utils.py")
+content = path.read_text(encoding="utf-8")
 
 # The file ends with the docstring of fast_full_scan in the broken state
 # Check if the last line is indented """ or just """
 lines = content.splitlines()
-last_lines = lines[-5:] # check context
+last_lines = lines[-5:]  # check context
 
 print("Last lines:", last_lines)
 
@@ -16,7 +14,7 @@ print("Last lines:", last_lines)
 # Note: lines[-1] might be empty or whitespace
 if any("scan_mode = 'fast_full'" in l for l in last_lines) and any('"""' in l for l in last_lines[-2:]):
     print("Detected correct truncation point. Appending body.")
-    body = '''
+    body = """
     start_all = time.time()
     started_at = start_all
     # Resolve timeout budget
@@ -158,8 +156,8 @@ if any("scan_mode = 'fast_full'" in l for l in last_lines) and any('"""' in l fo
         except Exception:
             pass
     return result
-'''
-    with path.open('a', encoding='utf-8') as f:
+"""
+    with path.open("a", encoding="utf-8") as f:
         f.write(body)
     print("Restored.")
 else:
