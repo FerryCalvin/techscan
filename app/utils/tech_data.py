@@ -140,9 +140,9 @@ def apply_hint_meta_detections(payload: Dict[str, Any]) -> None:
 
     # 1.5 Links Analysis (for Multisite)
     links = extras.get("links", [])
-    for l in links:
-        l_lower = l.lower()
-        if "/wp-content/uploads/sites/" in l_lower:
+    for link in links:
+        link_lower = link.lower()
+        if "/wp-content/uploads/sites/" in link_lower:
             # Detection logic for multisite
             if not any(t["name"] == "WordPress Multisite" for t in techs):
                 techs.append({"name": "WordPress Multisite", "confidence": 100, "categories": ["CMS"]})

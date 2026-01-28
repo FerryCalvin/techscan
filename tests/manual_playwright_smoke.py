@@ -49,8 +49,8 @@ async def run():
 
         # print some console logs captured
         print("--- console logs ---")
-        for l in logs[-30:]:
-            print(l)
+        for log_item in logs[-30:]:
+            print(log_item)
 
         await browser.close()
 

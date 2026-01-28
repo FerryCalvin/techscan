@@ -12,7 +12,7 @@ print("Last lines:", last_lines)
 
 # If it ends with """ and "scan_mode = 'fast_full'" is near, we append.
 # Note: lines[-1] might be empty or whitespace
-if any("scan_mode = 'fast_full'" in l for l in last_lines) and any('"""' in l for l in last_lines[-2:]):
+if any("scan_mode = 'fast_full'" in line for line in last_lines) and any('"""' in line for line in last_lines[-2:]):
     print("Detected correct truncation point. Appending body.")
     body = """
     start_all = time.time()

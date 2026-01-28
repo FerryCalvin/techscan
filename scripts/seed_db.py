@@ -27,7 +27,7 @@ def main():
     if args.domains:
         p = pathlib.Path(args.domains)
         raw = p.read_text(encoding="utf-8").splitlines()
-        domains = [l.strip() for l in raw if l.strip() and not l.startswith("#")]
+        domains = [line.strip() for line in raw if line.strip() and not line.startswith("#")]
     else:
         domains = ["example.com", "wordpress.org", "drupal.org", "joomla.org", "reactjs.org"]
     base = args.url.rstrip("/")
