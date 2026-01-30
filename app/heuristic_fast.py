@@ -877,3 +877,51 @@ def run_heuristic(domain: str, budget_ms: int = 1800, allow_empty_early: bool = 
             if len(collected) > 1:
                 t.setdefault("alt_versions", sorted(collected))
     return result
+
+
+def synthetic_header_detection(domain: str, timeout: float = 3.0) -> List[Dict[str, Any]]:
+    """Last-resort fallback: specific HEAD request to extract header-based technologies."""
+    t0 = time.time()
+    techs: List[Dict[str, Any]] = []
+    categories: Dict[str, List[Dict[str, Any]]] = {}
+    
+    try:
+        # Use simpler fetch if possible, but _http_fetch is robust
+        headers, _, _ = _http_fetch(domain, total_timeout=timeout)
+    except Exception:
+        return []
+
+    # Server header
+    name, ver = parse_server_header(headers.get("server"))
+    if name:
+        conf = (
+            CONF_SERVER_PRIMARY
+            if name in ("Apache", "Nginx")
+            else (CONF_CDN if name == "Cloudflare" else CONF_SERVER_SECONDARY)
+        )
+        _add(categories, techs, name, ver, conf)
+
+    # X-Powered-By
+    for bname, bver in extract_x_powered_by(headers.get("x-powered-by")):
+        conf = CONF_BACKEND_LANG if bname == "PHP" else CONF_BACKEND_FRAMEWORK
+        _add(categories, techs, bname, bver, conf)
+        
+    # HSTS
+    if "strict-transport-security" in headers:
+        _add(categories, techs, "HSTS", None, 20)
+        
+    # Cookies
+    cookie_header = headers.get("set-cookie-all") or headers.get("set-cookie")
+    if cookie_header:
+        if isinstance(cookie_header, list):
+            cookie_blob = "; ".join(cookie_header)
+        else:
+            cookie_blob = str(cookie_header)
+            
+        for hint in COOKIE_HINTS:
+            if hint["pattern"].search(cookie_blob):
+                _add(categories, techs, hint["name"], None, hint["confidence"])
+                for implied in hint.get("implies", []):
+                     _add(categories, techs, implied, None, 25)
+
+    return techs

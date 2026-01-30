@@ -57,8 +57,17 @@ def load_heuristic_patterns():
 
 
 # ---- RE-EXPORTS for scan.py compatibility ----
-from .utils.domain import validate_domain, extract_host, extract_url_with_path
+from .utils.domain import validate_domain, extract_host, extract_url_with_path, DOMAIN_RE
 from .scanners.node import scan_domain
+
+from app.utils.tech_data import (
+    infer_tech_from_urls,
+    load_categories
+)
+import app.wapp_local as wapp_local
+import app.heuristic_fast as heuristic_fast
+from app.heuristic_fast import synthetic_header_detection
+import app.scanners.core as core_import
 from .scanners.core import (
     quick_single_scan,
     deep_scan,
@@ -66,16 +75,10 @@ from .scanners.core import (
     get_cached_or_scan,
     scan_bulk,
     bulk_quick_then_deep,
-    scan_unified
+    scan_unified,
+    snapshot_cache
 )
-from .utils.tech_data import (
-    synthetic_header_detection,
-    snapshot_cache,
-    infer_tech_from_urls,
-    load_categories
-)
-from .wapp_local import wapp_local
-from .heuristic_fast import heuristic_fast
+
 from .scanners.state import (
     _record_failure,
     _record_success,
@@ -90,6 +93,7 @@ __all__ = [
     "validate_domain",
     "extract_host",
     "extract_url_with_path",
+    "DOMAIN_RE",
     "scan_domain",
     "quick_single_scan",
     "deep_scan",
