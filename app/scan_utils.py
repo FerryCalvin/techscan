@@ -1,9 +1,6 @@
 from .scanners.state import (
     STATS,
-    _stats_lock,
-    _record_failure,
-    _record_success,
-    _check_quarantine
+    _stats_lock
 )
 
 # Cache configuration
@@ -60,36 +57,8 @@ def load_heuristic_patterns():
 
 # ---- RE-EXPORTS for scan.py compatibility ----
 # These were previously defined here or imported here
-from .utils.domain import (
-    DOMAIN_RE,
-    validate_domain,
-    extract_host,
-    extract_url_with_path
-)
 
-from . import (
-    wapp_local,
-    heuristic_fast
-)
 
-from .utils.tech_data import (
-    infer_tech_from_urls,
-    load_categories
-)
 
-from .scanners.node import (
-    scan_domain,
-    synthetic_header_detection
-)
 
-from .scanners.core import (
-    snapshot_cache,
-    quick_single_scan,
-    deep_scan,
-    fast_full_scan,
-    get_cached_or_scan,
-    scan_bulk,
-    bulk_quick_then_deep,
-    scan_unified
-)
 
