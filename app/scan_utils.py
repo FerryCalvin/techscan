@@ -55,10 +55,57 @@ def load_heuristic_patterns():
     # Stub for reloading heuristic patterns (not yet implemented or static)
     pass
 
+
 # ---- RE-EXPORTS for scan.py compatibility ----
-# These were previously defined here or imported here
+from .utils.domain import validate_domain, extract_host, extract_url_with_path
+from .scanners.node import scan_domain
+from .scanners.core import (
+    quick_single_scan,
+    deep_scan,
+    fast_full_scan,
+    get_cached_or_scan,
+    scan_bulk,
+    bulk_quick_then_deep,
+    scan_unified
+)
+from .utils.tech_data import (
+    synthetic_header_detection,
+    snapshot_cache,
+    infer_tech_from_urls,
+    load_categories
+)
+from .wapp_local import wapp_local
+from .heuristic_fast import heuristic_fast
+from .scanners.state import (
+    _record_failure,
+    _record_success,
+    _check_quarantine,
+    _dns_negative
+)
 
-
-
-
-
+__all__ = [
+    "STATS",
+    "get_stats",
+    "load_heuristic_patterns",
+    "validate_domain",
+    "extract_host",
+    "extract_url_with_path",
+    "scan_domain",
+    "quick_single_scan",
+    "deep_scan",
+    "fast_full_scan",
+    "get_cached_or_scan",
+    "scan_bulk",
+    "bulk_quick_then_deep",
+    "scan_unified",
+    "synthetic_header_detection",
+    "snapshot_cache",
+    "infer_tech_from_urls",
+    "load_categories",
+    "wapp_local",
+    "heuristic_fast",
+    "_record_failure",
+    "_record_success",
+    "_check_quarantine",
+    "_dns_negative",
+]
