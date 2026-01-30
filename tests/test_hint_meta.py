@@ -1,4 +1,4 @@
-from app.scan_utils import _attach_raw_hint_meta, _apply_hint_meta_detections
+from app.utils.tech_data import attach_raw_hint_meta as _attach_raw_hint_meta, apply_hint_meta_detections as _apply_hint_meta_detections
 
 
 def test_attach_raw_hint_meta_merges_into_existing_bucket():

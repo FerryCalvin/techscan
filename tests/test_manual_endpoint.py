@@ -16,8 +16,8 @@ class TestEndpointScanning(unittest.TestCase):
 
         # Mock dependencies
         with (
-            patch("app.scan_utils.heuristic_fast.run_heuristic") as mock_heur,
-            patch("app.scan_utils.wapp_local.detect") as mock_wapp,
+            patch("app.heuristic_fast.run_heuristic") as mock_heur,
+            patch("app.wapp_local.detect") as mock_wapp,
         ):
             # Setup mocks
             mock_heur.return_value = {"technologies": [], "categories": {}, "raw": target_url}
