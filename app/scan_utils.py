@@ -76,7 +76,8 @@ from .scanners.core import (
     scan_bulk,
     bulk_quick_then_deep,
     scan_unified,
-    snapshot_cache
+    snapshot_cache,
+    flush_cache
 )
 
 from .scanners.state import (
@@ -104,6 +105,7 @@ __all__ = [
     "scan_unified",
     "synthetic_header_detection",
     "snapshot_cache",
+    "flush_cache",
     "infer_tech_from_urls",
     "load_categories",
     "wapp_local",

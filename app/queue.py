@@ -10,8 +10,8 @@ try:
     from rq import Queue
 
     _rq_available = True
-except ImportError:
-    logging.getLogger("techscan").warning("rq/redis not installed - background queue disabled")
+except ImportError as e:
+    logging.getLogger("techscan").warning(f"rq/redis not installed - background queue disabled. Error: {e}")
     Redis = None
     Queue = None
 

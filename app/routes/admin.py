@@ -488,22 +488,23 @@ def version_dataset_update():
 
 @admin_bp.route("/redis_health", methods=["GET"])
 def redis_health():
-    """Ping configured Redis instance used by Flask-Limiter (TECHSCAN_REDIS_URL).
-    Returns {ok: true, ping: 'PONG'} or error with 500 if unavailable.
+    """Ping Redis instance (TECHSCAN_REDIS_URL or default localhost:6379).
+    Returns {ok: true, ping: 'PONG'} or {ok: false, status: 'not_running'} gracefully.
+    NOTE: This check is independent of Flask-Limiter's storage. Limiter uses memory
+    when TECHSCAN_REDIS_URL is not set, so app won't crash even if Redis is down.
     """
-    url = os.environ.get("TECHSCAN_REDIS_URL")
-    if not url:
-        return jsonify({"ok": False, "error": "TECHSCAN_REDIS_URL not set"}), 400
+    # Use same default as queue.py for consistency
+    url = os.environ.get("TECHSCAN_REDIS_URL", "redis://localhost:6379")
     try:
         # Import here to avoid hard-dependency when not used
         from redis import from_url
 
-        r = from_url(url)
+        r = from_url(url, socket_connect_timeout=2)
         pong = r.ping()
-        return jsonify({"ok": True, "ping": pong})
+        return jsonify({"ok": True, "ping": pong, "url": url})
     except Exception as e:
-        logging.getLogger("techscan.admin").warning("redis_health failed url=%s err=%s", url, e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        # Graceful failure - Redis not running is common, don't spam logs
+        return jsonify({"ok": False, "status": "not_running", "url": url, "error": str(e)})
 
 
 @admin_bp.route("/quarantine/state", methods=["GET"])

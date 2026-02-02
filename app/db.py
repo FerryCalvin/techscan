@@ -11,7 +11,7 @@ try:
     # psycopg_pool provides a robust connection pool for psycopg (psycopg3)
     from psycopg_pool import ConnectionPool as _PsycopgConnectionPool
 except Exception as pool_import_err:
-    logging.getLogger("techscan.db").debug("psycopg_pool import failed err=%s", pool_import_err, exc_info=True)
+    logging.getLogger("techscan.db").warning("psycopg_pool import failed err=%s", pool_import_err, exc_info=True)
     _PsycopgConnectionPool = None
 
 _LOG = logging.getLogger("techscan.db")
