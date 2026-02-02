@@ -8,6 +8,72 @@ from .deduplication import canonicalize_tech_name
 
 _ASSET_VERSION_QUERY_RE = re.compile(r"[?&](?:ver|v|version)=([0-9]+(?:\.[0-9]+){0,3})", re.I)
 
+# Fallback category mapping for technologies that may not have categories from scanner
+CATEGORY_FALLBACK: Dict[str, List[str]] = {
+    # Operating Systems
+    "Ubuntu": ["Operating systems"],
+    "Debian": ["Operating systems"],
+    "CentOS": ["Operating systems"],
+    "Windows Server": ["Operating systems"],
+    "FreeBSD": ["Operating systems"],
+    # Web Servers
+    "Apache HTTP Server": ["Web servers"],
+    "Nginx": ["Web servers"],
+    "LiteSpeed": ["Web servers"],
+    "Microsoft IIS": ["Web servers"],
+    # Programming Languages
+    "PHP": ["Programming languages"],
+    "Python": ["Programming languages"],
+    "Ruby": ["Programming languages"],
+    "Java": ["Programming languages"],
+    "Node.js": ["Programming languages"],
+    "ASP.NET": ["Programming languages"],
+    # Databases
+    "MySQL": ["Databases"],
+    "PostgreSQL": ["Databases"],
+    "MongoDB": ["Databases"],
+    "Redis": ["Databases"],
+    "MariaDB": ["Databases"],
+    # JavaScript Libraries
+    "jQuery": ["JavaScript libraries"],
+    "jQuery UI": ["JavaScript libraries"],
+    "Popper": ["JavaScript libraries"],
+    "Lodash": ["JavaScript libraries"],
+    "Moment.js": ["JavaScript libraries"],
+    # UI Frameworks
+    "Bootstrap": ["UI frameworks"],
+    "Tailwind CSS": ["UI frameworks"],
+    "Foundation": ["UI frameworks"],
+    "Materialize CSS": ["UI frameworks"],
+    "Bulma": ["UI frameworks"],
+    # JavaScript Frameworks
+    "React": ["JavaScript frameworks"],
+    "Vue.js": ["JavaScript frameworks"],
+    "Angular": ["JavaScript frameworks"],
+    "Svelte": ["JavaScript frameworks"],
+    "Next.js": ["JavaScript frameworks"],
+    # CMS
+    "WordPress": ["CMS"],
+    "Joomla": ["CMS"],
+    "Drupal": ["CMS"],
+    "Magento": ["Ecommerce"],
+    "Shopify": ["Ecommerce"],
+    # Font Services
+    "Font Awesome": ["Font scripts"],
+    "Google Font API": ["Font scripts"],
+    # Analytics
+    "Google Analytics": ["Analytics"],
+    "Google Analytics GA4": ["Analytics"],
+    "Google Tag Manager": ["Tag managers"],
+    # Caching
+    "Varnish": ["Caching"],
+    "Cloudflare": ["CDN"],
+    # SSL/TLS
+    "Sectigo": ["SSL/TLS certificate authorities"],
+    "Let's Encrypt": ["SSL/TLS certificate authorities"],
+    "DigiCert": ["SSL/TLS certificate authorities"],
+}
+
 
 def load_categories(wappalyzer_path: str) -> Dict[int, str]:
     from functools import lru_cache
@@ -249,6 +315,27 @@ def normalize_result(domain: str, raw: Dict[str, Any], categories_map: Dict[int,
             "confidence": t.get("confidence"),
             "evidence": normalized_evidence,
         }
+        
+        # Apply CATEGORY_FALLBACK for technologies without categories
+        if not entry["categories"]:
+            fallback_cats = CATEGORY_FALLBACK.get(entry["name"], [])
+            if fallback_cats:
+                entry["categories"] = fallback_cats.copy()
+                names.extend(fallback_cats)
+                # Add to bucket so it appears in the summary
+                for cat in fallback_cats:
+                    category_bucket.setdefault(cat, []).append({"name": entry["name"], "version": entry["version"]})
+
+        # Boost confidence for commonly detected OS/servers
+        if entry["name"] in ("Ubuntu", "Debian", "CentOS", "Apache HTTP Server", "Nginx"):
+            if not entry["confidence"] or entry["confidence"] < 80:
+                entry["confidence"] = 100
+        
+        # Boost PHP confidence if detected via headers
+        if entry["name"] == "PHP":
+            if entry["confidence"] and entry["confidence"] < 80:
+                entry["confidence"] = 90
+            
         norm_techs.append(entry)
         for n in names:
             category_bucket.setdefault(n, []).append({"name": entry["name"], "version": entry["version"]})
@@ -270,16 +357,18 @@ def infer_tech_from_urls(urls: List[str]) -> List[Dict[str, Any]]:
 
     # Common signature patterns often found in URLs
     patterns = [
-        ("jQuery", re.compile(r"jquery[.-](\d[\w.-]*)\.js", re.I)),
-        ("Bootstrap", re.compile(r"bootstrap(?:.*)?\.(?:css|js)", re.I)),
+        ("jQuery", re.compile(r"jquery(?:[.-](?:\d[\w.-]*|min|slim|ui))?\.js", re.I)),
+        ("Bootstrap", re.compile(r"bootstrap(?:[-._]min)?\.css|bootstrap(?:[-._]min)?\.js", re.I)),
+        ("Popper", re.compile(r"popper(?:[-._]min)?\.js", re.I)),
+        ("SweetAlert", re.compile(r"sweetalert(?:2)?(?:[-._]min)?\.js", re.I)),
         ("Tailwind CSS", re.compile(r"tailwind(?:.min)?.css", re.I)),
         ("Vue.js", re.compile(r"vue(?:.runtime)?.(?:min.)?js", re.I)),
         ("React", re.compile(r"react(?:.production)?.(?:min.)?js", re.I)),
         ("Angular", re.compile(r"angular(?:.min)?.js", re.I)),
         ("Google Analytics", re.compile(r"google-analytics.com/analytics.js|gtag/js", re.I)),
-        ("Google Tag Manager", re.compile(r"googletagmanager.com/gtm.js", re.I)),
+        ("Google Tag Manager", re.compile(r"googletagmanager.com/gtm.js|googletagmanager.com/ns.html", re.I)),
         ("Google Font API", re.compile(r"fonts.googleapis.com", re.I)),
-        ("Font Awesome", re.compile(r"fontawesome", re.I)),
+        ("Font Awesome", re.compile(r"fontawesome|font-awesome", re.I)),
         ("RequireJS", re.compile(r"require(?:.min)?.js", re.I)),
         ("MathJax", re.compile(r"mathjax", re.I)),
         ("core-js", re.compile(r"core-js", re.I)),
@@ -296,6 +385,8 @@ def infer_tech_from_urls(urls: List[str]) -> List[Dict[str, Any]]:
     INFERRED_CATEGORY_MAP = {
         "jQuery": ["JavaScript libraries"],
         "Bootstrap": ["UI frameworks"],
+        "Popper": ["JavaScript libraries"],
+        "SweetAlert": ["JavaScript libraries"],
         "Tailwind CSS": ["UI frameworks"],
         "Vue.js": ["JavaScript frameworks"],
         "React": ["JavaScript libraries"],
@@ -311,6 +402,7 @@ def infer_tech_from_urls(urls: List[str]) -> List[Dict[str, Any]]:
         "YUI Doc": ["Documentation"],
         "Video.js": ["Video players"],
         "PHP": ["Programming languages"],
+        "Ubuntu": ["Operating systems"],
         "jsDelivr": ["CDN"],
     }
 

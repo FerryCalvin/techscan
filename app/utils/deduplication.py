@@ -5,6 +5,12 @@ TECH_NAME_REWRITES = {
     "Hello Elementor": "Hello Elementor Theme",
     "Apache": "Apache HTTP Server",
     "Nginx": "Nginx",
+    "nginx": "Nginx",
+    "jquery": "jQuery",
+    "LiteSpeed": "LiteSpeed Web Server",
+    "litespeed": "LiteSpeed Web Server",
+    "google font api": "Google Font API",
+    "font awesome": "Font Awesome",
 }
 
 
@@ -53,10 +59,19 @@ def deduplicate_techs(techs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             # Actually, standardizing on the more descriptive name is usually better.
 
             # Simple substring match
-            if cand_name.lower() in ex_name.lower() or ex_name.lower() in cand_name.lower():
+            is_substring = cand_name.lower() in ex_name.lower() or ex_name.lower() in cand_name.lower()
+            is_exact = cand_name.lower() == ex_name.lower()
+            
+            if is_substring:
                 # Check for category overlap - if they share ANY category, consider them same tech family
+                # OR if names are exactly the same, assume same tech (e.g. Bootstrap vs Bootstrap)
+                # OR if one has no categories, assume it matches the one that does
                 ex_cats = set(existing.get("categories") or [])
-                if not cand_cats.isdisjoint(ex_cats) or (not cand_cats and not ex_cats):
+                
+                cat_overlap = not cand_cats.isdisjoint(ex_cats)
+                one_side_empty = (not cand_cats) or (not ex_cats)
+                
+                if is_exact or cat_overlap or one_side_empty:
                     # Found overlap.
                     # We merge details into 'existing' because it appeared first in our sort (higher confidence/len).
 
@@ -87,3 +102,35 @@ def deduplicate_techs(techs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             kept.append(cand)
 
     return kept
+
+
+def filter_conflicting_cms(techs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Filter out conflicting CMS detections (e.g. Joomla when WordPress is high confidence)."""
+    if not techs:
+        return []
+    
+    # Identify high-confidence CMS
+    has_wordpress = False
+    wordpress_conf = 0
+    for t in techs:
+        if t.get("name") == "WordPress":
+            has_wordpress = True
+            wordpress_conf = t.get("confidence") or 0
+            break
+            
+    if has_wordpress and wordpress_conf >= 50:
+        # Remove unlikely CMSs if they appear with lower/equal confidence or no version
+        filtered = []
+        for t in techs:
+            name = t.get("name")
+            if name in ("Joomla", "Drupal", "Typo3") and name != "WordPress":
+                # If conflicted CMS has significantly lower confidence or no version while WP has version...
+                # For now, aggressive filtering: if WP is >50, drop weak Joomla matches
+                # unair.ac.id case: Joomla 1.5 (conf 45) vs WordPress (conf 100)
+                t_conf = t.get("confidence") or 0
+                if t_conf < wordpress_conf or (not t.get("version") and t.get("confidence") <= wordpress_conf):
+                    continue
+            filtered.append(t)
+        return filtered
+        
+    return techs

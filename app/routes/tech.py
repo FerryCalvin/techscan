@@ -381,7 +381,35 @@ def domain_evidence_for_tech(domain):
     if not target:
         return jsonify({"domain": domain, "tech": tech, "evidence": []})
 
+    # Build implication map (target_lower -> set of sources)
+    implication_map = {}
+    for t in tech_entries:
+        if isinstance(t, dict):
+            src_name = t.get("name")
+            if not src_name:
+                continue
+            raw_imps = []
+            val = t.get("implies")
+            if isinstance(val, str):
+                raw_imps.append(val)
+            elif isinstance(val, list):
+                raw_imps.extend(val)
+            for imp_target in set(raw_imps):
+                implication_map.setdefault(imp_target.lower(), set()).add(src_name)
+
     evidence_payload: list[dict] = []
+    
+    # Add implied evidence
+    target_name_lower = (target.get("name") or tech).lower()
+    if target_name_lower in implication_map:
+        for src in implication_map[target_name_lower]:
+            evidence_payload.append({
+                "kind": "implied",
+                "source": "inference",
+                "value": f"Implied by {src}",
+                "confidence": 100
+            })
+
     for ev in _coerce_list(target.get("evidence")):
         normalized = _normalize_evidence_entry(ev)
         if normalized:

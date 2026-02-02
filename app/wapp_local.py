@@ -143,7 +143,7 @@ def _http_fetch(url_or_domain: str, timeout_s: float = 3.0) -> Tuple[Dict[str, s
             break
         try:
             conn = Conn(target_host, timeout=remaining())
-            conn.request("GET", target_path, headers={"User-Agent": "TechScan-PyLocal/1.0"})
+            conn.request("GET", target_path, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
             resp = conn.getresponse()
             headers_lower = {k.lower(): v for k, v in resp.getheaders()}
             chunks: List[bytes] = []
@@ -208,6 +208,40 @@ def detect(domain: str, wappalyzer_path: str, timeout: float = 4.0) -> Dict[str,
     script_srcs, link_hrefs, meta_map = _extract_assets(low_html)
     url_s = url
     set_cookie = headers.get("set-cookie", "")
+
+    # Smart Probe: If page seems like a splash screen (empty/no scripts), probe common paths
+    # logging imported inside function to avoid circular or early import issues if any
+    import logging
+    logger = logging.getLogger("techscan.wapp")
+
+    if len(low_html) < 5000 and len(script_srcs) < 5:
+        logger.info(f"SmartProbe: Triggered for {domain} (len={len(low_html)}, scripts={len(script_srcs)})")
+        # Prioritize common app paths that contain actual scripts (finger/index.php has Bootstrap)
+        for probe_path in ["finger/index.php", "absen/", "login/", "app/"]:
+            try:
+                # Construct probe URL handling slash
+                base = url.rstrip("/")
+                probe_url = f"{base}/{probe_path}"
+                logger.debug(f"SmartProbe: Probing {probe_url}...")
+                _, p_html, _ = _http_fetch(probe_url, timeout_s=max(1.0, timeout - 2))
+                
+                if p_html and len(p_html) > 500:
+                    # Found something useful! Merge assets
+                    p_scripts, p_links, p_meta = _extract_assets(p_html)
+                    logger.info(f"SmartProbe: Success {probe_url} - found {len(p_scripts)} scripts, {len(p_links)} links")
+                    
+                    # Always merge if probed page has ANY scripts or links (even one)
+                    # This ensures we capture Bootstrap/Popper from app subpages
+                    if p_scripts or p_links:
+                        script_srcs.extend(p_scripts)
+                        link_hrefs.extend(p_links)
+                        meta_map.update(p_meta)
+                        low_html += "\n" + p_html # Append content for Regex checks
+                        logger.info(f"SmartProbe: Merged content. Now scripts={len(script_srcs)}, links={len(link_hrefs)}")
+                        break # Stop after one successful probe
+            except Exception as e:
+                logger.warning(f"SmartProbe: Failed {probe_url} - {e}")
+                pass
 
     techs: List[Dict[str, Any]] = []
     detected: set[str] = set()
@@ -299,28 +333,36 @@ def detect(domain: str, wappalyzer_path: str, timeout: float = 4.0) -> Dict[str,
                 # If a tech spec is malformed, skip it
                 continue
 
-        # Second pass: apply implies
-        for name, spec in rules["techs"].items():
             if name in detected:
                 for imp in spec.get("implies") or []:
                     if isinstance(imp, str) and imp not in detected and imp in rules["techs"]:
                         add(imp, rules["techs"][imp].get("cats", []), None, 25)
-    else:
-        # Lightweight fallback heuristics so detection provides hints without rule files
-        joined = "\n".join(script_srcs + link_hrefs + [low_html])
-        jl = joined.lower()
-        if "jquery" in jl:
-            add("jQuery", [], None, 80)
-        if "bootstrap" in jl:
-            add("Bootstrap", [], None, 70)
-        if "vue." in jl or "vue.runtime" in jl:
-            add("Vue.js", [], None, 65)
-        if "react" in jl or "react-dom" in jl:
-            add("React", [], None, 65)
-        if "fontawesome" in jl or "font-awesome" in jl:
-            add("Font Awesome", [], None, 60)
-        if "tailwind" in jl:
-            add("Tailwind CSS", [], None, 60)
+
+    # Always run lightweight heuristics for common libs to ensure coverage (fallback/augment)
+    joined = "\n".join(script_srcs + link_hrefs + [low_html])
+    jl = joined.lower()
+    logger.info(f"Heuristic: Checking domain={domain} scripts={len(script_srcs)} links={len(link_hrefs)} html_len={len(low_html)}")
+    logger.debug(f"Heuristic: Scripts: {script_srcs[:5]}, Links: {link_hrefs[:5]}")
+    
+    if "jquery" in jl:
+         add("jQuery", [59], None, 80)
+         
+    # Bootstrap: Check for css/js specifically
+    if re.search(r"bootstrap(?:[-._]min)?\.(?:css|js)", jl):
+         add("Bootstrap", [66], None, 100)
+         
+    # Popper
+    if re.search(r"popper(?:[-._]min)?\.js", jl):
+         add("Popper", [59], None, 100)
+         
+    if "vue." in jl or "vue.runtime" in jl:
+        add("Vue.js", [66], None, 65)
+    if "react" in jl or "react-dom" in jl:
+        add("React", [59], None, 65)
+    if "fontawesome" in jl or "font-awesome" in jl:
+        add("Font Awesome", [17], None, 60)
+    if "tailwind" in jl:
+        add("Tailwind CSS", [66], None, 60)
 
     return {
         "technologies": techs,

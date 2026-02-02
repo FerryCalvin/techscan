@@ -1179,6 +1179,161 @@
           margin-left: auto;
         }
       }
+
+      /* Evidence Modal Theming */
+      :root {
+        --ts-ev-bg: #1e293b;
+        --ts-ev-text: #f8fafc;
+        --ts-ev-border: rgba(255, 255, 255, 0.1);
+        --ts-ev-item-bg: rgba(255, 255, 255, 0.05);
+        --ts-ev-label: #cbd5e1;
+        --ts-ev-key: #94a3b8;
+        --ts-ev-val: #e2e8f0;
+      }
+
+      body.light {
+        --ts-ev-bg: #ffffff;
+        --ts-ev-text: #0f172a;
+        --ts-ev-border: #e2e8f0;
+        --ts-ev-item-bg: #f8fafc;
+        --ts-ev-label: #475569;
+        --ts-ev-key: #64748b;
+        --ts-ev-val: #334155;
+      }
+
+      .ev-section {
+        margin-bottom: 1.25rem;
+      }
+
+      .ev-section h5 {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--ts-ev-key);
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .ev-section h5:after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--ts-ev-border);
+        opacity: 0.5;
+      }
+
+      .ev-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .ev-list li {
+        background: var(--ts-ev-item-bg);
+        padding: 0.75rem;
+        border-radius: 8px;
+        border: 1px solid var(--ts-ev-border);
+        font-size: 0.8rem;
+      }
+
+      .ev-obj {
+        display: grid;
+        grid-template-columns: minmax(60px, auto) 1fr;
+        gap: 0.25rem 1rem;
+        align-items: baseline;
+      }
+
+      .ev-pair {
+        display: contents;
+      }
+
+      .ev-key {
+        color: var(--ts-ev-key);
+        font-size: 0.75rem;
+        font-weight: 500;
+        font-family: ui-monospace, monospace;
+      }
+
+      .ev-val {
+        color: var(--ts-ev-val);
+        font-family: ui-monospace, monospace;
+        word-break: break-all;
+      }
+
+      .icon-btn {
+        background: none;
+        border: none;
+        padding: 4px;
+        cursor: pointer;
+        color: inherit;
+        opacity: 0.6;
+        transition: all 0.2s;
+        border-radius: 4px;
+      }
+
+      .icon-btn:hover {
+        opacity: 1;
+        background: rgba(125, 125, 125, 0.1);
+      }
+
+      #evidence-dialog {
+        background: transparent;
+        border: none;
+        padding: 0;
+        box-shadow: none;
+      }
+
+      #evidence-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(5px);
+      }
+
+      .evidence-panel {
+        background: rgba(30, 41, 59, 0.85);
+        backdrop-filter: blur(16px) saturate(140%);
+        -webkit-backdrop-filter: blur(16px) saturate(140%);
+        color: var(--ts-ev-text);
+        width: 600px;
+        max-width: 90vw;
+        max-height: 85vh;
+        border-radius: 16px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      body.light .evidence-panel {
+        background: rgba(255, 255, 255, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+      }
+
+      .ev-header {
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: rgba(0, 0, 0, 0.15);
+      }
+
+      body.light .ev-header {
+        background: rgba(255, 255, 255, 0.4);
+        border-bottom-color: rgba(0, 0, 0, 0.06);
+      }
+
+      .ev-content {
+        padding: 1.25rem;
+        overflow-y: auto;
+      }
     </style>
     <h2 class="page-title">Website List</h2>
     <div class="controls-row">
@@ -1361,6 +1516,25 @@
       <h4>Diff Changed</h4>
       <ul id="diff-changed" class="diff-list"></ul>
     </section>
+  </div>
+</dialog>
+<dialog id="evidence-dialog" class="liquid-dialog">
+  <div class="evidence-panel">
+    <div class="ev-header">
+      <div>
+        <div style="font-size:0.65rem; text-transform:uppercase; opacity:0.7; letter-spacing:0.05em;">Technology
+          Evidence</div>
+        <h3 id="evidence-title" style="margin:0.25rem 0 0 0; font-size:1.1rem;">Tech Name</h3>
+      </div>
+      <button id="evidence-close" class="icon-btn" aria-label="Close" style="width:28px;height:28px;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+    <div id="evidence-content" class="ev-content"></div>
   </div>
 </dialog>
 <dialog id="assign-dialog">
@@ -2145,7 +2319,28 @@
       const tr = document.createElement('tr');
       if (addedNames.has(t.name)) tr.classList.add('diff-added');
       else if (changedNames.has(t.name)) tr.classList.add('diff-changed');
-      tr.innerHTML = `<td>${t.name}</td><td>${t.version || ''}</td><td>${(t.categories || []).join(', ')}</td><td>${t.confidence || ''}</td>`;
+      const nameTd = document.createElement('td');
+      nameTd.style.display = 'flex';
+      nameTd.style.alignItems = 'center';
+      nameTd.style.gap = '0.5rem';
+
+      const infoBtn = document.createElement('button');
+      infoBtn.className = 'icon-btn';
+      infoBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>';
+      infoBtn.title = 'View Evidence';
+      infoBtn.onclick = (e) => { e.stopPropagation(); showEvidence(t); };
+
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = t.name;
+
+      nameTd.appendChild(infoBtn);
+      nameTd.appendChild(nameSpan);
+      tr.appendChild(nameTd);
+
+      const verTd = document.createElement('td'); verTd.textContent = t.version || ''; tr.appendChild(verTd);
+      const catTd = document.createElement('td'); catTd.textContent = (t.categories || []).join(', '); tr.appendChild(catTd);
+      const confTd = document.createElement('td'); confTd.textContent = t.confidence || ''; tr.appendChild(confTd);
+
       techTbody.appendChild(tr);
     });
     if (!techTbody.children.length) { techTbody.innerHTML = '<tr><td colspan="4" class="small">(no technologies)</td></tr>'; }
@@ -2301,6 +2496,72 @@
     });
 
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && (groupsPopover.classList.contains('show') || groupsPopover.style.display === 'block')) { closePopover(); } });
+  }
+
+  // Evidence Dialog Logic (Refined)
+  const evDlg = document.getElementById('evidence-dialog');
+  const evClose = document.getElementById('evidence-close');
+  if (evClose) evClose.addEventListener('click', () => evDlg.close());
+
+  function showEvidence(t) {
+    if (!evDlg) return;
+    const title = document.getElementById('evidence-title');
+    const content = document.getElementById('evidence-content');
+    if (title) title.textContent = t.name;
+
+    let sections = '';
+
+    const renderVal = (v) => {
+      if (v === null || v === undefined) return '<span style="opacity:0.5">null</span>';
+      if (typeof v === 'object') {
+        const entries = Object.entries(v);
+        if (!entries.length) return '{}';
+        // Sort keys for consistency
+        entries.sort((a, b) => a[0].localeCompare(b[0]));
+        return '<div class="ev-obj">' + entries.map(([k, val]) =>
+          `<div class="ev-pair"><span class="ev-key">${escapeHtml(k)}:</span><span class="ev-val">${escapeHtml(String(val))}</span></div>`
+        ).join('') + '</div>';
+      }
+      return escapeHtml(String(v));
+    };
+
+    const addSec = (label, data) => {
+      if (!data) return;
+      const items = Array.isArray(data) ? data : [data];
+      if (!items.length) return;
+      const list = items.map(i => `<li>${renderVal(i)}</li>`).join('');
+      sections += `<div class="ev-section"><h5>${label}</h5><ul class="ev-list">${list}</ul></div>`;
+    };
+
+    if (t.implied_by && t.implied_by.length) addSec('Implied By', t.implied_by);
+    if (t.implies && t.implies.length) addSec('Implies', t.implies);
+
+    const fields = {
+      'scripts': 'Scripts', 'headers': 'Headers', 'meta': 'Meta Tags', 'cookies': 'Cookies',
+      'website': 'Website Link', 'url': 'URL Pattern', 'html': 'HTML Pattern', 'css': 'CSS',
+      'js': 'JavaScript Global', 'dom': 'DOM Selector', 'dns': 'DNS', 'certIssuer': 'Cert Issuer',
+      'cpe': 'CPE'
+    };
+
+    for (const [key, label] of Object.entries(fields)) {
+      addSec(label, t[key]);
+    }
+
+    // Generic formatted evidence
+    if (t.evidence && t.evidence.length) {
+      // Try to parse JSON strings if they look like JSON
+      const parsed = t.evidence.map(e => {
+        try { return typeof e === 'string' && e.startsWith('{') ? JSON.parse(e) : e; } catch (_) { return e; }
+      });
+      addSec('Other Evidence', parsed);
+    }
+
+    if (!sections) {
+      sections = '<div style="padding:2rem; text-align:center; opacity:0.6;"><div style="font-size:2rem; margin-bottom:0.5rem;">🤷‍♂️</div>No detailed evidence available.<br><span style="font-size:0.8rem">Detection might be from basic pattern matching or inferred.</span></div>';
+    }
+
+    if (content) content.innerHTML = sections;
+    evDlg.showModal();
   }
 </script>
 {% endblock %}

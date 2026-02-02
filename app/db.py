@@ -592,6 +592,7 @@ def save_scan(result: dict, from_cache: bool, timeout_used: int):
                     ins_ex,
                 )
                 raise
+            conn.commit()
             # Update-then-insert pattern (avoids reliance on unique constraint) with explicit NULL branch to prevent unknown type errors.
             now_epoch = finished_at
 
@@ -1235,11 +1236,27 @@ def db_stats():
             out["domains_tracked"] = cur.fetchone()[0]
             cur.execute("SELECT COUNT(*) FROM domain_techs")
             out["domain_tech_rows"] = cur.fetchone()[0]
-            # Top technologies
-            cur.execute(
-                """SELECT tech_name, COUNT(*) AS c FROM domain_techs GROUP BY tech_name ORDER BY c DESC LIMIT 15"""
+            # Top technologies (aggregated in Python to handle normalization/deduplication)
+            cur.execute("""SELECT tech_name, COUNT(*) AS c FROM domain_techs GROUP BY tech_name""")
+            raw_counts = cur.fetchall()
+            
+            # Late import to avoid circular dependency
+            from .utils.deduplication import canonicalize_tech_name
+            
+            merged_counts = {}
+            for name, count in raw_counts:
+                norm = canonicalize_tech_name(name) or name
+                # Capitalize if it looks like a raw lowercase name
+                if norm and norm.islower() and len(norm) > 3:
+                     norm = norm.title()
+                merged_counts[norm] = merged_counts.get(norm, 0) + count
+                
+            sorted_techs = sorted(
+                [{"tech": k, "count": v} for k, v in merged_counts.items() if k],
+                key=lambda x: x["count"], 
+                reverse=True
             )
-            out["top_tech"] = [{"tech": r[0], "count": r[1]} for r in cur.fetchall()]
+            out["top_tech"] = sorted_techs[:15]
             # Average durations (last 24h if possible)
             cur.execute("""
                 SELECT mode, AVG(duration_ms) AS avg_ms, COUNT(*)
@@ -1251,7 +1268,7 @@ def db_stats():
             out["avg_duration_24h"] = [{"mode": r[0], "avg_ms": float(r[1]), "samples": r[2]} for r in cur.fetchall()]
             # Version presence rate (rough)
             cur.execute(
-                "SELECT SUM(CASE WHEN version IS NOT NULL AND version<> THEN 1 ELSE 0 END), COUNT(*) FROM domain_techs"
+                "SELECT SUM(CASE WHEN version IS NOT NULL AND version <> '' THEN 1 ELSE 0 END), COUNT(*) FROM domain_techs"
             )
             ver_with, ver_total = cur.fetchone()
             out["version_presence_pct"] = round((ver_with / ver_total) * 100, 2) if ver_total else 0.0

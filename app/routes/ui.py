@@ -278,19 +278,34 @@ def api_stats():
                         techs_in_cat = []
                         try:
                             if cat_name and cat_name != "uncategorized":
-                                # Get top 5 techs in this category
+                                # Get top 5 techs in this category (aggregated in Python for deduplication)
                                 cur.execute(
                                     """
                                     SELECT tech_name, COUNT(DISTINCT domain) AS c
                                     FROM domain_techs
                                     WHERE LOWER(categories) LIKE %s
                                     GROUP BY tech_name
-                                    ORDER BY c DESC
-                                    LIMIT 5
                                     """,
                                     (f"%{cat_name}%",),
                                 )
-                                techs_in_cat = [{"name": r[0], "count": r[1]} for r in cur.fetchall()]
+                                raw_cat_techs = cur.fetchall()
+                                
+                                # Late import
+                                from ..utils.deduplication import canonicalize_tech_name
+                                
+                                merged_cat_counts = {}
+                                for tname, tcount in raw_cat_techs:
+                                    norm = canonicalize_tech_name(tname) or tname
+                                    if norm and norm.islower() and len(norm) > 3:
+                                         norm = norm.title()
+                                    merged_cat_counts[norm] = merged_cat_counts.get(norm, 0) + tcount
+                                
+                                sorted_cat_techs = sorted(
+                                    [{"name": k, "count": v} for k, v in merged_cat_counts.items() if k],
+                                    key=lambda x: x["count"],
+                                    reverse=True
+                                )
+                                techs_in_cat = sorted_cat_techs[:5]
                         except Exception:
                             pass
                         top_categories_with_techs.append(
@@ -698,6 +713,27 @@ def api_domain_detail(domain: str):
         _log.debug("failed to extract phases metrics from latest raw", exc_info=True)
     technologies = active_scan.get("technologies") if active_scan else []
     # Ensure simplified tech objects (name, version, categories, confidence) if raw format contains them
+    # Build implication map (target -> sources)
+    implication_map = {}
+    for t in technologies:
+        if isinstance(t, dict):
+            src_name = t.get("name")
+            if not src_name: continue
+            
+            raw_imps = []
+            
+            def _collect(obj):
+                if not obj: return
+                val = obj.get("implies")
+                if isinstance(val, str): raw_imps.append(val)
+                elif isinstance(val, list): raw_imps.extend(val)
+            
+            _collect(t)
+            _collect(t.get("detection_raw"))
+            
+            for target in set(raw_imps):
+                implication_map.setdefault(target, set()).add(src_name)
+
     norm_tech = []
     for t in technologies:
         if not isinstance(t, dict):
@@ -735,6 +771,7 @@ def api_domain_detail(domain: str):
             "regex": t.get("regex") or detection_raw.get("regex"),
             # Relationships
             "implies": t.get("implies") or detection_raw.get("implies"),
+            "implied_by": list(implication_map.get(t.get("name"), [])),
             "requires": t.get("requires") or detection_raw.get("requires"),
             "excludes": t.get("excludes") or detection_raw.get("excludes"),
             # Evidence array (normalized evidence from scan_utils)

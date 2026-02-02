@@ -343,6 +343,7 @@ def scan_domain(
             )
             if full:
                 env["TECHSCAN_FULL"] = "1"
+                env["TECHSCAN_INTERACT"] = "1"
             # Explicit toggle for resource blocking default (fast mode blocks). Full mode unsets blocking unless user forces.
             if full:
                 env.setdefault("TECHSCAN_BLOCK_RESOURCES", "0")
@@ -356,6 +357,8 @@ def scan_domain(
                 proc = sproc.safe_run(cmd, capture_output=True, text=True, timeout=eff_timeout, env=env)
                 if proc.returncode != 0:
                     stderr = proc.stderr.strip()
+                    with open("node_error.log", "a", encoding="utf-8") as f:
+                        f.write(f"[{time.time()}] Node Failed: {stderr}\n")
                     if "Cannot find module" in stderr and "puppeteer" in stderr:
                         raise RuntimeError(
                             "puppeteer module missing for Wappalyzer CLI. Perbaiki dengan: "
@@ -368,6 +371,11 @@ def scan_domain(
                         last_err = RuntimeError(stderr or "scan failed")
                         continue
                     raise RuntimeError(stderr or "scan failed")
+                else:
+                    # Log success stderr too because it might contain debug info
+                    if proc.stderr:
+                         with open("node_error.log", "a", encoding="utf-8") as f:
+                            f.write(f"[{time.time()}] Node Success Log: {proc.stderr}\n")
                 try:
                     data = json.loads(proc.stdout)
                 except json.JSONDecodeError:

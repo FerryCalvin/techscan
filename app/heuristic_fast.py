@@ -690,13 +690,15 @@ def run_heuristic(domain: str, budget_ms: int = 1800, allow_empty_early: bool = 
         gen_val = gen.group(1)
         # e.g. "WordPress 6.5.1" or "Joomla! - Open Source Content Management" etc.
         for name in ["WordPress", "Joomla", "Drupal"]:
-            if name.lower() in gen_val.lower():
-                # naive version capture
-                mver = re.search(r"(\d+\.\d+(?:\.\d+)*)", gen_val)
-                ver = mver.group(1) if mver else None
+            # Stricter check: Version must follow the name (e.g. "WordPress 6.5" not "Plugin 1.0 for WordPress")
+            # We match Name followed by optional non-digit chars, then the version.
+            mver = re.search(rf"{re.escape(name)}[^0-9]*(\d+\.\d+(?:\.\d+)*)", gen_val, re.I)
+            ver = mver.group(1) if mver else None
+
+            if ver:
                 # update existing entry version if present
                 for t in techs:
-                    if t["name"] == name and ver and not t.get("version"):
+                    if t["name"] == name and not t.get("version"):
                         t["version"] = ver
                         # also update categories list entry
                         for cat in CATEGORY_MAP.get(name, []):
@@ -717,7 +719,8 @@ def run_heuristic(domain: str, budget_ms: int = 1800, allow_empty_early: bool = 
     font_hits = []
 
     KNOWN_MAP = [
-        ("WordPress", re.compile(r"/wp-(?:includes|content)/", re.I)),
+        # Only trust wp-includes for core versioning to avoid "WordPress 2.5" from plugins
+        ("WordPress", re.compile(r"/wp-includes/", re.I)),
         ("WooCommerce", re.compile(r"wp-content/plugins/woocommerce", re.I)),
         ("Elementor", re.compile(r"wp-content/plugins/elementor", re.I)),
         ("Contact Form 7", re.compile(r"wp-content/plugins/contact-form-7", re.I)),

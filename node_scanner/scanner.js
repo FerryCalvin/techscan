@@ -39,7 +39,7 @@ function ensureBrowserExecutable() {
   if (found) {
     process.env.PUPPETEER_EXECUTABLE_PATH = found
     if (process.env.TECHSCAN_DEBUG) {
-      console.error(`[techscan] Using system Chromium executable: ${found}`)
+      console.error(`[techscan] Using system Chromium executable: "${found}"`)
     }
   } else {
     if (process.env.TECHSCAN_DEBUG) {
@@ -237,7 +237,8 @@ async function getPrimaryPage(site) {
         const fallbackUrl = url
         const timeout = parseInt(process.env.TECHSCAN_NAV_TIMEOUT || '15000', 10)
         try {
-          await freshPage.goto(fallbackUrl, { waitUntil: 'domcontentloaded', timeout: timeout || 15000 })
+          // Use networkidle2 to wait for most network activity to settle (handles dynamic apps better)
+          await freshPage.goto(fallbackUrl, { waitUntil: 'networkidle2', timeout: timeout || 15000 })
         } catch { }
         if (isUsable(freshPage)) {
           site._techscanPrimaryPage = freshPage
@@ -545,16 +546,19 @@ async function run() {
   const baseWait = full ? 15000 : 10000
   const maxWait = navTimeout && navTimeout > 0 ? navTimeout : baseWait
   const options = {
-    debug: false,
+    debug: process.env.TECHSCAN_DEBUG === '1',
     delay: full ? 100 : 50,
     headers: {},
     maxDepth: full ? 2 : 1,
     maxUrls: 1,
     maxWait, // wappalyzer internal wait (ms)
-    recursive: false,
+    recursive: full,
     probe: true,
     extended: true,
-    userAgent: 'Mozilla/5.0 (TechScan)'
+    userAgent: 'Mozilla/5.0 (TechScan)',
+    // Pass args to Puppeteer to improve stability
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--headless=new'],
+    ignoreHTTPSErrors: true
   }
   const wappalyzer = new Wappalyzer(options)
   await wappalyzer.init()
@@ -574,6 +578,50 @@ async function run() {
     } catch (ie) {
       if (process.env.TECHSCAN_DEBUG) console.error('[techscan] interaction step failed:', ie.message || String(ie))
     }
+
+    // Smart Form Navigation: If page seems empty (splash screen) but has forms, navigate to the first relevant action
+    if (full) {
+      try {
+        const page = await getPrimaryPage(site)
+        if (page) {
+          const splashInfo = await page.evaluate(() => {
+            const sCount = document.querySelectorAll('script[src]').length
+            const forms = Array.from(document.querySelectorAll('form[action]'))
+            const debugMsg = `SmartNav: Found ${sCount} scripts and ${forms.length} forms`
+
+            // Prefer forms that look like login or main entry (ignore search)
+            const usefulForm = forms.find(f => {
+              const a = (f.getAttribute('action') || '').toLowerCase()
+              return a && (a.includes('absen') || a.includes('login') || a.includes('auth') || a.includes('sistem'))
+            }) || forms.find(f => {
+              const a = (f.getAttribute('action') || '').toLowerCase()
+              return a && !a.startsWith('javascript:') && !a.includes('search')
+            }) || forms[0]
+
+            if (sCount < 10 && usefulForm) {
+              return { action: usefulForm.getAttribute('action'), debugMsg }
+            }
+            return { debugMsg }
+          })
+
+          if (splashInfo) {
+            if (process.env.TECHSCAN_DEBUG) console.error(`[techscan] ${splashInfo.debugMsg}`)
+            if (splashInfo.action) {
+              const targetUrl = new URL(splashInfo.action, page.url()).href
+              if (process.env.TECHSCAN_DEBUG) console.error(`[techscan] Splash page detected. Auto-navigating to: ${targetUrl}`)
+              await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 15000 }).catch(() => { })
+              // Small wait for render
+              await page.waitForTimeout(3000)
+              // Update primary page reference if needed
+              site._techscanPrimaryPage = page
+            }
+          }
+        }
+      } catch (err) {
+        if (process.env.TECHSCAN_DEBUG) console.error('[techscan] smart navigation failed:', err.message)
+      }
+    }
+
     if (shouldBlock) {
       // Attempt to block heavy resource types if underlying driver exposes a page object
       try {
