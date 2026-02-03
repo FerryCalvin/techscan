@@ -143,10 +143,13 @@
   <div id="techModal" class="modal hidden">
     <div class="tech-modal-panel">
       <div class="tech-modal-header">
-        <div>
-          <p class="tech-modal-label">Technology</p>
-          <h3 id="modal-tech-name">Technology</h3>
-          <p id="modal-category" class="modal-subtitle"></p>
+        <div class="tech-header-left">
+          <img id="modal-tech-icon" class="tech-icon-large" src="" alt="" style="display: none;">
+          <div>
+            <p class="tech-modal-label">Technology</p>
+            <h3 id="modal-tech-name">Technology</h3>
+            <p id="modal-category" class="modal-subtitle"></p>
+          </div>
         </div>
         <div class="tech-modal-actions">
           <a id="tech-drill-link" class="secondary outline" target="_blank" rel="noopener">Open Explorer</a>
@@ -159,10 +162,7 @@
           <span class="metric-label">Usage Count</span>
           <span class="metric-value" id="modal-tech-usage">-</span>
         </div>
-        <div class="metric-card">
-          <span class="metric-label">Categories</span>
-          <span class="metric-value" id="modal-tech-categories">-</span>
-        </div>
+
         <div class="metric-card">
           <span class="metric-label">Share of Top Stack</span>
           <span class="metric-value" id="modal-tech-share">-</span>

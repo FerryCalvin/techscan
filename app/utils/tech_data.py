@@ -358,7 +358,7 @@ def infer_tech_from_urls(urls: List[str]) -> List[Dict[str, Any]]:
     # Common signature patterns often found in URLs
     patterns = [
         ("jQuery", re.compile(r"jquery(?:[.-](?:\d[\w.-]*|min|slim|ui))?\.js", re.I)),
-        ("Bootstrap", re.compile(r"bootstrap(?:[\.-_@0-9]+)?(?:\.min)?\.(?:css|js)", re.I)),
+        ("Bootstrap", re.compile(r"bootstrap(?:[\.\-_@0-9]+)?(?:\.min)?\.(?:css|js)", re.I)),
         ("Popper", re.compile(r"popper(?:[-._]min)?\.js", re.I)),
         ("SweetAlert", re.compile(r"sweetalert(?:2)?(?:[-._]min)?\.js", re.I)),
         ("Tailwind CSS", re.compile(r"tailwind(?:.min)?.css", re.I)),

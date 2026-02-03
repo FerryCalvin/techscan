@@ -42,11 +42,12 @@
   width: min(720px, calc(100vw - 2rem));
   max-height: 80vh;
   overflow: hidden;
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(13, 148, 136, 0.4));
+  background: rgba(15, 23, 42, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 24px;
   padding: 1.5rem;
   box-shadow: 0 30px 60px -25px rgba(0, 8, 20, 0.85);
+  backdrop-filter: blur(20px);
   color: #f8fafc;
   display: flex;
   flex-direction: column;
@@ -1029,7 +1030,7 @@ body.light .tech-table thead th {
 body.light .tech-table tbody td {
   border-bottom: 1px solid rgba(0, 0, 0, 0.15);
   color: #111 !important;
-  font-weight: normal;  
+  font-weight: normal;
 }
 
 body.light .tech-table tbody tr {
@@ -1039,7 +1040,8 @@ body.light .tech-table tbody tr {
 
 body.light .tech-table tbody tr:nth-child(even) {
   background: #f9fafb;
-  color: #111 !important; /* ensure contrast in light mode */
+  color: #111 !important;
+  /* ensure contrast in light mode */
 }
 
 body.light .tech-table tr:hover {
@@ -1067,4 +1069,17 @@ body.light .modal-content li {
 
 body.light .category-card {
   background: rgba(248, 248, 248, 1) !important;
+}
+/* Tech Icon Styles */
+.tech-header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.tech-icon-large {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));
 }

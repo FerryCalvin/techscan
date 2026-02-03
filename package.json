@@ -5,6 +5,6 @@
   "license": "MIT",
   "dependencies": {
     "chart.js": "^4.4.4",
-    "tech-stack-icons": "^3.3.2"
+    "tech-stack-icons": "^3.5.8"
   }
 }

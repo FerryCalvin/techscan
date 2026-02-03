@@ -144,7 +144,7 @@ def _filter_meaningful_evidence(entries):
     return filtered
 
 
-@bp.route("/tech/<tech_key>", methods=["GET"])
+@bp.route("/tech/<path:tech_key>", methods=["GET"])
 def tech_meta(tech_key):
     cache_key = f"tech:{tech_key}:meta"
     cached = tech_cache.get(cache_key)
@@ -194,7 +194,7 @@ def tech_meta(tech_key):
     return jsonify(out)
 
 
-@bp.route("/techs/<tech_key>", methods=["GET"])
+@bp.route("/techs/<path:tech_key>", methods=["GET"])
 def tech_detail_short(tech_key):
     """Compatibility / drilldown endpoint used by the UI.
     Returns a compact payload with domains list, basic meta and a simple history.
@@ -293,7 +293,7 @@ def category_top(category: str):
         return jsonify({"error": str(e)}), 500
 
 
-@bp.route("/tech/<tech_key>/sites", methods=["GET"])
+@bp.route("/tech/<path:tech_key>/sites", methods=["GET"])
 def tech_sites(tech_key):
     try:
         limit = int(request.args.get("limit") or 20)
@@ -332,7 +332,7 @@ def tech_sites(tech_key):
     return jsonify(out)
 
 
-@bp.route("/tech/<tech_key>/sites.csv", methods=["GET"])
+@bp.route("/tech/<path:tech_key>/sites.csv", methods=["GET"])
 def tech_sites_csv(tech_key):
     try:
         limit = min(2000, int(request.args.get("limit") or 500))
@@ -353,7 +353,7 @@ def tech_sites_csv(tech_key):
     )
 
 
-@bp.route("/tech/<tech_key>/invalidate_cache", methods=["POST"])
+@bp.route("/tech/<path:tech_key>/invalidate_cache", methods=["POST"])
 def invalidate_cache(tech_key):
     # Admin-only in production; here we perform best-effort invalidation
     prefix = f"tech:{tech_key}"

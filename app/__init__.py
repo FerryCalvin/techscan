@@ -207,7 +207,7 @@ def create_app():
         # Content-Security-Policy (customizable via env, default restrictive)
         csp = os.environ.get(
             "TECHSCAN_CSP",
-            "default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src 'self' fonts.gstatic.com; img-src 'self' data:;",
+            "default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; connect-src 'self' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src 'self' fonts.gstatic.com; img-src 'self' data:;",
         )
         if csp:
             response.headers["Content-Security-Policy"] = csp

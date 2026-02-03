@@ -1,5 +1,5 @@
 // tech_modal.js — lightweight modal controller aligned with stats modal behaviour
-(function(){
+(function () {
   'use strict';
 
   if (typeof document === 'undefined') {
@@ -50,7 +50,7 @@
 
   var customEvidencePayload = null;
 
-  function applyCustomEvidence(){
+  function applyCustomEvidence() {
     if (!evidenceEl) {
       return;
     }
@@ -109,7 +109,7 @@
     }
   }
 
-  function setCustomEvidence(payload){
+  function setCustomEvidence(payload) {
     if (!payload) {
       customEvidencePayload = null;
     } else {
@@ -138,7 +138,7 @@
     if (value === null || value === undefined) {
       return '';
     }
-    return String(value).replace(/[&<>"']/g, function(ch){
+    return String(value).replace(/[&<>"']/g, function (ch) {
       return ESC_MAP[ch] || ch;
     });
   }
@@ -148,7 +148,7 @@
       return categories;
     }
     if (typeof categories === 'string' && categories.trim()) {
-      return categories.split(',').map(function(item){ return item.trim(); }).filter(Boolean);
+      return categories.split(',').map(function (item) { return item.trim(); }).filter(Boolean);
     }
     if (category && typeof category === 'string') {
       return [category];
@@ -224,7 +224,7 @@
       overlay.classList.add('active');
     }
     if (closeBtn && typeof closeBtn.focus === 'function') {
-      setTimeout(function(){ try { closeBtn.focus(); } catch (err) {} }, 0);
+      setTimeout(function () { try { closeBtn.focus(); } catch (err) { } }, 0);
     }
     document.addEventListener('keydown', onKeyDown, true);
   }
@@ -238,7 +238,7 @@
     document.removeEventListener('keydown', onKeyDown, true);
     setCustomEvidence(null);
     if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
-      setTimeout(function(){ try { previouslyFocused.focus(); } catch (err) {} }, 40);
+      setTimeout(function () { try { previouslyFocused.focus(); } catch (err) { } }, 40);
     }
     closeEvidenceModal();
   }
@@ -255,7 +255,7 @@
       evidenceOverlay.classList.add('active');
     }
     if (evidenceCloseBtn && typeof evidenceCloseBtn.focus === 'function') {
-      setTimeout(function(){ try { evidenceCloseBtn.focus(); } catch (err) {} }, 0);
+      setTimeout(function () { try { evidenceCloseBtn.focus(); } catch (err) { } }, 0);
     }
     document.addEventListener('keydown', onEvidenceKeyDown, true);
   }
@@ -271,7 +271,7 @@
     }
     document.removeEventListener('keydown', onEvidenceKeyDown, true);
     if (evidencePreviouslyFocused && typeof evidencePreviouslyFocused.focus === 'function') {
-      setTimeout(function(){ try { evidencePreviouslyFocused.focus(); } catch (err) {} }, 40);
+      setTimeout(function () { try { evidencePreviouslyFocused.focus(); } catch (err) { } }, 40);
     }
   }
 
@@ -281,7 +281,7 @@
       return;
     }
     if (e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27) {
-      try { e.preventDefault(); } catch (err) {}
+      try { e.preventDefault(); } catch (err) { }
       closeModal();
     }
   }
@@ -292,7 +292,7 @@
       return;
     }
     if (e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27) {
-      try { e.preventDefault(); } catch (err) {}
+      try { e.preventDefault(); } catch (err) { }
       closeEvidenceModal();
     }
   }
@@ -395,7 +395,7 @@
     var sections = [];
     if (meta && Array.isArray(meta.top_versions) && meta.top_versions.length) {
       sections.push('<div class="small-note">Top versions:</div>');
-      sections.push('<ul class="evidence-list">' + meta.top_versions.slice(0, 5).map(function(item){
+      sections.push('<ul class="evidence-list">' + meta.top_versions.slice(0, 5).map(function (item) {
         var version = item && item.version ? item.version : 'Unknown';
         var count = item && item.count !== undefined ? item.count : '';
         return '<li>' + escapeHtml(version) + (count !== '' ? ' — ' + escapeHtml(count) + ' sites' : '') + '</li>';
@@ -403,7 +403,7 @@
     }
     if (meta && Array.isArray(meta.sample_sites) && meta.sample_sites.length) {
       sections.push('<div class="small-note">Sample domains:</div>');
-      sections.push('<ul class="evidence-list">' + meta.sample_sites.slice(0, 5).map(function(site){
+      sections.push('<ul class="evidence-list">' + meta.sample_sites.slice(0, 5).map(function (site) {
         var domain = site && site.domain ? site.domain : '';
         if (!domain) {
           return '';
@@ -460,7 +460,7 @@
     if (!q) {
       state.filteredDomains = source.slice();
     } else {
-      state.filteredDomains = source.filter(function(domain){
+      state.filteredDomains = source.filter(function (domain) {
         return domain && domain.toLowerCase().indexOf(q) !== -1;
       });
     }
@@ -486,7 +486,7 @@
       start = 0;
     }
     var slice = list.slice(start, start + state.perPage);
-    sitesEl.innerHTML = slice.map(function(domain){
+    sitesEl.innerHTML = slice.map(function (domain) {
       var safe = escapeHtml(domain);
       return '<div class="site-card"><a class="site-link" href="https://' + safe + '" target="_blank" rel="noopener">' + safe + '</a></div>';
     }).join('');
@@ -514,7 +514,7 @@
   }
 
   function fetchJson(url) {
-    return fetch(url, { cache: 'no-store' }).then(function(res){
+    return fetch(url, { cache: 'no-store' }).then(function (res) {
       if (!res.ok) {
         throw new Error('HTTP ' + res.status);
       }
@@ -525,15 +525,15 @@
   function loadMeta(name) {
     setSummaryLoading();
     setEvidenceLoading();
-    var summaryPromise = fetchJson('/api/tech/' + encodeURIComponent(name)).catch(function(err){
+    var summaryPromise = fetchJson('/api/tech/' + encodeURIComponent(name)).catch(function (err) {
       console.warn('tech modal summary fetch failed', err);
       return null;
     });
-    var detailPromise = fetchJson('/api/techs/' + encodeURIComponent(name)).catch(function(err){
+    var detailPromise = fetchJson('/api/techs/' + encodeURIComponent(name)).catch(function (err) {
       console.warn('tech modal detail fetch failed', err);
       return null;
     });
-    return Promise.all([summaryPromise, detailPromise]).then(function(results){
+    return Promise.all([summaryPromise, detailPromise]).then(function (results) {
       var summary = results[0] || null;
       var detail = results[1] || null;
       state.metaSummary = summary || null;
@@ -558,7 +558,7 @@
       renderEvidence(summary || detail || {});
       renderTrendInfo(detail || summary || null);
       updateEvidenceHeader();
-    }).catch(function(err){
+    }).catch(function (err) {
       console.warn('tech modal meta fetch failed', err);
       if (summaryEl) {
         summaryEl.innerHTML = '<div class="small-note">Metadata unavailable.</div>';
@@ -572,7 +572,7 @@
 
   function loadDomains(name) {
     setSitesLoading();
-    return fetchJson('/api/tech/' + encodeURIComponent(name) + '/domains?t=' + Date.now()).then(function(data){
+    return fetchJson('/api/tech/' + encodeURIComponent(name) + '/domains?t=' + Date.now()).then(function (data) {
       var domains = data && Array.isArray(data.domains) ? data.domains : [];
       state.rawDomains = domains.slice();
       if (data && typeof data.count === 'number') {
@@ -582,7 +582,7 @@
       }
       refreshFooter();
       applyDomainsFilter(searchInput ? searchInput.value : '');
-    }).catch(function(err){
+    }).catch(function (err) {
       console.warn('tech modal domains fetch failed', err);
       state.rawDomains = [];
       state.filteredDomains = [];
@@ -630,6 +630,14 @@
     iconEl.alt = '';
   }
 
+  function iconColorFor(name) {
+    if (!name) return '#ccc';
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+    return '#' + '00000'.substring(0, 6 - c.length) + c;
+  }
+
   function openForName(name, preload) {
     if (!name) {
       return;
@@ -655,22 +663,78 @@
     }
     updateSubHeading(state.preload);
     resetIcon();
+
+    // Tech Icon Handling
     if (iconEl) {
-      if (state.preload.iconUrl) {
-        iconEl.src = state.preload.iconUrl;
+      iconEl.style.display = 'none'; // Hidden initally
+
+      // Clear previous fallback
+      var iconContainer = iconEl.parentElement;
+      if (iconContainer) {
+        var oldFallback = iconContainer.querySelector('.tech-icon-fallback');
+        if (oldFallback) oldFallback.remove();
       }
-      if (state.preload.iconSlug) {
-        iconEl.setAttribute('data-slug', state.preload.iconSlug);
-      } else {
-        iconEl.removeAttribute('data-slug');
+
+      // 1. Determine Icon Key
+      var techName = actualName;
+      var iconKey = techName.toLowerCase().replace(/[^a-z0-9+#]/g, '');
+      var iconMap = {
+        'react.js': 'react', 'reactjs': 'react',
+        'angular.js': 'angular', 'angularjs': 'angular',
+        'vue.js': 'vuejs', 'vue': 'vuejs',
+        'node.js': 'nodejs', 'nodejs': 'nodejs',
+        '.net': 'dotnet', 'asp.net': 'netcore',
+        'c++': 'cplusplus', 'cplusplus': 'c++',
+        'c#': 'csharp', 'csharp': 'c#',
+        'bootstrap': 'bootstrap5',
+        'css': 'css3', 'css3': 'css3',
+        'html': 'html5', 'html5': 'html5',
+        'javascript': 'js', 'js': 'js',
+        'typescript': 'typescript',
+        'sass': 'sass', 'scss': 'sass',
+        'postgresql': 'postgresql', 'postgres': 'postgresql',
+        'elasticsearch': 'elastic',
+        'tailwind': 'tailwindcss', 'tailwind css': 'tailwindcss'
+      };
+      if (iconMap[techName.toLowerCase()]) {
+        iconKey = iconMap[techName.toLowerCase()];
+      } else if (iconMap[iconKey]) {
+        iconKey = iconMap[iconKey];
       }
-      if (state.preload.iconFallback) {
-        iconEl.setAttribute('data-fallback', state.preload.iconFallback);
-      } else {
-        iconEl.removeAttribute('data-fallback');
-      }
-      if (state.preload.categories && state.preload.categories.length) {
-        iconEl.alt = state.preload.categories[0] + ' icon';
+
+      var localPath = '/static/icons/tech/' + encodeURIComponent(iconKey) + '.svg';
+
+      iconEl.src = localPath;
+
+      // 2. Load handlers
+      iconEl.onload = function () {
+        this.style.display = 'block';
+      };
+      iconEl.onerror = function () {
+        this.style.display = 'none';
+        if (iconContainer) {
+          var letter = techName.charAt(0).toUpperCase();
+          var color = iconColorFor(techName);
+          var fallback = document.createElement('div');
+          fallback.className = 'tech-icon-fallback';
+          var s = fallback.style;
+          s.backgroundColor = color;
+          s.display = 'flex';
+          s.alignItems = 'center';
+          s.justifyContent = 'center';
+          s.color = 'white';
+          s.fontWeight = 'bold';
+          s.fontSize = '24px';
+          s.borderRadius = '8px';
+          s.width = '48px';
+          s.height = '48px';
+          fallback.textContent = letter;
+          iconContainer.insertBefore(fallback, iconEl);
+        }
+      };
+
+      if (state.preload.category) {
+        iconEl.alt = state.preload.category + ' icon';
       } else {
         iconEl.alt = state.preload.name || '';
       }
@@ -686,7 +750,7 @@
     Promise.all([
       loadMeta(actualName),
       loadDomains(actualName)
-    ]).catch(function(err){
+    ]).catch(function (err) {
       console.warn('tech modal load failed', err);
     });
   }
@@ -697,7 +761,7 @@
     }
     var dataName = card.getAttribute('data-tech') || card.getAttribute('data-name');
     if (dataName) {
-      dataName = dataName.replace(/&#10;/g, '\n').replace(/&(amp|lt|gt|quot|#39);/g, function(entity){
+      dataName = dataName.replace(/&#10;/g, '\n').replace(/&(amp|lt|gt|quot|#39);/g, function (entity) {
         switch (entity) {
           case '&amp;': return '&';
           case '&lt;': return '<';
@@ -738,7 +802,7 @@
     if (!card) {
       return;
     }
-    try { event.preventDefault(); } catch (err) {}
+    try { event.preventDefault(); } catch (err) { }
     var extracted = resolveCardTechName(card);
     if (!extracted) {
       return;
@@ -757,7 +821,7 @@
     if (!isEnter && !isSpace) {
       return;
     }
-    try { event.preventDefault(); } catch (err) {}
+    try { event.preventDefault(); } catch (err) { }
     var extracted = resolveCardTechName(target);
     if (!extracted) {
       return;
@@ -777,7 +841,7 @@
     if (!pagerEl) {
       return;
     }
-    pagerEl.addEventListener('click', function(event){
+    pagerEl.addEventListener('click', function (event) {
       var target = event.target || event.srcElement;
       if (!target || target.disabled) {
         return;
@@ -794,35 +858,35 @@
     if (!searchInput) {
       return;
     }
-    searchInput.addEventListener('input', function(){
+    searchInput.addEventListener('input', function () {
       applyDomainsFilter(this.value);
     });
   }
 
   function attachCloseHandlers() {
     if (overlay) {
-      overlay.addEventListener('click', function(event){
+      overlay.addEventListener('click', function (event) {
         if (event.target === overlay || (event.target && event.target.getAttribute && event.target.getAttribute('data-close') === 'true')) {
           closeModal();
         }
       });
     }
     if (closeBtn) {
-      closeBtn.addEventListener('click', function(e){
-        try { e.preventDefault(); } catch (err) {}
+      closeBtn.addEventListener('click', function (e) {
+        try { e.preventDefault(); } catch (err) { }
         closeModal();
       });
     }
     if (evidenceOverlay) {
-      evidenceOverlay.addEventListener('click', function(event){
+      evidenceOverlay.addEventListener('click', function (event) {
         if (event.target === evidenceOverlay || (event.target && event.target.getAttribute && event.target.getAttribute('data-close') === 'true')) {
           closeEvidenceModal();
         }
       });
     }
     if (evidenceCloseBtn) {
-      evidenceCloseBtn.addEventListener('click', function(e){
-        try { e.preventDefault(); } catch (err) {}
+      evidenceCloseBtn.addEventListener('click', function (e) {
+        try { e.preventDefault(); } catch (err) { }
         closeEvidenceModal();
       });
     }
@@ -832,17 +896,17 @@
     if (!exportBtn) {
       return;
     }
-    exportBtn.addEventListener('click', function(e){
-      try { e.preventDefault(); } catch (err) {}
+    exportBtn.addEventListener('click', function (e) {
+      try { e.preventDefault(); } catch (err) { }
       if (!state.currentTech) {
         return;
       }
-      fetch('/api/tech/' + encodeURIComponent(state.currentTech) + '/sites.csv?limit=2000').then(function(res){
+      fetch('/api/tech/' + encodeURIComponent(state.currentTech) + '/sites.csv?limit=2000').then(function (res) {
         if (!res.ok) {
           throw new Error('HTTP ' + res.status);
         }
         return res.blob();
-      }).then(function(blob){
+      }).then(function (blob) {
         var url = URL.createObjectURL(blob);
         var a = document.createElement('a');
         a.href = url;
@@ -851,7 +915,7 @@
         a.click();
         a.remove();
         URL.revokeObjectURL(url);
-      }).catch(function(err){
+      }).catch(function (err) {
         alert('Export failed: ' + (err && err.message ? err.message : err));
       });
     });
@@ -861,8 +925,8 @@
     if (!viewBtn) {
       return;
     }
-    viewBtn.addEventListener('click', function(e){
-      try { e.preventDefault(); } catch (err) {}
+    viewBtn.addEventListener('click', function (e) {
+      try { e.preventDefault(); } catch (err) { }
       if (!state.currentTech) {
         return;
       }
@@ -878,21 +942,21 @@
   attachViewHandler();
 
   if (evidenceTrigger) {
-    evidenceTrigger.addEventListener('click', function(e){
-      try { e.preventDefault(); } catch (err) {}
+    evidenceTrigger.addEventListener('click', function (e) {
+      try { e.preventDefault(); } catch (err) { }
       openEvidenceModal();
     });
   }
 
   window.techModalSetCustomEvidence = setCustomEvidence;
-  window.showTechModal = function(name, preload){
+  window.showTechModal = function (name, preload) {
     openForName(name, preload);
   };
   window._showTechModalRaw = openForName;
   window.closeModal = closeModal;
   window.closeTechModal = closeModal;
   window.closeEvidenceModal = closeEvidenceModal;
-  window.openTechModal = function(tech){
+  window.openTechModal = function (tech) {
     if (!tech) {
       return;
     }

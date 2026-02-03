@@ -420,6 +420,8 @@ const TECH_CATEGORY_FALLBACK = {
   'marked': 'JavaScript Libraries',
   'highlight.js': 'JavaScript Libraries',
   'prism': 'JavaScript Libraries',
+  'popper': 'JavaScript Libraries',
+  'popper.js': 'JavaScript Libraries',
 
   // JavaScript Frameworks (NOT just libraries, NOT web servers, NOT programming languages)
   'next.js': 'JavaScript Frameworks',
@@ -498,10 +500,19 @@ const TECH_CATEGORY_FALLBACK = {
   // Servers
   'nginx': 'Web Servers',
   'apache': 'Web Servers',
+  'apache http server': 'Web Servers',
   'litespeed': 'Web Servers',
   'tengine': 'Web Servers',
   'iis': 'Web Servers',
+  'microsoft iis': 'Web Servers',
   'caddy': 'Web Servers',
+
+  // Operating Systems
+  'ubuntu': 'Operating Systems',
+  'debian': 'Operating Systems',
+  'centos': 'Operating Systems',
+  'windows server': 'Operating Systems',
+  'freebsd': 'Operating Systems',
 
   // Programming Languages (actual languages only)
   'php': 'Programming Languages',
@@ -836,14 +847,89 @@ async function fetchStats() {
   }
 }
 
+function iconColorFor(name) {
+  if (!name) return '#ccc';
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+  return '#' + '00000'.substring(0, 6 - c.length) + c;
+}
+
 async function openTechModal(techName) {
   const modal = document.getElementById('techModal');
   modal.classList.remove('hidden');
 
+  // Update Tech Icon
+  const iconImg = document.getElementById('modal-tech-icon');
+  const iconContainer = iconImg ? iconImg.parentElement : null;
+
+  // Remove existing fallback if any
+  if (iconContainer) {
+    const fallback = iconContainer.querySelector('.tech-icon-fallback');
+    if (fallback) fallback.remove();
+  }
+
+  if (iconImg) {
+    iconImg.style.display = 'none'; // Reset to hidden
+    // Normalize tech name to match icon filename
+    // Allow + and # for C++, C#
+    let iconKey = techName.toLowerCase().replace(/[^a-z0-9+#]/g, '');
+
+    // Manual overrides for known mismatches
+    const iconMap = {
+      'react.js': 'react', 'reactjs': 'react',
+      'angular.js': 'angular', 'angularjs': 'angular',
+      'vue.js': 'vuejs', 'vue': 'vuejs',
+      'node.js': 'nodejs', 'nodejs': 'nodejs',
+      '.net': 'dotnet', 'asp.net': 'netcore',
+      'c++': 'cplusplus', 'cplusplus': 'c++',
+      'c#': 'csharp', 'csharp': 'c#',
+      'bootstrap': 'bootstrap5',
+      'css': 'css3', 'css3': 'css3',
+      'html': 'html5', 'html5': 'html5',
+      'javascript': 'js', 'js': 'js',
+      'typescript': 'typescript',
+      'sass': 'sass', 'scss': 'sass',
+      'postgresql': 'postgresql', 'postgres': 'postgresql',
+      'elasticsearch': 'elastic',
+      'tailwind': 'tailwindcss', 'tailwind css': 'tailwindcss'
+    };
+
+    if (iconMap[techName.toLowerCase()]) {
+      iconKey = iconMap[techName.toLowerCase()];
+    } else if (iconMap[iconKey]) {
+      iconKey = iconMap[iconKey];
+    }
+
+    iconImg.src = `/static/icons/tech/${encodeURIComponent(iconKey)}.svg`;
+    iconImg.onload = function () {
+      this.style.display = 'block';
+    };
+    iconImg.onerror = function () {
+      this.style.display = 'none';
+      if (iconContainer) {
+        const letter = techName.charAt(0).toUpperCase();
+        const color = iconColorFor(techName);
+        const fallback = document.createElement('div');
+        fallback.className = 'tech-icon-fallback tech-icon-large';
+        fallback.style.backgroundColor = color;
+        fallback.style.display = 'flex';
+        fallback.style.alignItems = 'center';
+        fallback.style.justifyContent = 'center';
+        fallback.style.color = 'white';
+        fallback.style.fontWeight = 'bold';
+        fallback.style.fontSize = '24px';
+        fallback.style.borderRadius = '8px';
+        fallback.textContent = letter;
+        iconContainer.insertBefore(fallback, iconImg);
+      }
+    };
+  }
+
   document.getElementById('modal-tech-name').textContent = techName;
   document.getElementById('modal-category').textContent = 'Loading...';
   document.getElementById('modal-tech-usage').textContent = '-';
-  document.getElementById('modal-tech-categories').textContent = '-';
+
   document.getElementById('modal-tech-share').textContent = '-';
 
   const dList = document.getElementById('modal-domains-list');
@@ -856,21 +942,42 @@ async function openTechModal(techName) {
   techModalDomains = [];
 
   try {
-    const res = await fetch(`/api/tech/${encodeURIComponent(techName)}/domains?t=${Date.now()}`);
+    // 1. Fetch from correct endpoint /sites (not /domains which was 404)
+    const res = await fetch(`/api/tech/${encodeURIComponent(techName)}/sites?limit=500&t=${Date.now()}`);
     const data = await res.json();
 
-    const catStr = Array.isArray(data.categories) ? data.categories.join(', ') : (data.categories || getFallbackCategory(techName) || '-');
+    // 2. Fetch basic meta for categories (since /sites response might not include full category list)
+    // We try to use what we have or fallback
+    let techCats = [];
+    if (data.sites && data.sites.length > 0 && data.sites[0].summary && data.sites[0].summary.category) {
+      // Try to infer from first site? Unreliable.
+      // Better to rely on fallback or separate call if needed.
+      // For now, let's stick to fallback or what we display in top list.
+    }
+    // Ideally we should call /api/techs/NAME first to get meta, but for speed let's just use what we have + fallback
+    const catStr = getFallbackCategory(techName) || '-';
     document.getElementById('modal-category').textContent = catStr;
-    document.getElementById('modal-tech-usage').textContent = (data.usage_count || 0).toLocaleString();
-    document.getElementById('modal-tech-categories').textContent = (Array.isArray(data.categories) ? data.categories.length : (data.categories ? 1 : 0));
 
-    // Calculate share (based on total unique domains in system if possible, or relative to top tech)
-    // Here we use a simplified metric if data.total_system_domains is unavailable.
-    // Ideally API should return this.
-    document.getElementById('modal-tech-share').textContent = 'N/A'; // Placeholder
 
-    if (data.domains && data.domains.length > 0) {
-      techModalDomains = data.domains;
+    // 3. Usage Count
+    let uCount = data.total || (data.sites ? data.sites.length : 0);
+    document.getElementById('modal-tech-usage').textContent = uCount.toLocaleString();
+
+    // 4. Share of Top Stack
+    const totalDomEl = document.getElementById('total-domains');
+    let shareText = 'N/A';
+    if (totalDomEl) {
+      const totalDomains = parseInt(totalDomEl.textContent.replace(/,/g, ''), 10) || 0;
+      if (totalDomains > 0 && uCount > 0) {
+        const pct = ((uCount / totalDomains) * 100).toFixed(1);
+        shareText = `${pct}%`;
+      }
+    }
+    document.getElementById('modal-tech-share').textContent = shareText;
+
+    if (data.sites && data.sites.length > 0) {
+      // Map sites objects to domain strings
+      techModalDomains = data.sites.map(s => s.domain);
       filterTechModalDomains('');
     } else {
       dList.innerHTML = '<li class="loading-text">No domains found</li>';
@@ -1022,12 +1129,13 @@ async function openSideTechModal(tech) {
   domainsList.innerHTML = '<li class="loading-text" style="font-size:0.85rem;">Loading domains...</li>';
 
   try {
-    // Fresh fetch with cache busting
-    const res = await fetch(`/api/tech/${encodeURIComponent(tech.tech)}/domains?t=${Date.now()}`);
+    // Fresh fetch with cache busting using correct endpoint /sites
+    const res = await fetch(`/api/tech/${encodeURIComponent(tech.tech)}/sites?limit=50&t=${Date.now()}`);
     const data = await res.json();
 
-    if (data.domains && data.domains.length > 0) {
-      domainsList.innerHTML = data.domains.map(d =>
+    if (data.sites && data.sites.length > 0) {
+      const doms = data.sites.map(s => s.domain);
+      domainsList.innerHTML = doms.map(d =>
         `<li style="padding:0.4rem;background:rgba(255,255,255,0.05);margin:0.25rem 0;border-radius:0.3rem;font-size:0.85rem;"><a href="https://${d}" target="_blank" style="color:#60a5fa;text-decoration:none;">${d}</a></li>`
       ).join('');
     } else {
