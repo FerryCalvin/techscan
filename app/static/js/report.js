@@ -8,23 +8,6 @@
         }
     }
 
-    // XSS protection: escape HTML special characters
-    function escapeHtml(value) {
-        return String(value ?? '').replace(/[&<>"']/g, function (ch) {
-            switch (ch) {
-                case '&': return '&amp;';
-                case '<': return '&lt;';
-                case '>': return '&gt;';
-                case '"': return '&quot;';
-                case "'": return '&#39;';
-                default: return ch;
-            }
-        });
-    }
-
-    // Alias for backward compatibility
-    const esc = escapeHtml;
-
     // Tech Icon Helpers
     function techIconHTML(name, version) {
         if (!name) return '';
