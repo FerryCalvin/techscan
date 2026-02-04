@@ -50,9 +50,9 @@ Detailed documentation is available in the `docs/` directory:
 3. **Configure Environment**
    Create a `.env` file (see `.env.example`):
    ```ini
-   DATABASE_URL=postgresql://user:pass@localhost/techscan
+   TECHSCAN_DB_URL=postgresql://user:pass@localhost/techscan
    # Optional: Run without DB for testing
-   # TECHSCAN_DB_DISABLED=1
+   # TECHSCAN_DISABLE_DB=1
    ```
 
 4. **Run the Application**
