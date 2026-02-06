@@ -20,4 +20,11 @@ if __name__ == "__main__":
         print(f"[techscan] Route count={len(routes)} sample={sample}")
     except Exception as e:
         print(f"[techscan] Failed listing routes: {e}")
-    app.run(host="0.0.0.0", port=5000, debug=debug_flag, use_reloader=use_reloader)
+    
+    # Use socketio.run instead of app.run
+    socketio = app.extensions.get('socketio')
+    if socketio:
+        print("[techscan] Starting with SocketIO...")
+        socketio.run(app, host="0.0.0.0", port=5000, debug=debug_flag, use_reloader=use_reloader, allow_unsafe_werkzeug=True)
+    else:
+        app.run(host="0.0.0.0", port=5000, debug=debug_flag, use_reloader=use_reloader)

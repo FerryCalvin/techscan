@@ -17,7 +17,14 @@ def create_app():
     # Fail-fast defaults so unreachable hosts surface as explicit errors instead of slow 0-tech scans
     os.environ.setdefault("TECHSCAN_PREFLIGHT", "1")
     os.environ.setdefault("TECHSCAN_DNS_NEG_CACHE", "600")
+    
     app = Flask(__name__)
+    
+    # Initialize SocketIO
+    from flask_socketio import SocketIO
+    socketio = SocketIO()
+    socketio.init_app(app, cors_allowed_origins="*", async_mode="threading")
+    app.extensions['socketio'] = socketio
     # Optional template auto-reload for development (to pick up index.html JS edits without restart)
     if os.environ.get("TECHSCAN_TEMPLATE_AUTO_RELOAD", "0") == "1":
         app.config["TEMPLATES_AUTO_RELOAD"] = True
@@ -144,8 +151,8 @@ def create_app():
     app.register_blueprint(scan_bp)
     app.register_blueprint(ui_bp)
     app.register_blueprint(admin_bp)
-    app.register_blueprint(system_bp)
     app.register_blueprint(search_bp)
+    
     # register tech blueprint only if import succeeded
     if tech_bp:
         # Avoid registering the same blueprint object multiple times when
@@ -207,7 +214,7 @@ def create_app():
         # Content-Security-Policy (customizable via env, default restrictive)
         csp = os.environ.get(
             "TECHSCAN_CSP",
-            "default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; connect-src 'self' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src 'self' fonts.gstatic.com; img-src 'self' data:;",
+            "default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdn.socket.io; connect-src 'self' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src 'self' fonts.gstatic.com; img-src 'self' data:;",
         )
         if csp:
             response.headers["Content-Security-Policy"] = csp

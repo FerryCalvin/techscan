@@ -1,0 +1,152 @@
+{
+    "Ubuntu": [
+        "Operating systems"
+    ],
+    "Debian": [
+        "Operating systems"
+    ],
+    "CentOS": [
+        "Operating systems"
+    ],
+    "Windows Server": [
+        "Operating systems"
+    ],
+    "FreeBSD": [
+        "Operating systems"
+    ],
+    "Apache HTTP Server": [
+        "Web servers"
+    ],
+    "Nginx": [
+        "Web servers"
+    ],
+    "LiteSpeed": [
+        "Web servers"
+    ],
+    "Microsoft IIS": [
+        "Web servers"
+    ],
+    "PHP": [
+        "Programming languages"
+    ],
+    "Python": [
+        "Programming languages"
+    ],
+    "Ruby": [
+        "Programming languages"
+    ],
+    "Java": [
+        "Programming languages"
+    ],
+    "Node.js": [
+        "Programming languages"
+    ],
+    "ASP.NET": [
+        "Programming languages"
+    ],
+    "MySQL": [
+        "Databases"
+    ],
+    "PostgreSQL": [
+        "Databases"
+    ],
+    "MongoDB": [
+        "Databases"
+    ],
+    "Redis": [
+        "Databases"
+    ],
+    "MariaDB": [
+        "Databases"
+    ],
+    "jQuery": [
+        "JavaScript libraries"
+    ],
+    "jQuery UI": [
+        "JavaScript libraries"
+    ],
+    "Popper": [
+        "JavaScript libraries"
+    ],
+    "Lodash": [
+        "JavaScript libraries"
+    ],
+    "Moment.js": [
+        "JavaScript libraries"
+    ],
+    "Bootstrap": [
+        "UI frameworks"
+    ],
+    "Tailwind CSS": [
+        "UI frameworks"
+    ],
+    "Foundation": [
+        "UI frameworks"
+    ],
+    "Materialize CSS": [
+        "UI frameworks"
+    ],
+    "Bulma": [
+        "UI frameworks"
+    ],
+    "React": [
+        "JavaScript frameworks"
+    ],
+    "Vue.js": [
+        "JavaScript frameworks"
+    ],
+    "Angular": [
+        "JavaScript frameworks"
+    ],
+    "Svelte": [
+        "JavaScript frameworks"
+    ],
+    "Next.js": [
+        "JavaScript frameworks"
+    ],
+    "WordPress": [
+        "CMS"
+    ],
+    "Joomla": [
+        "CMS"
+    ],
+    "Drupal": [
+        "CMS"
+    ],
+    "Magento": [
+        "Ecommerce"
+    ],
+    "Shopify": [
+        "Ecommerce"
+    ],
+    "Font Awesome": [
+        "Font scripts"
+    ],
+    "Google Font API": [
+        "Font scripts"
+    ],
+    "Google Analytics": [
+        "Analytics"
+    ],
+    "Google Analytics GA4": [
+        "Analytics"
+    ],
+    "Google Tag Manager": [
+        "Tag managers"
+    ],
+    "Varnish": [
+        "Caching"
+    ],
+    "Cloudflare": [
+        "CDN"
+    ],
+    "Sectigo": [
+        "SSL/TLS certificate authorities"
+    ],
+    "Let's Encrypt": [
+        "SSL/TLS certificate authorities"
+    ],
+    "DigiCert": [
+        "SSL/TLS certificate authorities"
+    ]
+}

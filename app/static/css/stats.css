@@ -721,7 +721,7 @@ canvas {
   font-size: 0.9rem;
   opacity: 0.7;
   margin-top: 0.5rem;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ts-text-dim, rgba(255, 255, 255, 0.7));
 }
 
 .category-usage-count {
@@ -1070,16 +1070,65 @@ body.light .modal-content li {
 body.light .category-card {
   background: rgba(248, 248, 248, 1) !important;
 }
-/* Tech Icon Styles */
-.tech-header-left {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+
+
+/* Additional Light Mode Overrides (Missing from previous block) */
+body.light .category-card {
+  border: 1px solid rgba(0, 0, 0, 0.2) !important;
 }
 
-.tech-icon-large {
-  width: 48px;
-  height: 48px;
-  object-fit: contain;
-  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));
+body.light .category-card h4 {
+  color: #000 !important;
+}
+
+body.light .category-card:hover {
+  background: rgba(255, 255, 255, 1) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25) !important;
+}
+
+body.light .modal-subtitle,
+body.light .modal-subtitle-small {
+  color: #555 !important;
+}
+
+body.light .modal-close-btn {
+  background: rgba(0, 0, 0, 0.15);
+  color: #000 !important;
+}
+
+body.light .modal-close-btn:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+body.light .modal-close-btn-small {
+  background: rgba(0, 0, 0, 0.1);
+  color: #000 !important;
+}
+
+body.light .modal-close-btn-small:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+body.light .loading-text {
+  color: #666 !important;
+}
+
+body.light .confidence-label {
+  color: #666 !important;
+}
+
+body.light .hero-lead {
+  color: #333 !important;
+}
+
+/* Ensure modal list items are visible in light mode */
+body.light .modal-content ul li a {
+  color: #2563eb !important;
+  /* Blue link for domains */
+}
+
+body.light .modal-content ul li {
+  background: rgba(0, 0, 0, 0.05) !important;
+  /* Light bg for list items */
+  color: #111 !important;
 }

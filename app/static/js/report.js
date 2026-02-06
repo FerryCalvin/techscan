@@ -53,40 +53,15 @@
         return '#' + '00000'.substring(0, 6 - c.length) + c;
     }
 
-    // Category configuration with proper API names matching Wappalyzer categories
-    // Note: Reverse Proxies and SSL/TLS Certificate disabled for 4-4 layout
-    const CATEGORIES = [
-        { id: 'cms', name: 'CMS', api: 'cms' },
-        { id: 'programming', name: 'Programming Language', api: 'programming languages' },
-        { id: 'ui', name: 'UI Frameworks', api: 'ui frameworks' },
-        { id: 'webframework', name: 'Web Framework', api: 'web frameworks' },
-        { id: 'database', name: 'Database', api: 'databases' },
-        // { id: 'proxies', name: 'Reverse Proxies', api: 'reverse proxies' },  // disabled
-        { id: 'security', name: 'Security', api: 'security' },
-        // { id: 'ssl', name: 'SSL/TLS Certificate', api: 'ssl-tls-certificate-authorities' },  // disabled
-        { id: 'cdn', name: 'CDN', api: 'cdn' },
-        { id: 'os', name: 'Operating System', api: 'operating systems' }
-    ];
-
-    // Tech with children - uses exact category names from Wappalyzer
-    const TECH_CHILDREN = {
-        'wordpress': [
-            { name: 'WordPress Plugins', api: 'wordpress plugins' },
-            { name: 'WordPress Themes', api: 'wordpress themes' }
-        ],
-        'drupal': [
-            { name: 'Drupal Modules', api: 'drupal modules' }
-        ],
-        'joomla': [
-            { name: 'Joomla Extensions', api: 'joomla extensions' }
-        ]
-    };
-
     // Navigation state
     let navStack = [];
     let currentView = null;
     const charts = {};
-    const COLORS = ['#22c55e', '#60a5fa', '#fbbf24', '#f472b6', '#a78bfa', '#fb923c'];
+
+    // Dynamic config (populated from API)
+    let CATEGORIES = [];
+    let TECH_CHILDREN = {};
+    let COLORS = ['#22c55e', '#60a5fa', '#fbbf24', '#f472b6', '#a78bfa', '#fb923c']; // Default
 
     // Escape HTML
     function esc(str) {
@@ -101,6 +76,25 @@
 
     // Initialize charts with staggered API calls to avoid rate limit
     async function init() {
+        try {
+            // 1. Fetch metadata configuration
+            const metaRes = await fetch('/api/meta');
+            if (metaRes.ok) {
+                const meta = await metaRes.json();
+                if (meta.categories && meta.categories.length > 0) {
+                    CATEGORIES = meta.categories;
+                }
+                if (meta.tech_children) {
+                    TECH_CHILDREN = meta.tech_children;
+                }
+                if (meta.colors) {
+                    COLORS = meta.colors;
+                }
+            }
+        } catch (e) {
+            console.error("Failed to load meta config, using defaults/empty", e);
+        }
+
         for (let i = 0; i < CATEGORIES.length; i++) {
             const cat = CATEGORIES[i];
             // Add delay between requests to avoid rate limit (150ms = max 6/sec = 360/min < 60 limit)
@@ -145,7 +139,7 @@
                                 datalabels: {
                                     anchor: 'end',
                                     align: 'end',
-                                    color: 'rgba(255,255,255,0.9)',
+                                    color: document.body.classList.contains('light') ? '#334155' : 'rgba(255,255,255,0.9)',
                                     font: { size: 9, weight: 'bold' },
                                     formatter: (value) => value?.toLocaleString() || ''
                                 }
@@ -154,7 +148,7 @@
                                 x: { display: false },
                                 y: {
                                     grid: { display: false },
-                                    ticks: { color: 'rgba(255,255,255,0.7)', font: { size: 8 } }
+                                    ticks: { color: document.body.classList.contains('light') ? '#475569' : 'rgba(255,255,255,0.7)', font: { size: 8 } }
                                 }
                             }
                         },
@@ -166,6 +160,40 @@
             }
         }
     }
+
+    // Dynamic Theme Update for Report Charts
+    function updateAllChartsTheme() {
+        const isLight = document.body.classList.contains('light');
+        const textColor = isLight ? '#334155' : 'rgba(255,255,255,0.9)';
+        const tickColor = isLight ? '#475569' : 'rgba(255,255,255,0.7)';
+
+        Object.values(charts).forEach(chart => {
+            if (!chart) return;
+
+            // Update datalabels
+            if (chart.options.plugins && chart.options.plugins.datalabels) {
+                chart.options.plugins.datalabels.color = textColor;
+            }
+
+            // Update scales
+            if (chart.options.scales && chart.options.scales.y) {
+                if (chart.options.scales.y.ticks) {
+                    chart.options.scales.y.ticks.color = tickColor;
+                }
+            }
+
+            chart.update();
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const themeBtn = document.getElementById('theme-toggle');
+        if (themeBtn) {
+            themeBtn.addEventListener('click', () => {
+                setTimeout(updateAllChartsTheme, 50);
+            });
+        }
+    });
 
     // Open Layer 2 - Category view
     window.openCategory = function (apiName, displayName) {
@@ -764,6 +792,74 @@
         });
     });
 
+    // Real-time Notification Toast
+    function showToast(message, type = 'info') {
+        let container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            container.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:9999;font-family:inherit;';
+            document.body.appendChild(container);
+        }
+
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+            background: rgba(15, 23, 42, 0.9);
+            color: white;
+            padding: 12px 20px;
+            margin-top: 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            backdrop-filter: blur(8px);
+            font-size: 0.9rem;
+            transform: translateY(20px);
+            opacity: 0;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        `;
+
+        let icon = '🔔';
+        if (type === 'success') icon = '✅';
+        if (type === 'error') icon = '❌';
+
+        toast.innerHTML = `<span>${icon}</span><span>${esc(message)}</span>`;
+        container.appendChild(toast);
+
+        // Animate in
+        requestAnimationFrame(() => {
+            toast.style.transform = 'translateY(0)';
+            toast.style.opacity = '1';
+        });
+
+        // Remove after 3s
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(20px)';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    // Initialize SocketIO
+    function initSocket() {
+        if (typeof io !== 'undefined') {
+            const socket = io();
+            socket.on('connect', () => {
+                console.log('Socket connected');
+            });
+            socket.on('scan_update', (data) => {
+                if (data.status === 'complete') {
+                    showToast(`Scan Finished: ${data.domain} (${data.tech_count} techs detected)`, 'success');
+                    // Optional: Refresh active chart if relevant
+                    // For now just notify
+                }
+            });
+        }
+    }
+
     // Initialize
     init();
+    initSocket();
 })();

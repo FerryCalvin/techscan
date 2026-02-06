@@ -1613,3 +1613,36 @@ def api_category_technologies(category_name: str):
     except Exception as e:
         _log.exception("category_technologies_failed category=%s err=%s", category_name, e)
         return jsonify({"error": "internal", "detail": str(e)}), 500
+@ui_bp.route("/api/meta")
+def api_meta():
+    """Expose dynamic metadata for frontend configuration."""
+    from ..utils import tech_data
+    wapp_path = os.environ.get("WAPPALYZER_PATH")
+    if not wapp_path:
+        # Try to infer if not set (fallback logic similar to scanner)
+        potential = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "node_scanner", "node_modules", "wappalyzer"))
+        if os.path.exists(potential):
+            wapp_path = potential
+            
+    # If still not found, get_ui_metadata will skip full wapp categories 
+    # but still return our fallback list
+    meta = tech_data.get_ui_metadata(wapp_path)
+    
+    # Add icon map capability if needed, or color palette
+    meta["colors"] = ['#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#0ea5e9', '#ef4444', '#14b8a6', '#84cc16']
+    
+    # Add tech children hierarchy
+    meta["tech_children"] = {
+        'wordpress': [
+            { "name": 'WordPress Plugins', "api": 'wordpress plugins' },
+            { "name": 'WordPress Themes', "api": 'wordpress themes' }
+        ],
+        'drupal': [
+            { "name": 'Drupal Modules', "api": 'drupal modules' }
+        ],
+        'joomla': [
+            { "name": 'Joomla Extensions', "api": 'joomla extensions' }
+        ]
+    }
+    
+    return jsonify(meta)

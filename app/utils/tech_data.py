@@ -8,71 +8,64 @@ from .deduplication import canonicalize_tech_name
 
 _ASSET_VERSION_QUERY_RE = re.compile(r"[?&](?:ver|v|version)=([0-9]+(?:\.[0-9]+){0,3})", re.I)
 
-# Fallback category mapping for technologies that may not have categories from scanner
-CATEGORY_FALLBACK: Dict[str, List[str]] = {
-    # Operating Systems
-    "Ubuntu": ["Operating systems"],
-    "Debian": ["Operating systems"],
-    "CentOS": ["Operating systems"],
-    "Windows Server": ["Operating systems"],
-    "FreeBSD": ["Operating systems"],
-    # Web Servers
-    "Apache HTTP Server": ["Web servers"],
-    "Nginx": ["Web servers"],
-    "LiteSpeed": ["Web servers"],
-    "Microsoft IIS": ["Web servers"],
-    # Programming Languages
-    "PHP": ["Programming languages"],
-    "Python": ["Programming languages"],
-    "Ruby": ["Programming languages"],
-    "Java": ["Programming languages"],
-    "Node.js": ["Programming languages"],
-    "ASP.NET": ["Programming languages"],
-    # Databases
-    "MySQL": ["Databases"],
-    "PostgreSQL": ["Databases"],
-    "MongoDB": ["Databases"],
-    "Redis": ["Databases"],
-    "MariaDB": ["Databases"],
-    # JavaScript Libraries
-    "jQuery": ["JavaScript libraries"],
-    "jQuery UI": ["JavaScript libraries"],
-    "Popper": ["JavaScript libraries"],
-    "Lodash": ["JavaScript libraries"],
-    "Moment.js": ["JavaScript libraries"],
-    # UI Frameworks
-    "Bootstrap": ["UI frameworks"],
-    "Tailwind CSS": ["UI frameworks"],
-    "Foundation": ["UI frameworks"],
-    "Materialize CSS": ["UI frameworks"],
-    "Bulma": ["UI frameworks"],
-    # JavaScript Frameworks
-    "React": ["JavaScript frameworks"],
-    "Vue.js": ["JavaScript frameworks"],
-    "Angular": ["JavaScript frameworks"],
-    "Svelte": ["JavaScript frameworks"],
-    "Next.js": ["JavaScript frameworks"],
-    # CMS
-    "WordPress": ["CMS"],
-    "Joomla": ["CMS"],
-    "Drupal": ["CMS"],
-    "Magento": ["Ecommerce"],
-    "Shopify": ["Ecommerce"],
-    # Font Services
-    "Font Awesome": ["Font scripts"],
-    "Google Font API": ["Font scripts"],
-    # Analytics
-    "Google Analytics": ["Analytics"],
-    "Google Analytics GA4": ["Analytics"],
-    "Google Tag Manager": ["Tag managers"],
-    # Caching
-    "Varnish": ["Caching"],
-    "Cloudflare": ["CDN"],
-    # SSL/TLS
-    "Sectigo": ["SSL/TLS certificate authorities"],
-    "Let's Encrypt": ["SSL/TLS certificate authorities"],
-    "DigiCert": ["SSL/TLS certificate authorities"],
-}
+
+def _load_category_fallback() -> Dict[str, List[str]]:
+    try:
+        json_path = pathlib.Path(__file__).parent.parent.parent / "data" / "category_fallback.json"
+        if json_path.exists():
+            with open(json_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+CATEGORY_FALLBACK: Dict[str, List[str]] = _load_category_fallback()
+
+
+def get_ui_metadata(wappalyzer_path: str = None) -> Dict[str, Any]:
+    """Generate dynamic metadata for frontend UI configuration."""
+    # 1. Categories
+    categories = []
+    if wappalyzer_path:
+        cats_map = load_categories(wappalyzer_path)
+        # Convert map {id: name} to list of objects for frontend
+        # We need to map generic names used in fallback (e.g. "CMS") to IDs if possible, 
+        # but for now we'll stick to what the frontend expects or just emit raw config.
+        # Actually, the frontend expects specific IDs (cms, database) for the dashboard layout.
+        # We will expose the FULL verified Wappalyzer list + our internal IDs.
+        
+        # Mapping known internal IDs to Wappalyzer API names (approximate)
+        # This part mimics report.js hardcoding but on backend
+        known_map = {
+            "cms": ["CMS"],
+            "programming": ["Programming languages"],
+            "ui": ["UI frameworks"],
+            "webframework": ["Web frameworks"],
+            "database": ["Databases"],
+            "security": ["Security"],
+            "cdn": ["CDN"],
+            "os": ["Operating systems"]
+        }
+        
+        for mid, apis in known_map.items():
+            name = apis[0] # simple default
+            # find real ID if possible
+            real_id = None
+            for k, v in cats_map.items():
+                if v in apis:
+                    real_id = k
+                    break
+            categories.append({
+                "id": mid,
+                "name": name, # frontend display name
+                "api": apis[0], # exact string match name in wappalyzer
+                "wapp_id": real_id
+            })
+            
+    return {
+        "categories": categories,
+        "fallback": CATEGORY_FALLBACK
+    }
 
 
 def load_categories(wappalyzer_path: str) -> Dict[int, str]:

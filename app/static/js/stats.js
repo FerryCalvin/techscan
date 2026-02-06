@@ -610,25 +610,110 @@ function makeBarChart(canvasId, labels, data, barColor) {
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          titleColor: '#fff',
-          bodyColor: '#fff'
+          backgroundColor: document.body.classList.contains('light') ? 'rgba(255,255,255,0.95)' : 'rgba(0,0,0,0.8)',
+          titleColor: document.body.classList.contains('light') ? '#0f172a' : '#fff',
+          bodyColor: document.body.classList.contains('light') ? '#334155' : '#fff',
+          borderColor: document.body.classList.contains('light') ? '#e2e8f0' : 'transparent',
+          borderWidth: 1
         }
       },
       scales: {
         x: {
-          ticks: { color: 'rgba(255,255,255,0.7)' },
-          grid: { color: 'rgba(255,255,255,0.1)' },
+          ticks: { color: document.body.classList.contains('light') ? '#64748b' : 'rgba(255,255,255,0.7)' },
+          grid: { color: document.body.classList.contains('light') ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)' },
           beginAtZero: true
         },
         y: {
-          ticks: { color: 'rgba(255,255,255,0.9)' },
+          ticks: { color: document.body.classList.contains('light') ? '#475569' : 'rgba(255,255,255,0.9)' },
           grid: { display: false }
         }
       }
     }
   });
+
+  // Track instance for theme updates
+  if (canvasId === 'throughputChart') throughputChartInstance = newChart;
+  else if (canvasId === 'resultPie') resultPieInstance = newChart;
+  else if (String(canvasId).startsWith('cat-pie-')) categoryPieCharts[canvasId] = newChart;
+
+  return newChart;
 }
+
+// Global theme listener for dynamic chart updates
+document.addEventListener('DOMContentLoaded', () => {
+  const themeBtn = document.getElementById('theme-toggle');
+  if (themeBtn) {
+    themeBtn.addEventListener('click', () => {
+      // Allow time for class toggle
+      setTimeout(updateAllChartsTheme, 50);
+    });
+  }
+});
+
+function updateAllChartsTheme() {
+  const isLight = document.body.classList.contains('light');
+  const textColor = isLight ? '#0f172a' : '#fff';
+  const tickColor = isLight ? '#64748b' : 'rgba(255,255,255,0.7)';
+  const gridColor = isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)';
+  const tooltipBg = isLight ? 'rgba(255,255,255,0.95)' : 'rgba(0,0,0,0.8)';
+  const tooltipText = isLight ? '#0f172a' : '#fff';
+  const tooltipBorder = isLight ? '#e2e8f0' : 'transparent';
+  const borderColor = isLight ? '#fff' : 'rgba(255,255,255,0.1)';
+
+  const chartsToUpdate = [
+    throughputChartInstance,
+    resultPieInstance,
+    categoryChartInstance,
+    ...Object.values(categoryPieCharts)
+  ];
+
+  chartsToUpdate.forEach(chart => {
+    if (!chart) return;
+
+    // Update scales if exist
+    if (chart.options.scales) {
+      ['x', 'y'].forEach(axis => {
+        if (chart.options.scales[axis]) {
+          if (chart.options.scales[axis].ticks) chart.options.scales[axis].ticks.color = tickColor;
+          if (chart.options.scales[axis].grid) chart.options.scales[axis].grid.color = gridColor;
+        }
+      });
+    }
+
+    // Update plugins
+    if (chart.options.plugins) {
+      if (chart.options.plugins.legend && chart.options.plugins.legend.labels) {
+        chart.options.plugins.legend.labels.color = textColor;
+      }
+      if (chart.options.plugins.tooltip) {
+        chart.options.plugins.tooltip.backgroundColor = tooltipBg;
+        chart.options.plugins.tooltip.titleColor = tooltipText;
+        chart.options.plugins.tooltip.bodyColor = tooltipText;
+        chart.options.plugins.tooltip.borderColor = tooltipBorder;
+        chart.options.plugins.tooltip.borderWidth = 1;
+      }
+      if (chart.options.plugins.datalabels) {
+        chart.options.plugins.datalabels.color = textColor;
+      }
+    }
+
+    // Update datasets border (doughnuts)
+    if (chart.data.datasets) {
+      chart.data.datasets.forEach(ds => {
+        if (ds.borderColor && typeof ds.borderColor === 'string') {
+          // Only update neutral borders, keep specific colored borders if any (usually simple charts use neutral)
+          // For donuts we used neutral borders
+          if (ds.borderColor === 'rgba(255,255,255,0.1)' || ds.borderColor === '#fff') {
+            ds.borderColor = borderColor;
+          }
+        }
+      });
+    }
+
+    chart.update();
+  });
+}
+
 
 function updateUptime(seconds) {
   // Removed live counting for simplicity unless restored in future
@@ -743,19 +828,21 @@ async function fetchStats() {
             plugins: {
               legend: { display: false },
               tooltip: {
-                backgroundColor: 'rgba(0,0,0,0.8)',
-                titleColor: '#fff',
-                bodyColor: '#fff'
+                backgroundColor: document.body.classList.contains('light') ? 'rgba(255,255,255,0.95)' : 'rgba(0,0,0,0.8)',
+                titleColor: document.body.classList.contains('light') ? '#0f172a' : '#fff',
+                bodyColor: document.body.classList.contains('light') ? '#334155' : '#fff',
+                borderColor: document.body.classList.contains('light') ? '#e2e8f0' : 'transparent',
+                borderWidth: 1
               }
             },
             scales: {
               x: {
-                ticks: { color: 'rgba(255,255,255,0.7)', font: { size: 10 } },
+                ticks: { color: document.body.classList.contains('light') ? '#64748b' : 'rgba(255,255,255,0.7)', font: { size: 10 } },
                 grid: { display: false }
               },
               y: {
-                ticks: { color: 'rgba(255,255,255,0.7)', font: { size: 10 } },
-                grid: { color: 'rgba(255,255,255,0.1)' },
+                ticks: { color: document.body.classList.contains('light') ? '#475569' : 'rgba(255,255,255,0.7)', font: { size: 10 } },
+                grid: { color: document.body.classList.contains('light') ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)' },
                 beginAtZero: true
               }
             }
@@ -781,7 +868,7 @@ async function fetchStats() {
               datasets: [{
                 data: [pSuccess, pTimeout, pError],
                 backgroundColor: ['#10b981', '#fbbf24', '#f87171'],
-                borderColor: 'rgba(255,255,255,0.1)',
+                borderColor: document.body.classList.contains('light') ? '#fff' : 'rgba(255,255,255,0.1)',
                 borderWidth: 2
               }]
             },
@@ -789,7 +876,13 @@ async function fetchStats() {
               responsive: true,
               maintainAspectRatio: false,
               plugins: {
-                legend: { position: 'right', labels: { color: '#fff', font: { size: 10 } } }
+                legend: {
+                  position: 'right',
+                  labels: {
+                    color: document.body.classList.contains('light') ? '#334155' : '#fff',
+                    font: { size: 10 }
+                  }
+                }
               }
             }
           });
@@ -1224,7 +1317,7 @@ function renderCategoryTopTechList(container, segments) {
     const name = escapeHtml(seg.name || 'Unknown');
     const count = Number(seg.count) || 0;
     const countLabel = count ? count.toLocaleString('en-US') : '-';
-    return `<li style="display:flex;justify-content:space-between;align-items:center;font-size:0.78rem;color:rgba(255,255,255,0.85);"><span style="font-weight:500;">${name}</span><span style="color:rgba(255,255,255,0.65);font-size:0.72rem;">${countLabel}</span></li>`;
+    return `<li style="display:flex;justify-content:space-between;align-items:center;font-size:0.78rem;color:var(--ts-text, rgba(255,255,255,0.85));"><span style="font-weight:500;">${name}</span><span style="color:var(--ts-text-dim, rgba(255,255,255,0.65));font-size:0.72rem;">${countLabel}</span></li>`;
   }).join('')}</ul>`;
   container.innerHTML = listMarkup;
 }

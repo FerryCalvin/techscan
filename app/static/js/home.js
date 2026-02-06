@@ -422,10 +422,10 @@ function renderSearchTable() {
     const tr = document.createElement('tr');
     const isNew = (Date.now() / 1000 - item.first_seen) < 86400;
     if (isNew) tr.classList.add('new-domain');
-    tr.innerHTML = `<td>${item.domain}${isNew ? '<span class="new-chip">NEW</span>' : ''}</td>` +
-      `<td>${item.tech_name}</td>` +
-      `<td>${item.version || ''}</td>` +
-      `<td>${(item.categories || []).join(', ')}</td>` +
+    tr.innerHTML = `<td>${escapeHtml(item.domain)}${isNew ? '<span class="new-chip">NEW</span>' : ''}</td>` +
+      `<td>${escapeHtml(item.tech_name)}</td>` +
+      `<td>${escapeHtml(item.version || '')}</td>` +
+      `<td>${(item.categories || []).map(c => escapeHtml(c)).join(', ')}</td>` +
       `<td>${fmt(item.first_seen)}</td>` +
       `<td>${fmt(item.last_seen)}</td>`;
     searchTbody.appendChild(tr);

@@ -617,6 +617,20 @@ def scan_single_impl():
             result.get("retries", 0),
             payload_bytes if payload_bytes is not None else "n/a",
         )
+        # EMIT SOCKET EVENT
+        try:
+            sio = current_app.extensions.get('socketio')
+            if sio:
+                sio.emit('scan_update', {
+                    'domain': domain,
+                    'status': 'complete',
+                    'tech_count': len(result.get('technologies', [])),
+                    'duration': duration,
+                    'technologies': result.get('technologies', [])
+                })
+        except Exception:
+            pass
+
         if debug_escalated:
             # Revert to original level (INFO by default)
             try:
