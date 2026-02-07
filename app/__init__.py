@@ -381,6 +381,16 @@ def create_app():
                 "# TYPE db_pool_num_connections gauge",
                 f"db_pool_num_connections {int(num_connections)}",
             ]
+            
+            # Append standard metrics from app/metrics.py (enrichment, scan counts, etc.)
+            try:
+                from . import metrics
+                std_metrics = metrics.get_metrics()  # returns bytes
+                if std_metrics:
+                    lines.append(std_metrics.decode("utf-8"))
+            except Exception as me:
+                logging.getLogger(__name__).warning("Failed appending standard metrics: %s", me)
+
             return Response("\n".join(lines) + "\n", mimetype="text/plain")
 
         # Note: Redis health endpoint is provided via admin blueprint (`/admin/redis_health`).
