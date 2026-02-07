@@ -19,10 +19,7 @@ TechScan is organized into several key modules accessible via the navigation bar
 ### 1. Dashboard (Lookup)
 The entry point for all operations.
 - **Single Scan**: Enter a URL (e.g., `example.com`) to scan immediately.
-- **Scan Modes**:
-    - **Fast**: Quick HTTP header and HTML source analysis (~2s). Use for quick checks.
-    - **Unified (Deep)**: Full browser rendering to execute JavaScript (~15s). Use for detecting SPAs (React, Vue) and dynamic assets.
-- **Recent Scans**: Quickly access your last 5 scanned tasks.
+- **Unified Pipeline**: The engine automatically runs an adaptive "Unified" scan (combining headers, HTML, and browser-based checks) to ensure maximum detection accuracy without manual configuration.
 
 ### 2. Websites (Storage & Management)
 Navigate to `/websites` to view your entire database of scanned domains.
@@ -64,8 +61,7 @@ Navigate to `/report` for an interactive, drill-down executive report.
 ### Single Scan
 1. Navigate to the **Dashboard**.
 2. Enter a domain (e.g., `unair.ac.id`) in the input box.
-3. Select **Unified** mode (recommended for best accuracy).
-4. Click **Scan Now**. Results will appear shortly.
+3. Click **Scan Now**. Results will appear shortly.
 
 ### Bulk Scan
 1. Go to the **Websites** page or use the Bulk Scan panel on the Dashboard.
@@ -84,7 +80,7 @@ Automate your workflow using the REST API.
 ```bash
 curl -X POST http://localhost:5000/scan \
      -H "Content-Type: application/json" \
-     -d '{"domain": "example.com", "mode": "unified"}'
+     -d '{"domain": "example.com"}'
 ```
 
 ### 2. Start a Bulk Scan
@@ -92,7 +88,7 @@ curl -X POST http://localhost:5000/scan \
 ```bash
 curl -X POST http://localhost:5000/bulk \
      -H "Content-Type: application/json" \
-     -d '{"domains": ["example.com", "google.com"], "mode": "fast"}'
+     -d '{"domains": ["example.com", "google.com"]}'
 ```
 
 ### 3. Get Domain Details
