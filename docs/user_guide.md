@@ -21,6 +21,7 @@ The entry point for all operations.
 - **Single Scan**: Enter a URL (e.g., `example.com`) to scan immediately.
 - **Unified Pipeline**: The engine automatically runs an adaptive "Unified" scan (combining headers, HTML, and browser-based checks) to ensure maximum detection accuracy without manual configuration.
 
+<<<<<<< HEAD
 ### 2. Websites (Storage & Management)
 Navigate to `/websites` to view your entire database of scanned domains.
 - **Search & Filter**: Find specific domains or filter by status.
@@ -54,6 +55,8 @@ Navigate to `/report` for an interactive, drill-down executive report.
     2. Click a Technology (e.g., "WordPress") to see detailed usage stats.
     3. Click "Websites" to see the actual list of domains using it.
 
+=======
+>>>>>>> 589295a7df7bbc9b4bb6db80c4d98455ecb716a5
 ---
 
 ## 🔍 Scanning Guide
