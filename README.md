@@ -4,7 +4,7 @@ TechScan is a comprehensive web technology scanner that combines **heuristic det
 
 It provides a rich dashboard for visualizing technology trends, monitoring server health, and managing bulk scan operations.
 
-![Dashboard](docs/assets/dashboard_preview.png)
+
 
 ## 📚 Documentation
 

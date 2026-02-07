@@ -77,9 +77,9 @@ curl -X POST http://localhost:5000/scan \
 ```
 
 ### 2. Start a Bulk Scan
-**Endpoint**: `POST /bulk_scan`
+**Endpoint**: `POST /bulk`
 ```bash
-curl -X POST http://localhost:5000/bulk_scan \
+curl -X POST http://localhost:5000/bulk \
      -H "Content-Type: application/json" \
      -d '{"domains": ["example.com", "google.com"], "mode": "fast"}'
 ```
@@ -89,5 +89,5 @@ curl -X POST http://localhost:5000/bulk_scan \
 Returns the latest scan results, calculated differences, and normalized technology lists.
 
 ### 4. Search Domains by Tech
-**Endpoint**: `GET /api/tech/Nginx/domains`
+**Endpoint**: `GET /api/tech/Nginx/sites`
 Returns a list of all domains detected running Nginx.
