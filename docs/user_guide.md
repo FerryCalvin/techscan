@@ -1,6 +1,6 @@
 # TechScan User Guide
 
-TechScan is a powerful web technology scanner designed to identify, analyze, and monitor the technologies powering websites. This guide explains how to use the dashboard, extensive scanning capabilities, and API.
+TechScan is a comprehensive web technology scanner designed to identify, analyze, and monitor the technologies powering websites. This guide explains how to use the dashboard, manage stored data, and leverage the reporting tools.
 
 ## 🌟 Key Features
 
@@ -12,55 +12,66 @@ TechScan is a powerful web technology scanner designed to identify, analyze, and
 
 ---
 
-## 🖥️ Dashboard Overview
+## 🖥️ Feature Overview
 
-The dashboard is your central command center.
+TechScan is organized into several key modules accessible via the navigation bar:
 
-### 1. **Scan Panel**
+### 1. Dashboard (Lookup)
+The entry point for all operations.
 - **Single Scan**: Enter a URL (e.g., `example.com`) to scan immediately.
-- **Scan Mode**:
-    - **Fast**: Quick HTTP header and HTML source analysis (~2s).
-    - **Unified (Deep)**: Full browser rendering to execute JavaScript and detect dynamic assets (~15s).
+- **Scan Modes**:
+    - **Fast**: Quick HTTP header and HTML source analysis (~2s). Use for quick checks.
+    - **Unified (Deep)**: Full browser rendering to execute JavaScript (~15s). Use for detecting SPAs (React, Vue) and dynamic assets.
+- **Recent Scans**: Quickly access your last 5 scanned tasks.
 
-### 2. **Recent Scans**
-Shows the last 5 scanned domains with status indicators.
+### 2. Websites (Storage & Management)
+Navigate to `/websites` to view your entire database of scanned domains.
+- **Search & Filter**: Find specific domains or filter by status.
+- **Domain Details**: Click any domain to view its full profile:
+    - **Tech Stack**: List of all detected technologies with versions.
+    - **Evidence**: Click the "Info" icon next to any tech to see *proof* (e.g., specific script tag, cookie name, or global JS variable).
+    - **Export**: Download the domain's data.
 
-### 3. **Global Stats**
-Total domains scanned, unique technologies found, and successful scan rates.
+### 3. Technology Search
+Navigate to `/technology` to perform "reverse lookups".
+- **Concept**: Instead of asking "What tech does this site use?", ask "Which sites use this tech?".
+- **Usage**: Search for "Nginx", "React", or "Shopify".
+- **Result**: Get a list of all domains in your database matching that technology.
+
+### 4. History
+Navigate to `/history` to see the global timeline of scanning activity.
+- **Timeline**: View all scan jobs (single and bulk) in chronological order.
+- **Changes**: Track when new scans were performed and if they were successful.
+
+### 5. Stats (Analytics)
+Navigate to `/stats` for high-level data visualization.
+- **Top Technologies**: Bar charts showing the most popular tech across your dataset.
+- **Category Breakdown**: Pie charts showing the distribution of CMS, Web Servers, JavaScript Frameworks, etc.
+- **Performance**: Monitor scan throughput (domains/minute) and success rates.
+
+### 6. Reports
+Navigate to `/report` for an interactive, drill-down executive report.
+- **Hierarchical View**: Browse data by Category -> Technology -> Website.
+- **Drill-Down**:
+    1. Click a Category (e.g., "CMS") to see top CMSs.
+    2. Click a Technology (e.g., "WordPress") to see detailed usage stats.
+    3. Click "Websites" to see the actual list of domains using it.
 
 ---
 
-## 🔍 Scanning Domains
+## 🔍 Scanning Guide
 
 ### Single Scan
 1. Navigate to the **Dashboard**.
 2. Enter a domain (e.g., `unair.ac.id`) in the input box.
-3. Click **Scan Now**.
-4. Results will appear below, showing:
-    - **Detected Technologies**: With versions and categories (e.g., *Nginx 1.18 - Web Server*).
-    - **Confidence Score**: How certain the scanner is about the detection.
-    - **Evidence**: Click the "Info" icon to see exactly *why* a tech was detected (e.g., specific script tag or cookie).
+3. Select **Unified** mode (recommended for best accuracy).
+4. Click **Scan Now**. Results will appear shortly.
 
 ### Bulk Scan
 1. Go to the **Websites** page or use the Bulk Scan panel on the Dashboard.
-2. **Upload CSV/TXT**: Upload a file with one domain per line.
+2. **Upload CSV/TXT**: Upload a text file with one domain per line.
 3. **Pasting**: Paste a list of domains directly into the text area.
-4. Click **Start Bulk Scan**. The system will process them sequentially.
-
----
-
-## 📊 Analytics & Reports
-
-### Stats Page
-- **Top Technologies**: Standard bar charts showing the most popular tech across all scanned domains.
-- **Category Breakdown**: Pie charts showing the distribution of CMS, Web Servers, JavaScript Frameworks, etc.
-- **Performance**: Monitor scan throughput (domains/minute) and success rates.
-
-### Domain Detail
-Click on any domain in the **Websites** list to view:
-- **Current Stack**: The latest technology profile.
-- **History**: A timeline of scans.
-- **Diff View**: See exactly what changed between the last two scans (e.g., *Removed jQuery 1.12, Added jQuery 3.6*).
+4. Click **Start Bulk Scan**. The system will process the queue sequentially.
 
 ---
 
