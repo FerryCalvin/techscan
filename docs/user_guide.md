@@ -22,12 +22,6 @@ The dashboard is your central command center.
     - **Fast**: Quick HTTP header and HTML source analysis (~2s).
     - **Unified (Deep)**: Full browser rendering to execute JavaScript and detect dynamic assets (~15s).
 
-### 2. **Recent Scans**
-Shows the last 5 scanned domains with status indicators.
-
-### 3. **Global Stats**
-Total domains scanned, unique technologies found, and successful scan rates.
-
 ---
 
 ## 🔍 Scanning Domains
