@@ -56,6 +56,10 @@ if PROMETHEUS_AVAILABLE:
     CACHE_HITS = Counter("techscan_cache_hits_total", "Cache hit count")
     CACHE_MISSES = Counter("techscan_cache_misses_total", "Cache miss count")
 
+    # Enrichment metrics
+    ENRICHMENT_HINTS = Counter("techscan_enrichment_hints_total", "Number of hints extracted from URLs")
+    ENRICHMENT_MERGE = Counter("techscan_enrichment_merge_total", "Number of merges from enrichment to unified")
+
 else:
     # Stub classes when prometheus_client not available
     class StubMetric:
@@ -82,6 +86,8 @@ else:
     DB_CONNECTIONS = StubMetric()
     CACHE_HITS = StubMetric()
     CACHE_MISSES = StubMetric()
+    ENRICHMENT_HINTS = StubMetric()
+    ENRICHMENT_MERGE = StubMetric()
 
 
 # ============ Helper Functions ============
