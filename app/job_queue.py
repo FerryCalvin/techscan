@@ -96,8 +96,27 @@ class ScanJobQueue:
             "finished_at": None,
         }
         self._save_job(job)
+        
+        # Try to enqueue to RQ if available
+        try:
+            from . import queue as rq_queue
+            from . import tasks as rq_tasks
+            
+            if rq_queue.is_available():
+                q = rq_queue.get_queue()
+                q.enqueue(
+                    rq_tasks.run_single_scan_task,
+                    job_id=job_id,
+                    args=(job_id, domain, options),
+                    job_timeout=300
+                )
+                logger.info(f"Single scan job submitted to RQ: {job_id}")
+                return job_id
+        except Exception as e:
+            logger.warning(f"Failed to submit to RQ, falling back to local thread: {e}")
+
         self._enqueue(job_id)
-        logger.info(f"Single scan job submitted: {job_id} for {domain}")
+        logger.info(f"Single scan job submitted (local): {job_id} for {domain}")
         return job_id
 
     def submit_bulk(self, domains: List[str], options: dict = None) -> str:
@@ -125,8 +144,28 @@ class ScanJobQueue:
             "finished_at": None,
         }
         self._save_job(job)
+        
+        # Try to enqueue to RQ if available
+        try:
+            from . import queue as rq_queue
+            from . import tasks as rq_tasks
+            
+            if rq_queue.is_available():
+                q = rq_queue.get_queue()
+                # Bulk scans might take longer, give it more timeout (e.g. 1 hour)
+                q.enqueue(
+                    rq_tasks.run_bulk_scan_task,
+                    job_id=job_id,
+                    args=(job_id, clean_domains, options),
+                    job_timeout=3600
+                )
+                logger.info(f"Bulk scan job submitted to RQ: {job_id}")
+                return job_id
+        except Exception as e:
+            logger.warning(f"Failed to submit to RQ, falling back to local thread: {e}")
+            
         self._enqueue(job_id)
-        logger.info(f"Bulk scan job submitted: {job_id} for {len(clean_domains)} domains")
+        logger.info(f"Bulk scan job submitted (local): {job_id} for {len(clean_domains)} domains")
         return job_id
 
     def get_job(self, job_id: str) -> Optional[dict]:

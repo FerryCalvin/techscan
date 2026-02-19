@@ -8,7 +8,6 @@ from contextlib import contextmanager
 import psycopg
 
 try:
-    # psycopg_pool provides a robust connection pool for psycopg (psycopg3)
     from psycopg_pool import ConnectionPool as _PsycopgConnectionPool
 except Exception as pool_import_err:
     logging.getLogger("techscan.db").warning("psycopg_pool import failed err=%s", pool_import_err, exc_info=True)
@@ -255,8 +254,10 @@ if os.environ.get("TECHSCAN_DISABLE_DB", "0") != "1":
     # Try to create a psycopg_pool-backed pool if available
     if _PsycopgConnectionPool is not None:
         try:
-            _POOL = _PsycopgConnectionPool(conninfo=DB_URL, max_size=DB_POOL_SIZE)
-            logging.getLogger("techscan.db").info("Initialized psycopg connection pool size=%s", DB_POOL_SIZE)
+            # Explicit min_size to avoid validation errors if pool size is small
+            _min_size = min(DB_POOL_SIZE, 4)
+            _POOL = _PsycopgConnectionPool(conninfo=DB_URL, min_size=_min_size, max_size=DB_POOL_SIZE)
+            logging.getLogger("techscan.db").info("Initialized psycopg connection pool size=%s (min=%s)", DB_POOL_SIZE, _min_size)
         except Exception as e:
             logging.getLogger("techscan.db").warning(
                 "Failed to initialize psycopg_pool: %s; will fall back to single-connection-per-use", e

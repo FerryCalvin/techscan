@@ -374,6 +374,7 @@ def scan_domain(
                 else:
                     # Log success stderr too because it might contain debug info
                     if proc.stderr:
+                         print(f"DEBUG_NODE_STDERR:\n{proc.stderr}\nEND_STDERR")
                          with open("node_error.log", "a", encoding="utf-8") as f:
                             f.write(f"[{time.time()}] Node Success Log: {proc.stderr}\n")
                 try:
@@ -481,6 +482,11 @@ def scan_domain(
             return result
         except sproc.TimeoutExpired as te:
             last_err = te
+            if te.stderr:
+                 print(f"DEBUG_NODE_TIMEOUT_STDERR:\n{te.stderr}\nEND_TIMEOUT_STDERR")
+                 with open("node_error.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{time.time()}] Node Timeout Log: {te.stderr}\n")
+
             _record_failure(domain)
             with _stats_lock:
                 STATS["errors"]["timeout"] += 1

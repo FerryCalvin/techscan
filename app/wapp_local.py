@@ -138,11 +138,19 @@ def _http_fetch(url_or_domain: str, timeout_s: float = 3.0) -> Tuple[Dict[str, s
     if target_scheme == "http":
         schemes = [("http", http.client.HTTPConnection), ("https", http.client.HTTPSConnection)]
 
+    import ssl
+    _ssl_ctx = ssl.create_default_context()
+    _ssl_ctx.check_hostname = False
+    _ssl_ctx.verify_mode = ssl.CERT_NONE
+
     for scheme, Conn in schemes:
         if remaining() <= 0:
             break
         try:
-            conn = Conn(target_host, timeout=remaining())
+            if scheme == "https":
+               conn = Conn(target_host, timeout=remaining(), context=_ssl_ctx)
+            else:
+               conn = Conn(target_host, timeout=remaining())
             conn.request("GET", target_path, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
             resp = conn.getresponse()
             headers_lower = {k.lower(): v for k, v in resp.getheaders()}
@@ -214,7 +222,7 @@ def detect(domain: str, wappalyzer_path: str, timeout: float = 4.0) -> Dict[str,
     import logging
     logger = logging.getLogger("techscan.wapp")
 
-    if len(low_html) < 5000 and len(script_srcs) < 5:
+    if (len(low_html) < 10000 and len(script_srcs) < 5) or "unair.ac.id" in domain:
         logger.info(f"SmartProbe: Triggered for {domain} (len={len(low_html)}, scripts={len(script_srcs)})")
         # Prioritize common app paths that contain actual scripts (finger/index.php has Bootstrap)
         for probe_path in ["finger/index.php", "absen/", "login/", "app/"]:
@@ -363,6 +371,65 @@ def detect(domain: str, wappalyzer_path: str, timeout: float = 4.0) -> Dict[str,
         add("Font Awesome", [17], None, 60)
     if "tailwind" in jl:
         add("Tailwind CSS", [66], None, 60)
+
+    # ---- Extended heuristics for WordPress ecosystem & common technologies ----
+    # Yoast SEO: HTML comment marker
+    if "yoast seo" in low_html or "yoast seo plugin" in low_html:
+        add("Yoast SEO", [54, 32], None, 90)
+    # Open Graph: og: meta tags
+    if re.search(r'property=["\']og:', low_html):
+        add("Open Graph", [19], None, 80)
+    # RSS: link rel alternate rss
+    if re.search(r'type=["\']application/rss\+xml["\']', low_html):
+        add("RSS", [19], None, 80)
+    # MonsterInsights: script/comment pattern
+    if "monsterinsights" in jl:
+        add("MonsterInsights", [10], None, 80)
+    # Google Site Kit
+    if "google-site-kit" in jl or "sitekit" in jl:
+        add("Site Kit", [10], None, 75)
+    # Elementor Header & Footer Builder
+    if "elementor-hf" in jl or "header-footer-elementor" in jl:
+        add("Elementor Header & Footer Builder", [1], None, 75)
+    # Hello Elementor theme
+    if "hello-elementor" in jl or "hello elementor" in low_html:
+        add("Hello Elementor Theme", [80], None, 75)
+    # core-js
+    if "core-js" in jl or "core.js" in jl:
+        add("core-js", [59], None, 70)
+    # Svelte
+    if "svelte" in jl:
+        add("Svelte", [12], None, 65)
+    # Marked (markdown parser)
+    if re.search(r"marked(?:[-._]min)?\.js", jl):
+        add("Marked", [59], None, 70)
+    # Twitter Emoji (Twemoji)
+    if "twemoji" in jl:
+        add("Twitter Emoji (Twemoji)", [17], None, 80)
+    # UserWay accessibility widget
+    if "userway" in jl:
+        add("UserWay", [68], None, 80)
+    # WhatsApp Business Chat widget
+    if "whatsapp" in jl or "wa.me" in jl:
+        add("WhatsApp Business Chat", [52], None, 65)
+    # SuperPWA
+    if "superpwa" in jl:
+        add("SuperPWA", [59], None, 80)
+    # PWA: manifest link
+    if re.search(r'rel=["\']manifest["\']', low_html):
+        add("PWA", [59], None, 60)
+    # Priority Hints: fetchpriority attribute
+    if "fetchpriority" in low_html:
+        add("Priority Hints", [42], None, 70)
+    # Progressive Web App (from manifest link)
+    if re.search(r'rel=["\']manifest["\']', low_html):
+        add("Progressive Web App", [59], None, 55)
+    # Webpack: chunk/bundle patterns
+    if re.search(r"webpack|__webpack_", jl):
+        add("Webpack", [19], None, 60)
+    # Module Federation
+    if "remoteentry" in jl or "module-federation" in jl:
+        add("Module Federation", [19], None, 60)
 
     return {
         "technologies": techs,

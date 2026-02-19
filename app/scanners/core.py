@@ -382,7 +382,7 @@ def bulk_quick_then_deep(domains: List[str], wappalyzer_path: str, concurrency: 
     return [r for r in results if r is not None]
 
 
-def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Dict[str, Any]:
+def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 25000) -> Dict[str, Any]:
     """Unified single-domain scan: heuristic -> wapp_local -> node.js scanner (browser).
 
     This function orchestrates the different scanning engines to produce a consolidated result.
@@ -411,7 +411,8 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
 
     # 2. Local Wappalyzer Scan (Python pattern matching)
     # Passes the full raw_input (URL) so wapp_local can fetch it
-    w_timeout = max(4, int(budget_ms * 0.2 / 1000))
+    # Increase floor to 10s to accommodate Smart Probe (double fetch) on slow cold starts
+    w_timeout = max(10, int(budget_ms * 0.3 / 1000))
     try:
         w_res = wapp_local.detect(raw_input, wappalyzer_path=wappalyzer_path, timeout=w_timeout)
         logger.debug("wapp_local completed domain=%s techs=%d", domain, len(w_res.get("technologies", [])))
@@ -423,12 +424,41 @@ def scan_unified(domain: str, wappalyzer_path: str, budget_ms: int = 6000) -> Di
     # This is the key for DOM/JS/CSS detection that Python can't do
     # Allocate almost all remaining budget to Node (reserve ~5s for python parts)
     node_timeout = max(20, int((budget_ms - 5000) / 1000))
+    node_res = {"technologies": [], "categories": {}}
+    
+    # Retry threshold: retry if Node returns fewer techs than this (default: 1 = retry on complete failure)
     try:
-        node_res = scan_domain(raw_input, wappalyzer_path, timeout=node_timeout, retries=0, full=True)
-        logger.debug("node scanner completed domain=%s techs=%d", domain, len(node_res.get("technologies", [])))
-    except Exception as ne:
-        logger.warning("node scanner failed domain=%s err=%s (continuing with heuristic+wapp_local)", domain, ne)
-        node_res = {"technologies": [], "categories": {}}
+        retry_threshold = int(os.environ.get("TECHSCAN_NODE_RETRY_THRESHOLD", "1"))
+    except ValueError:
+        retry_threshold = 1
+    
+    max_node_attempts = 2  # 1 initial + 1 retry
+    for node_attempt in range(1, max_node_attempts + 1):
+        attempt_timeout = node_timeout if node_attempt == 1 else int(node_timeout * 1.5)
+        try:
+            node_res = scan_domain(raw_input, wappalyzer_path, timeout=attempt_timeout, retries=0, full=True)
+            node_tech_count = len(node_res.get("technologies", []))
+            logger.info(
+                "node scanner attempt=%d/%d domain=%s techs=%d timeout=%ds",
+                node_attempt, max_node_attempts, domain, node_tech_count, attempt_timeout
+            )
+            if node_tech_count >= retry_threshold:
+                break  # Good result, stop retrying
+            elif node_attempt < max_node_attempts:
+                logger.warning(
+                    "node scanner returned %d techs (< threshold %d), retrying with timeout=%ds",
+                    node_tech_count, retry_threshold, int(node_timeout * 1.5)
+                )
+        except Exception as ne:
+            logger.warning(
+                "node scanner attempt=%d/%d failed domain=%s err=%s",
+                node_attempt, max_node_attempts, domain, ne
+            )
+            if node_attempt < max_node_attempts:
+                logger.info("retrying node scanner with timeout=%ds", int(node_timeout * 1.5))
+            else:
+                logger.warning("node scanner exhausted retries domain=%s (continuing with heuristic+wapp_local)", domain)
+                node_res = {"technologies": [], "categories": {}}
 
     # Merge all results: Start with heuristic (has phases meta), add wapp_local, add node.js
     merged = h_res

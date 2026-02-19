@@ -114,6 +114,15 @@ def _ensure_process() -> None:
                 logging.getLogger("techscan.persist").info(
                     "persistent scanner daemon started pid=%s", getattr(_proc, "pid", None)
                 )
+                # Warmup: Send a ping to ensure browser is actually ready
+                try:
+                    # Give it a generous 10s to boot the browser for the first time
+                    # This prevents the first real scan from timing out
+                    logging.getLogger("techscan.persist").info("waiting for browser warmup...")
+                    _send({"cmd": "ping", "timeout": 10000}) 
+                    logging.getLogger("techscan.persist").info("browser warmup complete")
+                except Exception as we:
+                    logging.getLogger("techscan.persist").warning("warmup ping failed (ignoring): %s", we)
                 return
         except Exception as e:
             logging.getLogger("techscan.persist").warning(

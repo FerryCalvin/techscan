@@ -555,10 +555,11 @@ async function run() {
     recursive: full,
     probe: true,
     extended: true,
-    userAgent: 'Mozilla/5.0 (TechScan)',
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     // Pass args to Puppeteer to improve stability
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--headless=new'],
-    ignoreHTTPSErrors: true
+    ignoreHTTPSErrors: true,
+    skipDns: process.env.TECHSCAN_SKIP_DNS === '1'
   }
   const wappalyzer = new Wappalyzer(options)
   await wappalyzer.init()
@@ -580,7 +581,7 @@ async function run() {
     }
 
     // Smart Form Navigation: If page seems empty (splash screen) but has forms, navigate to the first relevant action
-    if (full) {
+    if (full && process.env.TECHSCAN_NO_SMARTNAV !== '1') {
       try {
         const page = await getPrimaryPage(site)
         if (page) {

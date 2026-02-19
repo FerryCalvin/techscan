@@ -87,11 +87,58 @@ def _fail_job(job_id, error):
                 """
                 UPDATE scan_jobs 
                 SET status='failed', 
-                    error=%s, 
-                    finished_at=NOW(), 
-                    updated_at=NOW() 
+                error=%s, 
+                finished_at=NOW(), 
+                updated_at=NOW() 
                 WHERE id=%s
             """,
                 (error, job_id),
             )
         conn.commit()
+
+
+def run_single_scan_task(job_id: str, domain: str, options: dict = None):
+    """Background task to run a single scan."""
+    options = options or {}
+    logger = logging.getLogger("rq.worker")
+    logger.info(f"Starting single scan task job_id={job_id} domain={domain}")
+
+    # Update job status to running
+    _update_job_status(job_id, "running", progress=0)
+
+    try:
+        wappalyzer_path = options.get("wappalyzer_path", "wappalyzer")
+        # Use simple unified scan or whatever scan_unified wrapper provides
+        from app.scanners.core import scan_unified
+        
+        # Determine budget based on options
+        # Default budget 25s, deep 45s
+        budget_ms = int(options.get("budget_ms", 25000))
+        if options.get("deep"):
+            budget_ms = 45000
+        
+        result = scan_unified(domain, wappalyzer_path, budget_ms=budget_ms)
+
+        # Save result to scans table so /domain endpoint can fetch it
+        try:
+            if result and hasattr(db, "save_scan"):
+               db.save_scan(result, from_cache=False, timeout_used=budget_ms//1000)
+        except Exception as save_err:
+             logger.warning(f"Could not save scan to DB: {save_err}")
+
+        # Update job with result
+        import json
+        with db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE scan_jobs SET status='completed', progress=100, completed=1, result=%s::jsonb, finished_at=NOW(), updated_at=NOW() WHERE id=%s",
+                    (json.dumps(result, ensure_ascii=False), job_id)
+                )
+            conn.commit()
+            
+        logger.info(f"Finished single scan task job_id={job_id}")
+        return result
+    except Exception as e:
+        logger.error(f"Failed single scan task job_id={job_id} err={e}", exc_info=True)
+        _fail_job(job_id, str(e))
+        raise

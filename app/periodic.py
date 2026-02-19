@@ -4,6 +4,23 @@ from .scan_utils import get_cached_or_scan, scan_unified
 
 _LOG = logging.getLogger("techscan.periodic")
 
+# Dedicated file logger for weekly rescan — always writes to disk so we can trace execution
+_FILE_LOG = None
+
+def _get_file_log():
+    global _FILE_LOG
+    if _FILE_LOG is None:
+        _FILE_LOG = logging.getLogger("techscan.weekly_rescan_file")
+        _FILE_LOG.setLevel(logging.DEBUG)
+        try:
+            log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "weekly_rescan.log")
+            fh = logging.FileHandler(log_path, encoding="utf-8")
+            fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+            _FILE_LOG.addHandler(fh)
+        except Exception:
+            pass  # fall back to root logger if file handler fails
+    return _FILE_LOG
+
 _WEEKLY_THREAD = None
 _WEEKLY_LOCK = threading.Lock()
 _WEEKLY_SWEEP_LOCK = threading.Lock()
@@ -12,9 +29,9 @@ _LAST_SCHEDULED_TS: float | None = None
 
 def _weekly_budget_ms() -> int:
     try:
-        return max(3000, int(os.environ.get("TECHSCAN_WEEKLY_RESCAN_BUDGET_MS", "15000")))
+        return max(3000, int(os.environ.get("TECHSCAN_WEEKLY_RESCAN_BUDGET_MS", "30000")))
     except Exception:
-        return 15000
+        return 30000
 
 
 def _persist_stub_scan(domain: str, start_ts: float, *, mode: str, error: str | None = None):
@@ -38,7 +55,9 @@ def _persist_stub_scan(domain: str, start_ts: float, *, mode: str, error: str | 
 
 
 def _run_weekly_scan(domain: str, wapp_path: str, *, reason: str, use_unified: bool) -> tuple[bool, str | None]:
+    flog = _get_file_log()
     start_ts = time.time()
+    flog.info("START domain=%s reason=%s unified=%s", domain, reason, use_unified)
     try:
         if use_unified:
             budget_ms = _weekly_budget_ms()
@@ -47,18 +66,24 @@ def _run_weekly_scan(domain: str, wapp_path: str, *, reason: str, use_unified: b
             result.setdefault("engine", "unified")
             result.setdefault("started_at", start_ts)
             result.setdefault("finished_at", time.time())
+            tech_count = len(result.get("technologies") or [])
+            flog.info("SCAN_OK domain=%s techs=%d duration=%.1fs", domain, tech_count, time.time() - start_ts)
             try:
                 _db.save_scan(result, from_cache=False, timeout_used=max(1, int(budget_ms / 1000)))
-            except Exception:
-                _LOG.debug("weekly_rescan[%s]: unified save failed domain=%s", reason, domain, exc_info=True)
+                flog.info("SAVE_OK domain=%s techs=%d", domain, tech_count)
+            except Exception as save_err:
+                _LOG.warning("weekly_rescan[%s]: save_scan FAILED domain=%s err=%s", reason, domain, save_err, exc_info=True)
+                flog.error("SAVE_FAIL domain=%s err=%s", domain, save_err)
         else:
             try:
                 get_cached_or_scan(domain, wapp_path, fresh=True, full=True)
             except TypeError:
                 get_cached_or_scan(domain, wapp_path, fresh=True)
+            flog.info("SCAN_OK domain=%s (legacy mode) duration=%.1fs", domain, time.time() - start_ts)
         return True, None
     except Exception as err:
         _LOG.exception("weekly_rescan[%s]: scan failed for %s", reason, domain)
+        flog.error("SCAN_FAIL domain=%s err=%s duration=%.1fs", domain, err, time.time() - start_ts)
         _persist_stub_scan(domain, start_ts, mode="unified" if use_unified else "full", error=str(err))
         return False, str(err)
 
@@ -199,6 +224,7 @@ def _select_rescan_candidates(cutoff_ts: float, max_per_run: int) -> list[str]:
 def _execute_weekly_rescan(
     wapp_path: str, max_per_run: int, lookback_days: int, *, reason: str = "scheduled", dry_run: bool = False
 ) -> dict:
+    flog = _get_file_log()
     start = time.time()
     cutoff = start - (lookback_days * 24 * 3600)
     use_unified = os.environ.get("TECHSCAN_UNIFIED", "1") == "1"
@@ -210,14 +236,18 @@ def _execute_weekly_rescan(
         "dry_run": dry_run,
         "use_unified": use_unified,
     }
+    flog.info("=== SWEEP START reason=%s max=%d lookback=%d dry=%s ===", reason, max_per_run, lookback_days, dry_run)
+    _LOG.info("weekly_rescan[%s]: sweep starting (max=%d lookback=%d)", reason, max_per_run, lookback_days)
     with _WEEKLY_SWEEP_LOCK:
         try:
             domains = _select_rescan_candidates(cutoff, max_per_run)
             summary["candidate_domains"] = len(domains)
             summary["sample_domains"] = domains[:15]
             summary["attempted"] = len(domains)
+            flog.info("CANDIDATES count=%d sample=%s", len(domains), domains[:5])
             if not domains:
                 _LOG.info("weekly_rescan[%s]: no domains qualified for rescan", reason)
+                flog.info("NO CANDIDATES - sweep ending")
                 summary["scanned"] = 0
                 return summary
             _LOG.info(
@@ -232,39 +262,56 @@ def _execute_weekly_rescan(
             if not dry_run:
                 use_unified = bool(summary["use_unified"])
                 try:
-                    concurrency = int(os.environ.get("TECHSCAN_WEEKLY_RESCAN_CONCURRENCY", "3"))
+                    concurrency = int(os.environ.get("TECHSCAN_WEEKLY_RESCAN_CONCURRENCY", "1"))
                 except Exception:
-                    concurrency = 3
+                    concurrency = 1
                 concurrency = max(1, concurrency)
                 futures: dict[concurrent.futures.Future, str] = {}
                 with concurrent.futures.ThreadPoolExecutor(
                     max_workers=min(concurrency, max(1, len(domains)))
                 ) as executor:
                     for domain in domains:
-                        _LOG.info("weekly_rescan[%s]: scanning %s (unified=%s)", reason, domain, use_unified)
                         fut = executor.submit(
                             _run_weekly_scan, domain, wapp_path, reason=reason, use_unified=use_unified
                         )
                         futures[fut] = domain
+                    total = len(futures)
+                    completed = 0
                     for future in concurrent.futures.as_completed(futures):
                         domain = futures[future]
+                        completed += 1
                         try:
                             ok, err = future.result()
                         except Exception as exc:
                             _LOG.exception("weekly_rescan[%s]: worker crashed for %s", reason, domain)
+                            flog.error("WORKER_CRASH domain=%s err=%s", domain, exc)
                             failures.append({"domain": domain, "error": str(exc)})
                             continue
                         if ok:
                             scanned += 1
                         else:
                             failures.append({"domain": domain, "error": err or "unknown"})
+                        # Log progress every 10 domains or on failure
+                        if completed % 10 == 0 or not ok:
+                            elapsed = time.time() - start
+                            _LOG.info(
+                                "weekly_rescan[%s]: progress %d/%d scanned=%d failed=%d elapsed=%.0fs",
+                                reason, completed, total, scanned, len(failures), elapsed
+                            )
+                            flog.info(
+                                "PROGRESS %d/%d scanned=%d failed=%d elapsed=%.0fs",
+                                completed, total, scanned, len(failures), elapsed
+                            )
             summary["scanned"] = scanned if not dry_run else 0
             if failures:
                 summary["failed"] = len(failures)
                 summary["failed_samples"] = failures[:15]
+            flog.info("=== SWEEP DONE scanned=%d failed=%d duration=%.1fs ===", scanned, len(failures), time.time() - start)
+            _LOG.info("weekly_rescan[%s]: sweep complete scanned=%d failed=%d duration=%.1fs", reason, scanned, len(failures), time.time() - start)
             return summary
         except Exception:
             _LOG.exception("weekly_rescan[%s]: unexpected error during sweep", reason)
+            flog.error("SWEEP_EXCEPTION err=%s", reason, exc_info=True)
             summary["error"] = "sweep_failed"
             return summary
         finally:
@@ -273,7 +320,23 @@ def _execute_weekly_rescan(
 
 def _run_weekly_loop(wapp_path: str, max_per_run: int = 2000, lookback_days: int = 7):
     """Worker loop scanning domains on a weekly cadence (cron-style or interval fallback)."""
-    next_run = _resolve_next_run(allow_past=False)  # No catch-up on missed schedules
+    # Check if we missed a scheduled run recently (grace period catch-up)
+    # allow_past=True returns the scheduled time even if it's in the past.
+    next_run = _resolve_next_run(allow_past=True)
+    now = time.time()
+    
+    # If the scheduled time was missed by more than 15 minutes (900s), skip it.
+    # If it was missed by < 15 mins (e.g. server restart), we'll run it immediately.
+    # If next_run is in the future, allow_past=True returns the future time anyway.
+    grace_period = 900  # 15 minutes
+    if next_run < (now - grace_period):
+        _LOG.info("weekly_rescan: missed schedule at %s (too old), skipping to next", datetime.datetime.fromtimestamp(next_run))
+        next_run = _resolve_next_run(allow_past=False)
+    elif next_run < now:
+        _LOG.info("weekly_rescan: catching up missed schedule at %s (within grace period)", datetime.datetime.fromtimestamp(next_run))
+
+    flog = _get_file_log()
+    flog.info("LOOP_START wapp_path=%s max_per_run=%d lookback=%d next_run=%s", wapp_path, max_per_run, lookback_days, datetime.datetime.fromtimestamp(next_run))
     while True:
         try:
             if os.environ.get("TECHSCAN_DISABLE_DB", "0") == "1":
@@ -290,9 +353,13 @@ def _run_weekly_loop(wapp_path: str, max_per_run: int = 2000, lookback_days: int
             if now < next_run:
                 time.sleep(min(300, next_run - now))
                 continue
+            flog.info("CRON_TRIGGER now=%s next_run=%s", datetime.datetime.fromtimestamp(now), datetime.datetime.fromtimestamp(next_run))
+            _LOG.info("weekly_rescan: cron trigger firing now=%s", datetime.datetime.fromtimestamp(now))
             _execute_weekly_rescan(wapp_path, max_per_run, lookback_days)
+            flog.info("CRON_TRIGGER_DONE")
         except Exception:
             _LOG.exception("weekly_rescan: unexpected error in loop")
+            flog.error("LOOP_EXCEPTION", exc_info=True)
         finally:
             lookback_env = os.environ.get("TECHSCAN_WEEKLY_RESCAN_LOOKBACK_DAYS")
             if lookback_env:
